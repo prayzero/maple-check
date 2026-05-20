@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <g transform="translate(256 256)">
+    <path fill="url(#leaf)" d="
+      M 0,-160
+      L 28,-86
+      L 96,-110
+      L 70,-44
+      L 150,-30
+      L 92,18
+      L 150,68
+      L 60,72
+      L 78,150
+      L 0,108
+      L -78,150
+      L -60,72
+      L -150,68
+      L -92,18
+      L -150,-30
+      L -70,-44
+      L -96,-110
+      L -28,-86
+      Z
+    "/>
+    <circle r="14" fill="#0f172a"/>
+  </g>
+</svg>

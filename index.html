@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0f172a" />
+<title>메이플 체크 - 보스 수익 & 기간제 관리</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="메이플 체크" />
+
+<!-- Tailwind via CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          maple: {
+            bg: '#0f172a',
+            panel: '#1e293b',
+            border: '#334155',
+            accent: '#fbbf24',
+            accent2: '#f97316',
+            good: '#4ade80',
+            warn: '#facc15',
+            danger: '#f87171'
+          }
+        }
+      }
+    }
+  }
+</script>
+
+<!-- React via CDN -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+  html, body, #root { height: 100%; }
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+/* =========================================================
+ * 보스 결정석 기본 데이터
+ * - 가격 / 난이도 / 레벨: 사용자가 제공한 결정석 시세표 기준
+ * - 입장 인원(max): 사용자 제공 데이터 기준. 익스트림 스우 2인,
+ *   최초의 대적자·찬란한 흉성·림보·발드릭스·유피테르 3인, 그 외 6인.
+ * - monthly: 월간 보스(검은 마법사)는 주간 12개 한도에서 제외.
+ * - exclusive: 검은 마법사는 하드/익스트림 중 하나만 선택 가능.
+ * - icon: icons/{id}.png 파일이 있으면 표시, 없으면 컬러 배지로 폴백.
+ * - 사용자가 [💎 결정석 가격 관리]에서 자유롭게 수정 가능합니다.
+ * ========================================================= */
+const DEFAULT_BOSSES = [
+  { id: 'zakum', name: '자쿰', level: 90, icon: 'icons/zakum.png', difficulties: {
+      'Chaos': { price: 8080000, max: 6 },
+  }},
+  { id: 'cygnus', name: '시그너스', level: 165, icon: 'icons/cygnus.png', difficulties: {
+      'Easy':   { price: 4550000, max: 6 },
+      'Normal': { price: 7500000, max: 6 },
+  }},
+  { id: 'pinkbean', name: '핑크빈', level: 170, icon: 'icons/pinkbean.png', difficulties: {
+      'Chaos': { price: 6580000, max: 6 },
+  }},
+  { id: 'hilla', name: '힐라', level: 170, icon: 'icons/hilla.png', difficulties: {
+      'Hard': { price: 5750000, max: 6 },
+  }},
+  { id: 'magnus', name: '매그너스', level: 175, icon: 'icons/magnus.png', difficulties: {
+      'Hard': { price: 8560000, max: 6 },
+  }},
+  { id: 'pierre', name: '피에르', level: 180, icon: 'icons/pierre.png', difficulties: {
+      'Chaos': { price: 8170000, max: 6 },
+  }},
+  { id: 'vonbon', name: '반반', level: 180, icon: 'icons/vonbon.png', difficulties: {
+      'Chaos': { price: 8150000, max: 6 },
+  }},
+  { id: 'bloodyqueen', name: '블러디 퀸', level: 180, icon: 'icons/bloodyqueen.png', difficulties: {
+      'Chaos': { price: 8140000, max: 6 },
+  }},
+  { id: 'vellum', name: '벨룸', level: 180, icon: 'icons/vellum.png', difficulties: {
+      'Chaos': { price: 9280000, max: 6 },
+  }},
+  { id: 'papulatus', name: '파풀라투스', level: 190, icon: 'icons/papulatus.png', difficulties: {
+      'Chaos': { price: 13800000, max: 6 },
+  }},
+  { id: 'lotus', name: '스우', level: 190, icon: 'icons/lotus.png', difficulties: {
+      'Normal':  { price: 17600000, max: 6 },
+      'Hard':    { price: 54200000, max: 6 },
+      'Extreme': { price: 604000000, max: 2 },
+  }},
+  { id: 'damien', name: '데미안', level: 190, icon: 'icons/damien.png', difficulties: {
+      'Normal': { price: 18400000, max: 6 },
+      'Hard':   { price: 51500000, max: 6 },
+  }},
+  { id: 'slime', name: '가디언 엔젤 슬라임', level: 210, icon: 'icons/slime.png', difficulties: {
+      'Normal': { price: 26800000, max: 6 },
+      'Chaos':  { price: 79100000, max: 6 },
+  }},
+  { id: 'lucid', name: '루시드', level: 220, icon: 'icons/lucid.png', difficulties: {
+      'Easy':   { price: 31400000, max: 6 },
+      'Normal': { price: 37500000, max: 6 },
+      'Hard':   { price: 66200000, max: 6 },
+  }},
+  { id: 'will', name: '윌', level: 235, icon: 'icons/will.png', difficulties: {
+      'Easy':   { price: 34000000, max: 6 },
+      'Normal': { price: 43300000, max: 6 },
+      'Hard':   { price: 81200000, max: 6 },
+  }},
+  { id: 'dusk', name: '더스크', level: 245, icon: 'icons/dusk.png', difficulties: {
+      'Normal': { price: 46300000, max: 6 },
+      'Chaos':  { price: 73500000, max: 6 },
+  }},
+  { id: 'jinhilla', name: '진 힐라', level: 250, icon: 'icons/jinhilla.png', difficulties: {
+      'Normal': { price: 74900000, max: 6 },
+      'Hard':   { price: 112000000, max: 6 },
+  }},
+  { id: 'dunkel', name: '친위대장 듄켈', level: 255, icon: 'icons/dunkel.png', difficulties: {
+      'Normal': { price: 50000000, max: 6 },
+      'Hard':   { price: 99400000, max: 6 },
+  }},
+  { id: 'seren', name: '선택받은 세렌', level: 260, icon: 'icons/seren.png', difficulties: {
+      'Normal':  { price: 266000000, max: 6 },
+      'Hard':    { price: 396000000, max: 6 },
+      'Extreme': { price: 3150000000, max: 6 },
+  }},
+  { id: 'kalos', name: '감시자 칼로스', level: 265, icon: 'icons/kalos.png', difficulties: {
+      'Easy':    { price: 311000000, max: 6 },
+      'Normal':  { price: 561000000, max: 6 },
+      'Chaos':   { price: 1340000000, max: 6 },
+      'Extreme': { price: 4320000000, max: 6 },
+  }},
+  { id: 'adversary', name: '최초의 대적자', level: 270, icon: 'icons/adversary.png', difficulties: {
+      'Easy':    { price: 324000000, max: 3 },
+      'Normal':  { price: 589000000, max: 3 },
+      'Hard':    { price: 1510000000, max: 3 },
+      'Extreme': { price: 4960000000, max: 3 },
+  }},
+  { id: 'kaling', name: '카링', level: 275, icon: 'icons/kaling.png', difficulties: {
+      'Easy':    { price: 419000000, max: 6 },
+      'Normal':  { price: 714000000, max: 6 },
+      'Hard':    { price: 1830000000, max: 6 },
+      'Extreme': { price: 5670000000, max: 6 },
+  }},
+  { id: 'hyungseong', name: '찬란한 흉성', level: 280, icon: 'icons/hyungseong.png', difficulties: {
+      'Normal': { price: 658000000, max: 3 },
+      'Hard':   { price: 2819000000, max: 3 },
+  }},
+  { id: 'limbo', name: '림보', level: 285, icon: 'icons/limbo.png', difficulties: {
+      'Normal': { price: 1080000000, max: 3 },
+      'Hard':   { price: 2510000000, max: 3 },
+  }},
+  { id: 'baldrix', name: '발드릭스', level: 290, icon: 'icons/baldrix.png', difficulties: {
+      'Normal': { price: 1440000000, max: 3 },
+      'Hard':   { price: 3240000000, max: 3 },
+  }},
+  { id: 'jupiter', name: '유피테르', level: 295, icon: 'icons/jupiter.png', difficulties: {
+      'Normal': { price: 1700000000, max: 3 },
+      'Hard':   { price: 5100000000, max: 3 },
+  }},
+  // 월간 보스: 12개 주간 한도에 포함되지 않음. 하드/익스트림 중 하나만 선택 가능.
+  { id: 'blackmage', name: '검은 마법사', level: 255, icon: 'icons/blackmage.png', monthly: true, exclusive: true, difficulties: {
+      'Hard':    { price: 700000000, max: 6 },
+      'Extreme': { price: 9200000000, max: 6 },
+  }},
+];
+
+/* =========================================================
+ * localStorage 헬퍼
+ * ========================================================= */
+const LS_KEYS = {
+  CHARS: 'maple_check_characters_v2',
+  BOSS_DATA: 'maple_check_boss_data_v4',
+  SELECTED: 'maple_check_selected_v2',
+  NOTIF_SHOWN: 'maple_check_notif_shown_v2',
+};
+
+const loadLS = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch { return fallback; }
+};
+const saveLS = (key, value) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+};
+
+/* =========================================================
+ * 유틸
+ * ========================================================= */
+const fmtMeso = (n) => {
+  if (!n || n === 0) return '0 메소';
+  const eok = Math.floor(n / 100000000);
+  const man = Math.floor((n % 100000000) / 10000);
+  const won = n % 10000;
+  const parts = [];
+  if (eok) parts.push(`${eok.toLocaleString()}억`);
+  if (man) parts.push(`${man.toLocaleString()}만`);
+  if (!eok && !man && won) parts.push(won.toLocaleString());
+  return (parts.join(' ') || '0') + ' 메소';
+};
+
+const todayStr = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const daysUntil = (dateStr) => {
+  if (!dateStr) return null;
+  const t = new Date(dateStr + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  return Math.ceil((t - today) / (1000 * 60 * 60 * 24));
+};
+
+const uid = () => 'c_' + Math.random().toString(36).slice(2, 10);
+
+const getDifficultyEntry = (boss, diff) => {
+  const d = boss?.difficulties?.[diff];
+  if (!d) return { price: 0, max: 6 };
+  // 구버전 호환 (숫자 → 객체)
+  if (typeof d === 'number') return { price: d, max: 6 };
+  return { price: d.price || 0, max: d.max || 6 };
+};
+
+/* =========================================================
+ * 만료 알림 (브라우저 Notification + 페이지 배너)
+ * - D-1, D-day 항목만 노출
+ * - 같은 날짜에는 한 번만 알림 (localStorage로 중복 방지)
+ * ========================================================= */
+function useExpiryNotifications(characters) {
+  const [permission, setPermission] = useState(() =>
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+  );
+  const [pending, setPending] = useState([]);
+
+  // 페이지 진입 시 알림 권한 자동 요청 (한 번만)
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().then(p => setPermission(p)).catch(() => {});
+    }
+  }, []);
+
+  // 만료/임박 항목 탐지
+  useEffect(() => {
+    const TYPE_LABEL = { pet: '펫', label: '라벨', specialCore: '특수코어' };
+    const items = [];
+    for (const c of characters) {
+      for (const [k, v] of Object.entries(c.durations || {})) {
+        if (!v) continue;
+        const d = daysUntil(v);
+        if (d === 0 || d === 1 || (d !== null && d < 0)) {
+          items.push({
+            charName: c.name,
+            charId: c.id,
+            type: k,
+            typeLabel: TYPE_LABEL[k] || k,
+            date: v,
+            days: d,
+          });
+        }
+      }
+    }
+    setPending(items);
+
+    // 브라우저 알림 발송 (오늘 한 번만)
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const today = todayStr();
+    const shown = loadLS(LS_KEYS.NOTIF_SHOWN, { date: '', keys: [] });
+    if (shown.date !== today) shown.keys = [];
+    const nextKeys = [...shown.keys];
+    for (const it of items) {
+      const key = `${it.charId}|${it.type}|${it.date}|${it.days}`;
+      if (nextKeys.includes(key)) continue;
+      const title =
+        it.days < 0 ? `[만료됨] ${it.charName} - ${it.typeLabel}` :
+        it.days === 0 ? `[오늘 만료] ${it.charName} - ${it.typeLabel}` :
+        `[내일 만료] ${it.charName} - ${it.typeLabel}`;
+      const body = `${it.typeLabel} 만료일: ${it.date}`;
+      try {
+        new Notification(title, { body, icon: 'icon.svg', tag: key });
+      } catch {}
+      nextKeys.push(key);
+    }
+    saveLS(LS_KEYS.NOTIF_SHOWN, { date: today, keys: nextKeys });
+  }, [characters]);
+
+  const askPermission = () => {
+    if (typeof Notification === 'undefined') return;
+    Notification.requestPermission().then(p => setPermission(p)).catch(() => {});
+  };
+
+  return { pending, permission, askPermission };
+}
+
+/* =========================================================
+ * 메인 App
+ * ========================================================= */
+function App() {
+  const [characters, setCharacters] = useState(() => loadLS(LS_KEYS.CHARS, []));
+  const [bossData, setBossData]     = useState(() => loadLS(LS_KEYS.BOSS_DATA, DEFAULT_BOSSES));
+  const [selected, setSelected]     = useState(() => loadLS(LS_KEYS.SELECTED, 'dashboard'));
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => saveLS(LS_KEYS.CHARS, characters), [characters]);
+  useEffect(() => saveLS(LS_KEYS.BOSS_DATA, bossData), [bossData]);
+  useEffect(() => saveLS(LS_KEYS.SELECTED, selected), [selected]);
+
+  const { pending, permission, askPermission } = useExpiryNotifications(characters);
+
+  // 캐릭터별 총 수익 계산
+  const charTotals = useMemo(() => {
+    const map = {};
+    for (const c of characters) {
+      let sum = 0;
+      for (const row of (c.bosses || [])) {
+        const boss = bossData.find(b => b.id === row.bossId);
+        if (!boss) continue;
+        const { price } = getDifficultyEntry(boss, row.difficulty);
+        const members = Math.max(1, row.partyMembers || 1);
+        sum += Math.floor(price / members);
+      }
+      map[c.id] = sum;
+    }
+    return map;
+  }, [characters, bossData]);
+
+  const grandTotal = useMemo(
+    () => Object.values(charTotals).reduce((a, b) => a + b, 0),
+    [charTotals]
+  );
+
+  const addCharacter = useCallback((name) => {
+    const newChar = {
+      id: uid(),
+      name: name?.trim() || `캐릭터${characters.length + 1}`,
+      durations: { pet: '', label: '', specialCore: '' },
+      bosses: [],
+    };
+    setCharacters(prev => [...prev, newChar]);
+    setSelected(newChar.id);
+    setSidebarOpen(false);
+  }, [characters]);
+
+  const removeCharacter = useCallback((id) => {
+    if (!confirm('이 캐릭터를 삭제할까요? 되돌릴 수 없습니다.')) return;
+    setCharacters(prev => prev.filter(c => c.id !== id));
+    setSelected('dashboard');
+  }, []);
+
+  const updateCharacter = useCallback((id, updater) => {
+    setCharacters(prev => prev.map(c => c.id === id ? updater(c) : c));
+  }, []);
+
+  return (
+    <div className="flex h-full w-full overflow-hidden">
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <Sidebar
+        characters={characters}
+        charTotals={charTotals}
+        selected={selected}
+        onSelect={(id) => { setSelected(id); setSidebarOpen(false); }}
+        onAdd={addCharacter}
+        onRemove={removeCharacter}
+        open={sidebarOpen}
+      />
+
+      <main className="flex-1 overflow-y-auto">
+        <header className="sticky top-0 z-20 bg-maple-bg/80 backdrop-blur border-b border-maple-border px-4 py-3 flex items-center gap-3 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 -ml-2 rounded hover:bg-maple-panel"
+            aria-label="메뉴"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M3 12h18M3 18h18" />
+            </svg>
+          </button>
+          <h1 className="text-lg font-bold text-maple-accent">🍁 메이플 체크</h1>
+        </header>
+
+        <div className="p-4 md:p-8">
+          {/* 상단 알림 배너: D-1 / D-day / 만료됨 */}
+          {pending.length > 0 && (
+            <ExpiryBanner
+              items={pending}
+              permission={permission}
+              onAskPermission={askPermission}
+              onSelect={(id) => setSelected(id)}
+            />
+          )}
+
+          {selected === 'dashboard' && (
+            <Dashboard
+              characters={characters}
+              charTotals={charTotals}
+              grandTotal={grandTotal}
+              onSelect={setSelected}
+            />
+          )}
+          {selected === 'boss_data' && (
+            <BossDataEditor bossData={bossData} setBossData={setBossData} />
+          )}
+          {characters.find(c => c.id === selected) && (
+            <CharacterView
+              character={characters.find(c => c.id === selected)}
+              bossData={bossData}
+              total={charTotals[selected] || 0}
+              onUpdate={(updater) => updateCharacter(selected, updater)}
+              onRemove={() => removeCharacter(selected)}
+            />
+          )}
+        </div>
+
+        <footer className="px-6 py-8 text-center text-xs text-slate-500">
+          메이플 체크 · 데이터는 이 브라우저에만 저장됩니다 · {new Date().getFullYear()}
+        </footer>
+      </main>
+    </div>
+  );
+}
+
+/* =========================================================
+ * 상단 만료 알림 배너 (D-1 / D-day / 만료됨)
+ * ========================================================= */
+function ExpiryBanner({ items, permission, onAskPermission, onSelect }) {
+  return (
+    <div className="mb-6 max-w-5xl mx-auto bg-red-500/10 border border-red-500/40 rounded-xl p-4 md:p-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <h3 className="font-bold text-maple-danger flex items-center gap-2">
+          <span>🔔</span> 만료 알림
+        </h3>
+        {permission !== 'granted' && permission !== 'unsupported' && (
+          <button
+            onClick={onAskPermission}
+            className="text-xs bg-maple-danger/20 hover:bg-maple-danger/30 border border-red-500/40 text-red-200 px-3 py-1 rounded"
+          >
+            브라우저 알림 허용
+          </button>
+        )}
+      </div>
+      <div className="mt-3 space-y-2">
+        {items.map((it, i) => {
+          const tone =
+            it.days < 0 ? 'text-maple-danger' :
+            it.days === 0 ? 'text-maple-danger' :
+            'text-maple-warn';
+          const tag =
+            it.days < 0 ? '만료됨' :
+            it.days === 0 ? '오늘 만료' :
+            '내일 만료';
+          return (
+            <button
+              key={i}
+              onClick={() => onSelect(it.charId)}
+              className="w-full text-left bg-maple-panel/60 hover:bg-maple-panel rounded px-3 py-2 flex items-center justify-between"
+            >
+              <div>
+                <span className="font-medium">{it.charName}</span>
+                <span className="text-slate-500 mx-2">·</span>
+                <span className="text-slate-300">{it.typeLabel}</span>
+              </div>
+              <div className={`text-sm font-bold ${tone}`}>
+                {tag} <span className="text-slate-500 font-normal text-xs ml-1">{it.date}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+ * Sidebar
+ * ========================================================= */
+function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, open }) {
+  const [newName, setNewName] = useState('');
+
+  const handleAdd = (e) => {
+    e?.preventDefault();
+    onAdd(newName);
+    setNewName('');
+  };
+
+  return (
+    <aside
+      className={`
+        fixed md:static z-40 top-0 left-0 h-full w-72 bg-maple-panel border-r border-maple-border
+        flex flex-col transform transition-transform md:translate-x-0
+        ${open ? 'translate-x-0' : '-translate-x-full'}
+      `}
+    >
+      <div className="px-5 pt-6 pb-4 border-b border-maple-border">
+        <h1 className="text-xl font-bold text-maple-accent flex items-center gap-2">
+          <span>🍁</span> 메이플 체크
+        </h1>
+        <p className="text-xs text-slate-400 mt-1">보스 수익 & 기간제 통합 관리</p>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+        <NavItem
+          active={selected === 'dashboard'}
+          onClick={() => onSelect('dashboard')}
+          label="📊 총 통합 정리"
+          subtitle="모든 캐릭터 수익 합계"
+        />
+
+        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-500">
+          캐릭터 ({characters.length})
+        </div>
+
+        {characters.length === 0 && (
+          <div className="px-2 py-3 text-sm text-slate-500">
+            아직 등록된 캐릭터가 없어요.
+          </div>
+        )}
+
+        {characters.map(c => (
+          <NavItem
+            key={c.id}
+            active={selected === c.id}
+            onClick={() => onSelect(c.id)}
+            label={`👤 ${c.name}`}
+            subtitle={fmtMeso(charTotals[c.id] || 0)}
+          />
+        ))}
+
+        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-500">
+          설정
+        </div>
+        <NavItem
+          active={selected === 'boss_data'}
+          onClick={() => onSelect('boss_data')}
+          label="💎 결정석 가격 관리"
+          subtitle="보스/난이도별 가격 수정"
+        />
+      </nav>
+
+      <form onSubmit={handleAdd} className="p-3 border-t border-maple-border space-y-2">
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="새 캐릭터 이름"
+          className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
+        />
+        <button
+          type="submit"
+          className="w-full bg-maple-accent text-slate-900 font-semibold py-2 rounded hover:bg-amber-300 active:bg-amber-500 transition"
+        >
+          + 캐릭터 추가
+        </button>
+      </form>
+    </aside>
+  );
+}
+
+function NavItem({ active, onClick, label, subtitle }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        w-full text-left px-3 py-2.5 rounded-md transition
+        ${active ? 'bg-maple-accent/15 text-maple-accent' : 'hover:bg-maple-bg text-slate-200'}
+      `}
+    >
+      <div className="text-sm font-medium truncate">{label}</div>
+      {subtitle && <div className="text-xs text-slate-400 mt-0.5 truncate">{subtitle}</div>}
+    </button>
+  );
+}
+
+/* =========================================================
+ * Dashboard (총 통합 정리)
+ * ========================================================= */
+function Dashboard({ characters, charTotals, grandTotal, onSelect }) {
+  const expiring = useMemo(() => {
+    const items = [];
+    for (const c of characters) {
+      for (const [k, v] of Object.entries(c.durations || {})) {
+        if (!v) continue;
+        const d = daysUntil(v);
+        if (d !== null && d <= 30) {
+          items.push({ char: c.name, charId: c.id, type: k, date: v, days: d });
+        }
+      }
+    }
+    return items.sort((a, b) => a.days - b.days);
+  }, [characters]);
+
+  const TYPE_LABEL = { pet: '펫', label: '라벨', specialCore: '특수코어' };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div>
+        <h2 className="text-2xl md:text-3xl font-bold">📊 총 통합 정리</h2>
+        <p className="text-slate-400 mt-1">모든 캐릭터의 주간 보스 결정석 수익 합계</p>
+      </div>
+
+      <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-maple-accent/30 rounded-xl p-6 md:p-8">
+        <div className="text-sm text-slate-300">총 주간 보스 수익</div>
+        <div className="text-3xl md:text-5xl font-bold text-maple-accent mt-2 break-all">
+          {fmtMeso(grandTotal)}
+        </div>
+        <div className="text-sm text-slate-400 mt-2">
+          캐릭터 {characters.length}명 · 보스 {characters.reduce((a,c) => a + (c.bosses?.length || 0), 0)}개 항목
+        </div>
+      </div>
+
+      {expiring.length > 0 && (
+        <div className="bg-maple-panel border border-maple-border rounded-xl p-5">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <span>⏰</span> 만료 임박 (30일 이내)
+          </h3>
+          <div className="space-y-2">
+            {expiring.map((e, i) => (
+              <button
+                key={i}
+                onClick={() => onSelect(e.charId)}
+                className="w-full flex items-center justify-between text-left bg-maple-bg/50 hover:bg-maple-bg rounded px-3 py-2"
+              >
+                <div>
+                  <span className="text-slate-300">{e.char}</span>
+                  <span className="text-slate-500 mx-2">·</span>
+                  <span className="text-slate-400">{TYPE_LABEL[e.type] || e.type}</span>
+                </div>
+                <div className="text-right">
+                  <div className={`text-sm font-semibold ${e.days <= 0 ? 'text-maple-danger' : e.days <= 1 ? 'text-maple-danger' : e.days <= 7 ? 'text-maple-warn' : 'text-slate-300'}`}>
+                    {e.days < 0 ? '만료됨' : e.days === 0 ? '오늘 만료' : `${e.days}일 남음`}
+                  </div>
+                  <div className="text-xs text-slate-500">{e.date}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-maple-panel border border-maple-border rounded-xl p-5">
+        <h3 className="font-semibold mb-3">캐릭터별 수익</h3>
+        {characters.length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            왼쪽 사이드바에서 캐릭터를 추가해 주세요.
+          </div>
+        ) : (
+          <div className="divide-y divide-maple-border">
+            {characters.map(c => (
+              <button
+                key={c.id}
+                onClick={() => onSelect(c.id)}
+                className="w-full flex items-center justify-between py-3 hover:bg-maple-bg/40 -mx-2 px-2 rounded transition"
+              >
+                <div className="text-left">
+                  <div className="font-medium">{c.name}</div>
+                  <div className="text-xs text-slate-500">보스 {c.bosses?.length || 0}개 선택됨</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-semibold text-maple-accent">
+                    {fmtMeso(charTotals[c.id] || 0)}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+ * CharacterView (개별 캐릭터)
+ * ========================================================= */
+function CharacterView({ character, bossData, total, onUpdate, onRemove }) {
+  const [editName, setEditName] = useState(false);
+  const [nameInput, setNameInput] = useState(character.name);
+
+  useEffect(() => { setNameInput(character.name); }, [character.id]);
+
+  const setDuration = (key, value) => {
+    onUpdate(c => ({ ...c, durations: { ...c.durations, [key]: value } }));
+  };
+
+  const WEEKLY_LIMIT = 12;
+
+  const toggleBoss = (bossId, difficulty) => {
+    onUpdate(c => {
+      let list = c.bosses || [];
+      const boss = bossData.find(b => b.id === bossId);
+      const idx = list.findIndex(b => b.bossId === bossId && b.difficulty === difficulty);
+      if (idx >= 0) {
+        // 선택 해제
+        return { ...c, bosses: list.filter((_, i) => i !== idx) };
+      }
+      // 같은 보스는 한 난이도만 선택 가능 → 같은 보스의 다른 난이도는 자동 해제
+      list = list.filter(b => b.bossId !== bossId);
+      // 주간 12개 한도: 월간 보스는 카운트에서 제외
+      if (!boss?.monthly) {
+        const weeklyCount = list.filter(b => {
+          const bd = bossData.find(x => x.id === b.bossId);
+          return !bd?.monthly;
+        }).length;
+        if (weeklyCount >= WEEKLY_LIMIT) return c; // 안전장치
+      }
+      return {
+        ...c,
+        bosses: [...list, {
+          rowId: 'r_' + Math.random().toString(36).slice(2, 8),
+          bossId, difficulty, partyMembers: 1
+        }]
+      };
+    });
+  };
+
+  const setBossMembers = (bossId, difficulty, n) => {
+    onUpdate(c => ({
+      ...c,
+      bosses: (c.bosses || []).map(b =>
+        (b.bossId === bossId && b.difficulty === difficulty)
+          ? { ...b, partyMembers: n }
+          : b
+      )
+    }));
+  };
+
+  const saveName = () => {
+    const v = nameInput.trim();
+    if (v) onUpdate(c => ({ ...c, name: v }));
+    setEditName(false);
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          {editName ? (
+            <div className="flex gap-2">
+              <input
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveName()}
+                autoFocus
+                className="bg-maple-panel border border-maple-border rounded px-3 py-1.5 text-xl font-bold focus:outline-none focus:border-maple-accent"
+              />
+              <button onClick={saveName} className="bg-maple-accent text-slate-900 px-3 rounded font-medium">저장</button>
+            </div>
+          ) : (
+            <h2
+              className="text-2xl md:text-3xl font-bold flex items-center gap-2 cursor-pointer hover:text-maple-accent"
+              onClick={() => setEditName(true)}
+              title="클릭해서 이름 수정"
+            >
+              👤 {character.name}
+              <span className="text-xs text-slate-500 font-normal">(클릭해서 수정)</span>
+            </h2>
+          )}
+          <p className="text-slate-400 mt-1">보스 수익 & 기간제 아이템 관리</p>
+        </div>
+        <button
+          onClick={onRemove}
+          className="text-sm text-maple-danger hover:bg-red-500/10 px-3 py-1.5 rounded border border-red-500/30"
+        >
+          캐릭터 삭제
+        </button>
+      </div>
+
+      <div className="bg-gradient-to-br from-amber-500/15 to-orange-500/5 border border-maple-accent/30 rounded-xl p-5">
+        <div className="text-sm text-slate-300">이 캐릭터의 총 보스 수익</div>
+        <div className="text-2xl md:text-4xl font-bold text-maple-accent mt-1 break-all">
+          {fmtMeso(total)}
+        </div>
+      </div>
+
+      <DurationsPanel durations={character.durations || {}} setDuration={setDuration} />
+
+      <BossRevenueTable
+        rows={character.bosses || []}
+        bossData={bossData}
+        weeklyLimit={WEEKLY_LIMIT}
+        onToggle={toggleBoss}
+        onSetMembers={setBossMembers}
+      />
+    </div>
+  );
+}
+
+/* =========================================================
+ * 기간제 패널
+ * ========================================================= */
+function DurationsPanel({ durations, setDuration }) {
+  const items = [
+    { key: 'pet',         label: '🐶 펫 기간' },
+    { key: 'label',       label: '🏷️ 라벨 기간' },
+    { key: 'specialCore', label: '⭐ 특수코어 기간' },
+  ];
+
+  return (
+    <div className="bg-maple-panel border border-maple-border rounded-xl p-5">
+      <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <span>📅</span> 기간제 아이템 만료일
+      </h3>
+      <div className="grid sm:grid-cols-3 gap-4">
+        {items.map(({ key, label }) => {
+          const val = durations[key] || '';
+          const d = daysUntil(val);
+          const tone = d === null ? 'text-slate-500'
+            : d < 0 ? 'text-maple-danger'
+            : d <= 1 ? 'text-maple-danger'
+            : d <= 7 ? 'text-maple-warn'
+            : 'text-maple-good';
+          return (
+            <div key={key}>
+              <label className="text-sm text-slate-300 block mb-1.5">{label}</label>
+              <input
+                type="date"
+                value={val}
+                onChange={(e) => setDuration(key, e.target.value)}
+                className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
+              />
+              <div className={`text-xs mt-1 ${tone}`}>
+                {d === null ? '미입력'
+                  : d < 0 ? `만료됨 (${-d}일 지남)`
+                  : d === 0 ? '🔔 오늘 만료'
+                  : d === 1 ? '🔔 내일 만료'
+                  : `${d}일 남음`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-slate-500 mt-3">
+        ※ 만료 하루 전과 당일에 브라우저 알림이 표시됩니다 (알림 권한 허용 필요).
+      </p>
+    </div>
+  );
+}
+
+/* =========================================================
+ * 보스 수익 테이블
+ * ========================================================= */
+const DIFF_ORDER = { 'Easy': 0, 'Normal': 1, 'Hard': 2, 'Chaos': 3, 'Extreme': 4 };
+
+function DifficultyBadge({ difficulty }) {
+  const styles = {
+    'Easy':    'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
+    'Normal':  'bg-sky-500/15 text-sky-300 border-sky-500/40',
+    'Hard':    'bg-pink-500/15 text-pink-300 border-pink-500/40',
+    'Chaos':   'bg-orange-500/15 text-orange-300 border-orange-500/40',
+    'Extreme': 'bg-red-500/20 text-red-300 border-red-500/40',
+  };
+  const style = styles[difficulty] || 'bg-slate-500/15 text-slate-300 border-slate-500/40';
+  return (
+    <span className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded border ${style}`}>
+      {difficulty}
+    </span>
+  );
+}
+
+function SortBtn({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-xs px-2.5 py-1 rounded transition ${
+        active ? 'bg-maple-accent text-slate-900 font-semibold' : 'text-slate-300 hover:text-white'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* 보스 아이콘: icons/{id}.png 가 있으면 표시, 없으면 컬러 배지로 폴백 */
+const ICON_GRADIENTS = [
+  'from-rose-500 to-rose-800',
+  'from-amber-500 to-amber-800',
+  'from-emerald-500 to-emerald-800',
+  'from-sky-500 to-sky-800',
+  'from-violet-500 to-violet-800',
+  'from-pink-500 to-pink-800',
+  'from-cyan-500 to-cyan-800',
+  'from-orange-500 to-orange-800',
+];
+
+function BossIcon({ id, name, icon }) {
+  const [failed, setFailed] = useState(false);
+  if (icon && !failed) {
+    return (
+      <img
+        src={icon}
+        alt=""
+        onError={() => setFailed(true)}
+        className="w-8 h-8 rounded object-cover bg-maple-bg flex-shrink-0"
+      />
+    );
+  }
+  const hash = [...(id || name || '')].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const grad = ICON_GRADIENTS[hash % ICON_GRADIENTS.length];
+  return (
+    <div className={`w-8 h-8 rounded bg-gradient-to-br ${grad} flex items-center justify-center text-sm font-bold text-white flex-shrink-0`}>
+      {(name || '?').slice(0, 1)}
+    </div>
+  );
+}
+
+function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers }) {
+  const [sortMode, setSortMode] = useState('natural');
+
+  // 전체 (보스 × 난이도) 엔트리 평탄화
+  const entries = useMemo(() => {
+    const arr = [];
+    for (const boss of bossData) {
+      for (const diff of Object.keys(boss.difficulties)) {
+        const { price, max } = getDifficultyEntry(boss, diff);
+        arr.push({
+          bossId: boss.id,
+          bossName: boss.name,
+          icon: boss.icon,
+          level: boss.level,
+          monthly: !!boss.monthly,
+          difficulty: diff,
+          price,
+          max,
+        });
+      }
+    }
+    return arr;
+  }, [bossData]);
+
+  const sortedEntries = useMemo(() => {
+    const e = [...entries];
+    if (sortMode === 'price_desc') {
+      e.sort((a, b) => b.price - a.price);
+    } else if (sortMode === 'price_asc') {
+      e.sort((a, b) => a.price - b.price);
+    } else {
+      const bossOrder = bossData.map(b => b.id);
+      e.sort((a, b) => {
+        const ai = bossOrder.indexOf(a.bossId);
+        const bi = bossOrder.indexOf(b.bossId);
+        if (ai !== bi) return ai - bi;
+        return (DIFF_ORDER[a.difficulty] ?? 99) - (DIFF_ORDER[b.difficulty] ?? 99);
+      });
+    }
+    return e;
+  }, [entries, sortMode, bossData]);
+
+  const selectedMap = useMemo(() => {
+    const m = {};
+    for (const r of rows) m[`${r.bossId}_${r.difficulty}`] = r;
+    return m;
+  }, [rows]);
+
+  // 현재 선택된 보스 id 집합 (같은 보스 난이도 변경 허용 판정에 사용)
+  const selectedBossIds = useMemo(() => new Set(rows.map(r => r.bossId)), [rows]);
+
+  // 월간 보스 id 집합
+  const monthlyIds = useMemo(() => {
+    const s = new Set();
+    for (const b of bossData) if (b.monthly) s.add(b.id);
+    return s;
+  }, [bossData]);
+
+  // 주간 한도 카운트: 월간 보스는 제외
+  const selectedRows = Object.values(selectedMap);
+  const weeklyCount = selectedRows.filter(r => !monthlyIds.has(r.bossId)).length;
+  const monthlyCount = selectedRows.filter(r => monthlyIds.has(r.bossId)).length;
+  const isFull = weeklyCount >= weeklyLimit;
+
+  const totalRevenue = useMemo(() => {
+    return rows.reduce((sum, r) => {
+      const boss = bossData.find(b => b.id === r.bossId);
+      if (!boss) return sum;
+      const { price, max } = getDifficultyEntry(boss, r.difficulty);
+      const members = Math.min(Math.max(1, r.partyMembers || 1), max);
+      return sum + Math.floor(price / members);
+    }, 0);
+  }, [rows, bossData]);
+
+  return (
+    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h3 className="font-semibold flex items-center gap-2">
+            <span>💎</span> 보스 결정석 수익
+          </h3>
+          <div className="text-xs text-slate-400 mt-1">
+            주간 보스는 캐릭터당 최대 12개까지. 한 보스는 한 난이도만 선택할 수 있습니다. 월간 보스(검은 마법사)는 한도에서 제외됩니다.
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="text-sm font-medium">
+            주간 <span className={isFull ? 'text-maple-warn font-bold' : 'text-maple-accent font-bold'}>
+              {weeklyCount}
+            </span>
+            <span className="text-slate-500"> / {weeklyLimit}</span>
+            {monthlyCount > 0 && (
+              <span className="text-slate-500 ml-2">· 월간 <span className="text-violet-300 font-bold">{monthlyCount}</span></span>
+            )}
+          </div>
+          <div className="flex items-center gap-0.5 bg-maple-bg border border-maple-border rounded p-0.5">
+            <SortBtn active={sortMode === 'natural'} onClick={() => setSortMode('natural')}>기본</SortBtn>
+            <SortBtn active={sortMode === 'price_desc'} onClick={() => setSortMode('price_desc')}>가격 ↓</SortBtn>
+            <SortBtn active={sortMode === 'price_asc'} onClick={() => setSortMode('price_asc')}>가격 ↑</SortBtn>
+          </div>
+        </div>
+      </div>
+
+      {isFull && (
+        <div className="mb-3 bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">
+          ⚠️ 주간 한도 12개를 모두 선택했습니다. 다른 보스를 추가하려면 기존 선택을 해제하세요.
+        </div>
+      )}
+
+      <div className="hidden md:grid grid-cols-12 gap-2 text-xs text-slate-400 px-3 py-2 border-b border-maple-border">
+        <div className="col-span-1">선택</div>
+        <div className="col-span-5">보스 / 난이도</div>
+        <div className="col-span-3 text-center">파티원</div>
+        <div className="col-span-3 text-right">결정석 가격 (1/N)</div>
+      </div>
+
+      <div className="divide-y divide-maple-border">
+        {sortedEntries.map(entry => {
+          const key = `${entry.bossId}_${entry.difficulty}`;
+          const selected = selectedMap[key];
+          const checked = !!selected;
+          // 같은 보스의 다른 난이도가 이미 선택돼 있으면 (난이도 변경이므로) 비활성화하지 않음
+          const sameBossSelected = selectedBossIds.has(entry.bossId);
+          // 월간 보스는 주간 12개 한도와 무관 → 비활성화하지 않음
+          const disabled = !checked && isFull && !entry.monthly && !sameBossSelected;
+          const rawMembers = selected?.partyMembers || 1;
+          const members = Math.min(Math.max(1, rawMembers), entry.max);
+          const revenue = checked ? Math.floor(entry.price / members) : 0;
+
+          return (
+            <label
+              key={key}
+              className={`
+                grid grid-cols-12 gap-2 items-center px-2 md:px-3 py-2.5 transition
+                ${checked ? 'bg-maple-accent/5' : ''}
+                ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-maple-bg/40'}
+              `}
+            >
+              <div className="col-span-2 md:col-span-1 flex items-center justify-center md:justify-start">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={() => onToggle(entry.bossId, entry.difficulty)}
+                  className="w-5 h-5 accent-amber-400 cursor-pointer disabled:cursor-not-allowed"
+                />
+              </div>
+              <div className="col-span-6 md:col-span-5 flex items-center gap-2 min-w-0">
+                <BossIcon id={entry.bossId} name={entry.bossName} icon={entry.icon} />
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <span className={`font-medium truncate ${checked ? 'text-slate-100' : 'text-slate-300'}`}>
+                    {entry.bossName}
+                  </span>
+                  <DifficultyBadge difficulty={entry.difficulty} />
+                  {entry.monthly && (
+                    <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-violet-500/15 text-violet-300 border-violet-500/40">
+                      월간
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="col-span-4 md:col-span-3 flex justify-center">
+                <select
+                  value={members}
+                  disabled={!checked}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    onSetMembers(entry.bossId, entry.difficulty, parseInt(e.target.value) || 1);
+                  }}
+                  className="bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm w-16 text-center disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={entry.max === 1 ? '솔로 전용 (1인)' : `최대 ${entry.max}인`}
+                >
+                  {Array.from({ length: entry.max }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>{n}인</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-span-12 md:col-span-3 text-right">
+                {checked ? (
+                  <div className="font-semibold text-maple-accent text-sm md:text-base">
+                    {fmtMeso(revenue)}
+                  </div>
+                ) : (
+                  <div className="text-slate-500 text-xs md:text-sm">
+                    {fmtMeso(entry.price)}
+                  </div>
+                )}
+              </div>
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="border-t-2 border-maple-border mt-3 pt-3 flex items-center justify-between">
+        <div className="font-semibold">총 수익 합계</div>
+        <div className="font-bold text-maple-accent text-base md:text-lg">{fmtMeso(totalRevenue)}</div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+ * 보스 결정석 가격 편집기
+ * ========================================================= */
+function BossDataEditor({ bossData, setBossData }) {
+  const updateField = (bossId, diff, field, raw) => {
+    const num = parseInt(String(raw).replace(/[^0-9]/g, '')) || 0;
+    setBossData(prev => prev.map(b => {
+      if (b.id !== bossId) return b;
+      const cur = getDifficultyEntry(b, diff);
+      const next = { ...cur, [field]: num };
+      if (field === 'max') next.max = Math.min(Math.max(1, next.max), 6);
+      return {
+        ...b,
+        difficulties: { ...b.difficulties, [diff]: next }
+      };
+    }));
+  };
+
+  const resetAll = () => {
+    if (!confirm('모든 보스/가격/입장 인원을 기본값으로 되돌릴까요?')) return;
+    setBossData(JSON.parse(JSON.stringify(DEFAULT_BOSSES)));
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-bold">💎 결정석 가격 관리</h2>
+          <p className="text-slate-400 mt-1">보스/난이도별 결정석 가격과 입장 인원을 수정하면 모든 캐릭터에 자동 반영됩니다.</p>
+        </div>
+        <button
+          onClick={resetAll}
+          className="text-sm text-maple-danger border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded"
+        >
+          기본값으로 초기화
+        </button>
+      </div>
+
+      <div className="bg-maple-panel border border-maple-border rounded-xl divide-y divide-maple-border">
+        {bossData.map(boss => (
+          <div key={boss.id} className="p-4 md:p-5">
+            <div className="font-semibold mb-3 flex items-center gap-2">
+              <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
+              <span>{boss.name}</span>
+              {boss.level && <span className="text-xs text-slate-500 font-normal">Lv.{boss.level}</span>}
+            </div>
+            <div className="space-y-3">
+              {Object.entries(boss.difficulties).map(([diff, val]) => {
+                const entry = typeof val === 'number' ? { price: val, max: 6 } : { price: val.price || 0, max: val.max || 6 };
+                return (
+                  <div key={diff} className="grid grid-cols-12 gap-2 items-center">
+                    <div className="col-span-3 md:col-span-2 text-sm text-slate-300">{diff}</div>
+                    <div className="col-span-6 md:col-span-7">
+                      <label className="text-[10px] text-slate-500 block mb-0.5">결정석 가격 (메소)</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={entry.price.toLocaleString()}
+                        onChange={(e) => updateField(boss.id, diff, 'price', e.target.value)}
+                        className="w-full bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm text-right focus:outline-none focus:border-maple-accent"
+                      />
+                    </div>
+                    <div className="col-span-3 md:col-span-3">
+                      <label className="text-[10px] text-slate-500 block mb-0.5">최대 입장</label>
+                      <select
+                        value={entry.max}
+                        onChange={(e) => updateField(boss.id, diff, 'max', e.target.value)}
+                        className="w-full bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-maple-accent"
+                      >
+                        {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}인</option>)}
+                      </select>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+ * 마운트
+ * ========================================================= */
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+/* =========================================================
+ * 서비스워커 등록
+ * ========================================================= */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
