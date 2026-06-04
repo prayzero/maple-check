@@ -241,6 +241,18 @@ const daysUntil = (dateStr) => {
 
 const uid = () => 'c_' + Math.random().toString(36).slice(2, 10);
 
+// 기간제 아이템 표시명 (라벨은 부위별로 세분화)
+const TYPE_LABEL = {
+  pet: '펫',
+  label_hat: '라벨·모자',
+  label_clothes: '라벨·옷',
+  label_shoes: '라벨·신발',
+  label_cape: '라벨·망토',
+  label_weapon: '라벨·무기',
+  specialCore: '특수코어',
+  label: '라벨', // 구버전 데이터 호환
+};
+
 const getDifficultyEntry = (boss, diff) => {
   const d = boss?.difficulties?.[diff];
   if (!d) return { price: 0, max: 6 };
@@ -270,7 +282,6 @@ function useExpiryNotifications(characters) {
 
   // 만료/임박 항목 탐지
   useEffect(() => {
-    const TYPE_LABEL = { pet: '펫', label: '라벨', specialCore: '특수코어' };
     const items = [];
     for (const c of characters) {
       for (const [k, v] of Object.entries(c.durations || {})) {
@@ -335,25 +346,34 @@ function App() {
 
   const { pending, permission, askPermission } = useExpiryNotifications(characters);
 
-  // 캐릭터별 총 수익 계산
+  // 캐릭터별 총 수익 계산 (주간 / 월간 분리)
   const charTotals = useMemo(() => {
     const map = {};
     for (const c of characters) {
-      let sum = 0;
+      let weekly = 0, monthly = 0;
       for (const row of (c.bosses || [])) {
         const boss = bossData.find(b => b.id === row.bossId);
         if (!boss) continue;
         const { price } = getDifficultyEntry(boss, row.difficulty);
         const members = Math.max(1, row.partyMembers || 1);
-        sum += Math.floor(price / members);
+        const rev = Math.floor(price / members);
+        if (boss.monthly) monthly += rev;
+        else weekly += rev;
       }
-      map[c.id] = sum;
+      map[c.id] = { weekly, monthly, total: weekly + monthly };
     }
     return map;
   }, [characters, bossData]);
 
   const grandTotal = useMemo(
-    () => Object.values(charTotals).reduce((a, b) => a + b, 0),
+    () => Object.values(charTotals).reduce(
+      (a, t) => ({
+        weekly: a.weekly + t.weekly,
+        monthly: a.monthly + t.monthly,
+        total: a.total + t.total,
+      }),
+      { weekly: 0, monthly: 0, total: 0 }
+    ),
     [charTotals]
   );
 
@@ -361,7 +381,11 @@ function App() {
     const newChar = {
       id: uid(),
       name: name?.trim() || `캐릭터${characters.length + 1}`,
-      durations: { pet: '', label: '', specialCore: '' },
+      durations: {
+        pet: '',
+        label_hat: '', label_clothes: '', label_shoes: '', label_cape: '', label_weapon: '',
+        specialCore: '',
+      },
       bosses: [],
     };
     setCharacters(prev => [...prev, newChar]);
@@ -438,7 +462,7 @@ function App() {
             <CharacterView
               character={characters.find(c => c.id === selected)}
               bossData={bossData}
-              total={charTotals[selected] || 0}
+              totals={charTotals[selected] || { weekly: 0, monthly: 0, total: 0 }}
               onUpdate={(updater) => updateCharacter(selected, updater)}
               onRemove={() => removeCharacter(selected)}
             />
@@ -555,7 +579,7 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
             active={selected === c.id}
             onClick={() => onSelect(c.id)}
             label={`👤 ${c.name}`}
-            subtitle={fmtMeso(charTotals[c.id] || 0)}
+            subtitle={fmtMeso(charTotals[c.id]?.total || 0)}
           />
         ))}
 
@@ -622,8 +646,6 @@ function Dashboard({ characters, charTotals, grandTotal, onSelect }) {
     return items.sort((a, b) => a.days - b.days);
   }, [characters]);
 
-  const TYPE_LABEL = { pet: '펫', label: '라벨', specialCore: '특수코어' };
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
@@ -632,11 +654,21 @@ function Dashboard({ characters, charTotals, grandTotal, onSelect }) {
       </div>
 
       <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-maple-accent/30 rounded-xl p-6 md:p-8">
-        <div className="text-sm text-slate-300">총 주간 보스 수익</div>
+        <div className="text-sm text-slate-300">총 보스 결정석 수익</div>
         <div className="text-3xl md:text-5xl font-bold text-maple-accent mt-2 break-all">
-          {fmtMeso(grandTotal)}
+          {fmtMeso(grandTotal.total)}
         </div>
-        <div className="text-sm text-slate-400 mt-2">
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
+            <div className="text-xs text-slate-400">주간 수익</div>
+            <div className="text-base md:text-xl font-bold text-sky-300 mt-0.5 break-all">{fmtMeso(grandTotal.weekly)}</div>
+          </div>
+          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
+            <div className="text-xs text-slate-400">월간 수익</div>
+            <div className="text-base md:text-xl font-bold text-violet-300 mt-0.5 break-all">{fmtMeso(grandTotal.monthly)}</div>
+          </div>
+        </div>
+        <div className="text-sm text-slate-400 mt-3">
           캐릭터 {characters.length}명 · 보스 {characters.reduce((a,c) => a + (c.bosses?.length || 0), 0)}개 항목
         </div>
       </div>
@@ -690,7 +722,10 @@ function Dashboard({ characters, charTotals, grandTotal, onSelect }) {
                 </div>
                 <div className="text-right">
                   <div className="font-semibold text-maple-accent">
-                    {fmtMeso(charTotals[c.id] || 0)}
+                    {fmtMeso(charTotals[c.id]?.total || 0)}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    주간 {fmtMeso(charTotals[c.id]?.weekly || 0)} · 월간 {fmtMeso(charTotals[c.id]?.monthly || 0)}
                   </div>
                 </div>
               </button>
@@ -705,7 +740,7 @@ function Dashboard({ characters, charTotals, grandTotal, onSelect }) {
 /* =========================================================
  * CharacterView (개별 캐릭터)
  * ========================================================= */
-function CharacterView({ character, bossData, total, onUpdate, onRemove }) {
+function CharacterView({ character, bossData, totals, onUpdate, onRemove }) {
   const [editName, setEditName] = useState(false);
   const [nameInput, setNameInput] = useState(character.name);
 
@@ -801,7 +836,17 @@ function CharacterView({ character, bossData, total, onUpdate, onRemove }) {
       <div className="bg-gradient-to-br from-amber-500/15 to-orange-500/5 border border-maple-accent/30 rounded-xl p-5">
         <div className="text-sm text-slate-300">이 캐릭터의 총 보스 수익</div>
         <div className="text-2xl md:text-4xl font-bold text-maple-accent mt-1 break-all">
-          {fmtMeso(total)}
+          {fmtMeso(totals.total)}
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
+            <div className="text-xs text-slate-400">주간 수익</div>
+            <div className="text-base md:text-lg font-bold text-sky-300 mt-0.5 break-all">{fmtMeso(totals.weekly)}</div>
+          </div>
+          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
+            <div className="text-xs text-slate-400">월간 수익</div>
+            <div className="text-base md:text-lg font-bold text-violet-300 mt-0.5 break-all">{fmtMeso(totals.monthly)}</div>
+          </div>
         </div>
       </div>
 
@@ -821,11 +866,44 @@ function CharacterView({ character, bossData, total, onUpdate, onRemove }) {
 /* =========================================================
  * 기간제 패널
  * ========================================================= */
+function DurationField({ label, value, onChange }) {
+  const d = daysUntil(value);
+  const tone = d === null ? 'text-slate-500'
+    : d < 0 ? 'text-maple-danger'
+    : d <= 1 ? 'text-maple-danger'
+    : d <= 7 ? 'text-maple-warn'
+    : 'text-maple-good';
+  return (
+    <div>
+      <label className="text-sm text-slate-300 block mb-1.5">{label}</label>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
+      />
+      <div className={`text-xs mt-1 ${tone}`}>
+        {d === null ? '미입력'
+          : d < 0 ? `만료됨 (${-d}일 지남)`
+          : d === 0 ? '🔔 오늘 만료'
+          : d === 1 ? '🔔 내일 만료'
+          : `${d}일 남음`}
+      </div>
+    </div>
+  );
+}
+
 function DurationsPanel({ durations, setDuration }) {
-  const items = [
+  const general = [
     { key: 'pet',         label: '🐶 펫 기간' },
-    { key: 'label',       label: '🏷️ 라벨 기간' },
     { key: 'specialCore', label: '⭐ 특수코어 기간' },
+  ];
+  const labelParts = [
+    { key: 'label_hat',     label: '모자' },
+    { key: 'label_clothes', label: '옷' },
+    { key: 'label_shoes',   label: '신발' },
+    { key: 'label_cape',    label: '망토' },
+    { key: 'label_weapon',  label: '무기' },
   ];
 
   return (
@@ -833,36 +911,35 @@ function DurationsPanel({ durations, setDuration }) {
       <h3 className="font-semibold mb-4 flex items-center gap-2">
         <span>📅</span> 기간제 아이템 만료일
       </h3>
-      <div className="grid sm:grid-cols-3 gap-4">
-        {items.map(({ key, label }) => {
-          const val = durations[key] || '';
-          const d = daysUntil(val);
-          const tone = d === null ? 'text-slate-500'
-            : d < 0 ? 'text-maple-danger'
-            : d <= 1 ? 'text-maple-danger'
-            : d <= 7 ? 'text-maple-warn'
-            : 'text-maple-good';
-          return (
-            <div key={key}>
-              <label className="text-sm text-slate-300 block mb-1.5">{label}</label>
-              <input
-                type="date"
-                value={val}
-                onChange={(e) => setDuration(key, e.target.value)}
-                className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
-              />
-              <div className={`text-xs mt-1 ${tone}`}>
-                {d === null ? '미입력'
-                  : d < 0 ? `만료됨 (${-d}일 지남)`
-                  : d === 0 ? '🔔 오늘 만료'
-                  : d === 1 ? '🔔 내일 만료'
-                  : `${d}일 남음`}
-              </div>
-            </div>
-          );
-        })}
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        {general.map(({ key, label }) => (
+          <DurationField
+            key={key}
+            label={label}
+            value={durations[key] || ''}
+            onChange={(v) => setDuration(key, v)}
+          />
+        ))}
       </div>
-      <p className="text-xs text-slate-500 mt-3">
+
+      <div className="mt-5 pt-4 border-t border-maple-border">
+        <div className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+          <span>🏷️</span> 라벨 기간 (부위별)
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {labelParts.map(({ key, label }) => (
+            <DurationField
+              key={key}
+              label={label}
+              value={durations[key] || ''}
+              onChange={(v) => setDuration(key, v)}
+            />
+          ))}
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-500 mt-4">
         ※ 만료 하루 전과 당일에 브라우저 알림이 표시됩니다 (알림 권한 허용 필요).
       </p>
     </div>
@@ -1000,14 +1077,18 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
   const monthlyCount = selectedRows.filter(r => monthlyIds.has(r.bossId)).length;
   const isFull = weeklyCount >= weeklyLimit;
 
-  const totalRevenue = useMemo(() => {
-    return rows.reduce((sum, r) => {
+  const revenue = useMemo(() => {
+    let weekly = 0, monthly = 0;
+    for (const r of rows) {
       const boss = bossData.find(b => b.id === r.bossId);
-      if (!boss) return sum;
+      if (!boss) continue;
       const { price, max } = getDifficultyEntry(boss, r.difficulty);
       const members = Math.min(Math.max(1, r.partyMembers || 1), max);
-      return sum + Math.floor(price / members);
-    }, 0);
+      const rev = Math.floor(price / members);
+      if (boss.monthly) monthly += rev;
+      else weekly += rev;
+    }
+    return { weekly, monthly, total: weekly + monthly };
   }, [rows, bossData]);
 
   return (
@@ -1130,9 +1211,19 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
         })}
       </div>
 
-      <div className="border-t-2 border-maple-border mt-3 pt-3 flex items-center justify-between">
-        <div className="font-semibold">총 수익 합계</div>
-        <div className="font-bold text-maple-accent text-base md:text-lg">{fmtMeso(totalRevenue)}</div>
+      <div className="border-t-2 border-maple-border mt-3 pt-3 space-y-1.5">
+        <div className="flex items-center justify-between text-sm">
+          <div className="text-slate-300">주간 합계</div>
+          <div className="font-semibold text-sky-300">{fmtMeso(revenue.weekly)}</div>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <div className="text-slate-300">월간 합계</div>
+          <div className="font-semibold text-violet-300">{fmtMeso(revenue.monthly)}</div>
+        </div>
+        <div className="flex items-center justify-between pt-1.5 border-t border-maple-border">
+          <div className="font-semibold">총 수익 합계</div>
+          <div className="font-bold text-maple-accent text-base md:text-lg">{fmtMeso(revenue.total)}</div>
+        </div>
       </div>
     </div>
   );
