@@ -189,6 +189,76 @@ const DEFAULT_BOSSES = [
 ];
 
 /* =========================================================
+ * 결정석 가격 변동 이력 (📜 결정석의 역사)
+ * - 위 DEFAULT_BOSSES = "현재" 기준 가격.
+ * - 가격이 또 변동되면:
+ *   1) 위 DEFAULT_BOSSES 가격을 새 값으로 수정하고,
+ *   2) 직전 기간 항목 하나를 아래 PRICE_HISTORY 맨 끝(가장 최신)에 추가하세요.
+ *      overrides 에는 그 기간에 적용됐던 "현재와 다른" 가격만 적으면 됩니다.
+ *      (현재와 동일한 보스는 생략 → 자동으로 현재값 사용)
+ * - 시간순(오래된 → 최신)으로 정렬합니다. 화면에는 최신이 위로 표시됩니다.
+ * ========================================================= */
+const PRICE_HISTORY = [
+  {
+    id: 'pre_20260613',
+    title: '인하 전 시세',
+    range: '~ 2026-06-13 (인하 전)',
+    note: '2026-06-13 결정석 가격 인하가 적용되기 이전 가격입니다.',
+    overrides: {
+      cygnus:     { Normal: 7500000 },
+      pinkbean:   { Chaos: 6580000 },
+      hilla:      { Hard: 5750000 },
+      papulatus:  { Chaos: 13800000 },
+      lotus:      { Normal: 17600000, Hard: 54200000, Extreme: 604000000 },
+      damien:     { Normal: 18400000, Hard: 51500000 },
+      slime:      { Normal: 26800000, Chaos: 79100000 },
+      lucid:      { Easy: 31400000, Normal: 37500000, Hard: 66200000 },
+      will:       { Normal: 43300000, Hard: 81200000 },
+      dusk:       { Normal: 46300000, Chaos: 73500000 },
+      jinhilla:   { Normal: 74900000, Hard: 112000000 },
+      dunkel:     { Normal: 50000000, Hard: 99400000 },
+      seren:      { Normal: 266000000, Hard: 396000000, Extreme: 3150000000 },
+      kalos:      { Easy: 311000000, Normal: 561000000, Chaos: 1340000000, Extreme: 4320000000 },
+      adversary:  { Easy: 324000000, Normal: 589000000, Hard: 1510000000, Extreme: 4960000000 },
+      kaling:     { Easy: 419000000, Normal: 714000000, Hard: 1830000000, Extreme: 5670000000 },
+      hyungseong: { Normal: 658000000, Hard: 2819000000 },
+      limbo:      { Normal: 1080000000, Hard: 2510000000 },
+      baldrix:    { Normal: 1440000000, Hard: 3240000000 },
+      jupiter:    { Normal: 1700000000, Hard: 5100000000 },
+      blackmage:  { Hard: 700000000, Extreme: 9200000000 },
+    },
+  },
+  {
+    id: 'cut_20260613',
+    title: '결정석 가격 인하',
+    range: '2026-06-13 ~ (현재)',
+    note: '2026-06-13 결정석 가격 인하가 적용된 현재 시세입니다.',
+    overrides: {}, // 현재 = DEFAULT_BOSSES 기준 (변동 없음)
+  },
+];
+
+// DEFAULT_BOSSES(현재) → { bossId: { 난이도: 가격 } } 맵
+const CURRENT_PRICE_MAP = (() => {
+  const m = {};
+  for (const b of DEFAULT_BOSSES) {
+    m[b.id] = {};
+    for (const [diff, v] of Object.entries(b.difficulties)) {
+      m[b.id][diff] = typeof v === 'number' ? v : (v.price || 0);
+    }
+  }
+  return m;
+})();
+
+// 특정 이력 항목의 전체 가격 맵 (현재값 + 그 기간의 overrides 병합)
+const snapshotPriceMap = (entry) => {
+  const merged = {};
+  for (const id of Object.keys(CURRENT_PRICE_MAP)) {
+    merged[id] = { ...CURRENT_PRICE_MAP[id], ...((entry && entry.overrides && entry.overrides[id]) || {}) };
+  }
+  return merged;
+};
+
+/* =========================================================
  * localStorage 헬퍼
  * ========================================================= */
 const LS_KEYS = {
@@ -458,6 +528,9 @@ function App() {
           {selected === 'boss_data' && (
             <BossDataEditor bossData={bossData} setBossData={setBossData} />
           )}
+          {selected === 'boss_history' && (
+            <BossHistoryView />
+          )}
           {characters.find(c => c.id === selected) && (
             <CharacterView
               character={characters.find(c => c.id === selected)}
@@ -591,6 +664,12 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           onClick={() => onSelect('boss_data')}
           label="💎 결정석 가격 관리"
           subtitle="보스/난이도별 가격 수정"
+        />
+        <NavItem
+          active={selected === 'boss_history'}
+          onClick={() => onSelect('boss_history')}
+          label="📜 결정석의 역사"
+          subtitle="가격 변동 이력 보기"
         />
       </nav>
 
@@ -1308,6 +1387,126 @@ function BossDataEditor({ bossData, setBossData }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* =========================================================
+ * 결정석의 역사 (가격 변동 이력)
+ * ========================================================= */
+function BossHistoryView() {
+  // 시간순(오래된→최신). 화면에는 최신을 위로 표시
+  const ordered = PRICE_HISTORY;
+  const [selectedId, setSelectedId] = useState(
+    ordered.length ? ordered[ordered.length - 1].id : null
+  );
+
+  const selIdx = ordered.findIndex(e => e.id === selectedId);
+  const entry = ordered[selIdx] || null;
+  const prevEntry = selIdx > 0 ? ordered[selIdx - 1] : null; // 직전(더 오래된) 기간
+
+  const curMap = entry ? snapshotPriceMap(entry) : {};
+  const prevMap = prevEntry ? snapshotPriceMap(prevEntry) : null;
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div>
+        <h2 className="text-2xl md:text-3xl font-bold">📜 결정석의 역사</h2>
+        <p className="text-slate-400 mt-1">
+          결정석 가격이 변동될 때마다 기록됩니다. 기간을 클릭하면 그때의 가격을 볼 수 있어요.
+        </p>
+      </div>
+
+      {/* 기간 선택 (최신이 위로) */}
+      <div className="space-y-2">
+        {[...ordered].reverse().map(e => {
+          const active = e.id === selectedId;
+          const isCurrent = e.id === ordered[ordered.length - 1].id;
+          return (
+            <button
+              key={e.id}
+              onClick={() => setSelectedId(e.id)}
+              className={`w-full text-left rounded-xl border px-4 py-3 transition ${
+                active
+                  ? 'bg-maple-accent/15 border-maple-accent/50'
+                  : 'bg-maple-panel border-maple-border hover:bg-maple-bg/50'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className={`font-semibold ${active ? 'text-maple-accent' : 'text-slate-100'}`}>
+                    {e.title}
+                  </span>
+                  {isCurrent && (
+                    <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/40">
+                      현재
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-slate-400">{e.range}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {entry && (
+        <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+          <div className="mb-3">
+            <div className="font-semibold flex items-center gap-2">
+              <span>💎</span> {entry.title} <span className="text-xs text-slate-500 font-normal">({entry.range})</span>
+            </div>
+            {entry.note && <div className="text-xs text-slate-400 mt-1">{entry.note}</div>}
+            {prevEntry && (
+              <div className="text-xs text-slate-500 mt-1">
+                ※ 노란색으로 표시된 항목은 직전 기간(<span className="text-slate-400">{prevEntry.title}</span>) 대비 변동된 가격입니다.
+              </div>
+            )}
+          </div>
+
+          <div className="hidden md:grid grid-cols-12 gap-2 text-xs text-slate-400 px-2 py-2 border-b border-maple-border">
+            <div className="col-span-6">보스 / 난이도</div>
+            <div className="col-span-6 text-right">결정석 가격</div>
+          </div>
+
+          <div className="divide-y divide-maple-border">
+            {DEFAULT_BOSSES.map(boss => (
+              Object.keys(boss.difficulties).map(diff => {
+                const price = curMap[boss.id]?.[diff] ?? 0;
+                const prevPrice = prevMap ? prevMap[boss.id]?.[diff] : undefined;
+                const changed = prevMap && prevPrice !== undefined && prevPrice !== price;
+                const down = changed && price < prevPrice;
+                return (
+                  <div key={`${boss.id}_${diff}`} className="grid grid-cols-12 gap-2 items-center px-2 py-2.5">
+                    <div className="col-span-6 flex items-center gap-2 min-w-0">
+                      <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span className="font-medium text-slate-200 truncate">{boss.name}</span>
+                        <DifficultyBadge difficulty={diff} />
+                        {boss.monthly && (
+                          <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-violet-500/15 text-violet-300 border-violet-500/40">
+                            월간
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="col-span-6 text-right">
+                      <div className={`font-semibold ${changed ? 'text-maple-warn' : 'text-slate-200'}`}>
+                        {fmtMeso(price)}
+                      </div>
+                      {changed && (
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          이전 {fmtMeso(prevPrice)} <span className={down ? 'text-maple-good' : 'text-maple-danger'}>{down ? '▼' : '▲'}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
