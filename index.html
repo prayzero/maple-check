@@ -396,6 +396,59 @@ const AUTHENTIC_REGIONS = [
 ];
 const ARCANE_MAX = 20;     // 아케인심볼 최대 레벨
 const AUTHENTIC_MAX = 11;  // 어센틱심볼 최대 레벨
+const GRAND_MAX = 11;      // 그랜드 어센틱 최대 레벨
+const GRAND_REGIONS = [
+  { id: 'tallahart', name: '탈라하트' },
+  { id: 'geardrak',  name: '기어드락' },
+];
+
+/* =========================================================
+ * 심볼 강화 누적비용 표 (도달 레벨까지 1→L 누적, 단위 메소)
+ * index = 도달 레벨. arr[1]=0(기본), arr[L]=1레벨부터 L레벨까지 누적비용.
+ * 아케인/세르니움/아르크스/오디움 = 원문 확인값(정확).
+ * 도원경·아르테리아·카르시온·그랜드 = 총액만 확인되어 표준 곡선으로 근사(만렙은 정확).
+ * ========================================================= */
+const ARCANE_COST = {
+  yeoro:     [0,0,970000,2200000,3860000,6120000,9180000,13220000,18440000,25040000,33220000,43210000,55220000,69480000,86220000,105670000,128090000,153720000,182820000,215650000,252470000],
+  chuchu:    [0,0,1210000,2740000,4800000,7600000,11380000,16360000,22780000,30880000,40900000,53110000,67760000,85120000,105460000,129050000,156190000,187160000,222260000,261790000,306050000],
+  lachelein: [0,0,1450000,3280000,5740000,9080000,13580000,19500000,27120000,36720000,48580000,63010000,80300000,100760000,124700000,152430000,184290000,220600000,261700000,307930000,359630000],
+  arcana:    [0,0,1690000,3820000,6680000,10560000,15780000,22640000,31460000,42560000,56260000,72910000,92840000,116400000,143940000,175810000,212390000,254040000,301140000,354070000,413210000],
+  morass:    [0,0,1930000,4360000,7620000,12040000,17980000,25780000,35800000,48400000,63940000,82810000,105380000,132040000,163180000,199190000,240490000,287480000,340580000,400210000,466790000],
+  esfera:    [0,0,2170000,4900000,8560000,13520000,20180000,28920000,40140000,54240000,71620000,92710000,117920000,147680000,182420000,222570000,268590000,320920000,380020000,446350000,520370000],
+};
+// 어센틱 표준 누적비율(세/아/오 평균) — 총액만 아는 지역의 중간 레벨 근사용
+const AUTH_FRAC = [0,0,0.0088,0.0310,0.0703,0.1299,0.2122,0.3189,0.4511,0.6090,0.7923,1];
+const approxAuthCum = (total) => AUTH_FRAC.map(f => Math.round(f * total));
+const AUTHENTIC_COST = {
+  cernium: [0,0,36500000,127700000,288400000,530300000,861800000,1288000000,1810900000,2429100000,3138100000,3930100000],
+  arcs:    [0,0,41700000,146500000,332600000,614800000,1004800000,1510900000,2138300000,2889000000,3761600000,4751600000],
+  odium:   [0,0,46900000,165400000,376900000,699400000,1147900000,1733900000,2465900000,3349100000,4385300000,5573300000],
+  dowonkyung: approxAuthCum(6395000000),
+  arteria:    approxAuthCum(7216900000),
+  carcion:    approxAuthCum(8038600000),
+};
+const GRAND_COST = {
+  tallahart: approxAuthCum(16072800000),
+  geardrak:  approxAuthCum(20181300000),
+};
+// 한 지역의 현재→목표 누적비용 차이
+const symbolRegionCost = (table, id, cur, tgt) => {
+  const arr = table[id];
+  if (!arr) return 0;
+  const lo = Math.max(0, Math.min(arr.length - 1, parseNum(cur)));
+  const hi = Math.max(0, Math.min(arr.length - 1, parseNum(tgt)));
+  if (hi <= lo) return 0;
+  return (arr[hi] || 0) - (arr[lo] || 0);
+};
+// 전체 심볼 강화 예상 비용
+const calcSymbolCost = (symbols) => {
+  if (!symbols) return 0;
+  let sum = 0;
+  for (const r of ARCANE_REGIONS) sum += symbolRegionCost(ARCANE_COST, r.id, (symbols.arcane?.[r.id] || {}).cur, (symbols.arcane?.[r.id] || {}).tgt);
+  for (const r of AUTHENTIC_REGIONS) sum += symbolRegionCost(AUTHENTIC_COST, r.id, (symbols.authentic?.[r.id] || {}).cur, (symbols.authentic?.[r.id] || {}).tgt);
+  for (const r of GRAND_REGIONS) sum += symbolRegionCost(GRAND_COST, r.id, (symbols.grand?.[r.id] || {}).cur, (symbols.grand?.[r.id] || {}).tgt);
+  return sum;
+};
 
 // 캐릭터 객체에 예산 플래너 기본값 채우기 (구버전 데이터 호환)
 const emptyEquipSlot = () => ({
@@ -469,7 +522,8 @@ const emptyGoals = () => ({
   symbols: {
     arcane: Object.fromEntries(ARCANE_REGIONS.map(r => [r.id, { cur: '', tgt: '' }])),
     authentic: Object.fromEntries(AUTHENTIC_REGIONS.map(r => [r.id, { cur: '', tgt: '' }])),
-    cost: 0, priority: 0, done: false,
+    grand: Object.fromEntries(GRAND_REGIONS.map(r => [r.id, { cur: '', tgt: '' }])),
+    priority: 0, done: false,
   },
   solErda: { erdaCur: '', erdaTgt: '', fragCur: '', fragTgt: '', fragPrice: '', cost: 0, priority: 0, done: false },
 });
@@ -481,7 +535,7 @@ const normalizeChar = (c) => ({
     symbols: {
       arcane: { ...emptyGoals().symbols.arcane, ...(c.goals.symbols?.arcane || {}) },
       authentic: { ...emptyGoals().symbols.authentic, ...(c.goals.symbols?.authentic || {}) },
-      cost: c.goals.symbols?.cost || 0,
+      grand: { ...emptyGoals().symbols.grand, ...(c.goals.symbols?.grand || {}) },
       priority: c.goals.symbols?.priority || 0,
       done: !!c.goals.symbols?.done,
     },
@@ -1786,9 +1840,10 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
         });
       }
     }
-    if ((goals.symbols?.cost || 0) > 0) {
-      items.push({ key: 'symbols', type: 'symbols', name: '심볼 강화', label: '아케인 · 어센틱',
-        cost: goals.symbols.cost, priority: goals.symbols.priority || 0, done: !!goals.symbols.done });
+    const symCost = calcSymbolCost(goals.symbols);
+    if (symCost > 0) {
+      items.push({ key: 'symbols', type: 'symbols', name: '심볼 강화', label: '아케인 · 어센틱 · 그랜드',
+        cost: symCost, priority: goals.symbols.priority || 0, done: !!goals.symbols.done });
     }
     const solCost = calcSolErdaCost(goals.solErda);
     if (solCost > 0) {
@@ -2190,6 +2245,8 @@ function GoalsPanel({ goals, setGoals }) {
 
   const setArcane = (id, v) => setGoals(g => ({ ...g, symbols: { ...g.symbols, arcane: { ...g.symbols.arcane, [id]: v } } }));
   const setAuthentic = (id, v) => setGoals(g => ({ ...g, symbols: { ...g.symbols, authentic: { ...g.symbols.authentic, [id]: v } } }));
+  const setGrand = (id, v) => setGoals(g => ({ ...g, symbols: { ...g.symbols, grand: { ...(g.symbols.grand || {}), [id]: v } } }));
+  const symbolCost = calcSymbolCost(goals.symbols);
 
   return (
     <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-6">
@@ -2227,18 +2284,27 @@ function GoalsPanel({ goals, setGoals }) {
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">심볼 강화 예상 비용 (메소)</label>
-            <MesoInput value={goals.symbols.cost || 0} onChange={(n) => setGoals(g => ({ ...g, symbols: { ...g.symbols, cost: n } }))} />
+        <div className="mt-4">
+          <div className="text-xs text-rose-300 font-semibold mb-2">그랜드 어센틱심볼 (최대 {GRAND_MAX})</div>
+          <div className="grid md:grid-cols-2 gap-x-6 gap-y-2">
+            {GRAND_REGIONS.map(r => (
+              <SymbolRow key={r.id} name={r.name} max={GRAND_MAX} value={(goals.symbols.grand || {})[r.id] || { cur: '', tgt: '' }} onChange={(v) => setGrand(r.id, v)} />
+            ))}
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-4 items-end">
           <div>
             <label className="text-xs text-slate-400 block mb-1">우선순위</label>
             <input type="number" min="0" value={goals.symbols.priority || ''} placeholder="미설정"
               onChange={(e) => setGoals(g => ({ ...g, symbols: { ...g.symbols, priority: parseNum(e.target.value) } }))}
               className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-maple-accent" />
           </div>
+          <div className="bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-2.5 text-right">
+            <div className="text-[11px] text-slate-400">심볼 강화 예상 비용 (현재→목표 자동계산)</div>
+            <div className="text-base font-bold text-emerald-300">{fmtMeso(symbolCost)}</div>
+          </div>
         </div>
+        <p className="text-[11px] text-slate-500 mt-2">※ 아케인·세르니움·아르크스·오디움은 정확한 표 기준, 도원경·아르테리아·카르시온·그랜드는 총액 기반 근사(만렙은 정확)입니다.</p>
       </div>
 
       {/* 솔 에르다 */}
