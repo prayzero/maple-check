@@ -461,37 +461,35 @@ const PO = {
 };
 const STATS = [PO.str, PO.dex, PO.int, PO.luk, PO.all];
 const FSTATS = [PO.fstr, PO.fdex, PO.fint, PO.fluk, PO.fall];
-// 부위 카테고리별 옵션 풀
+// 부위 카테고리별 옵션 풀 (공식 옵션 기준)
 const POT_POOL_BY_CAT = {
-  // 무기·보조무기·엠블렘 (공격 부위)
-  wep: [...STATS, PO.atk, PO.matk, PO.boss, PO.ied, PO.dmg, PO.cr, PO.cd, ...FSTATS, PO.fatk, PO.fmatk],
-  // 모자 (보공 + 쿨감)
-  hat: [...STATS, PO.hp, PO.mp, PO.boss, PO.cool, PO.cdskip, ...FSTATS, PO.fhp],
-  // 망토·어깨장식 (보공)
-  capeShoulder: [...STATS, PO.hp, PO.boss, ...FSTATS, PO.fhp],
-  // 상의·하의 (방무)
-  topBottom: [...STATS, PO.hp, PO.ied, ...FSTATS, PO.fhp],
-  // 신발 (방무 + 이동/점프)
-  shoes: [...STATS, PO.hp, PO.ied, PO.spd, PO.jump, ...FSTATS, PO.fhp],
-  // 장갑 (크뎀 + 방무 + 드메)
-  glove: [...STATS, PO.cd, PO.ied, PO.meso, PO.drop, ...FSTATS, PO.fatk, PO.fmatk],
-  // 반지 (크확/크뎀 + 드메 + 공마고정)
-  ring: [...STATS, PO.hp, PO.cr, PO.cd, PO.meso, PO.drop, ...FSTATS, PO.fatk, PO.fmatk],
+  // 무기·보조무기·엠블렘 (공격 옵션 전용: 공/마%, 보스뎀, 방무, 데미지, 크뎀, 크확)
+  wep: [...STATS, PO.atk, PO.matk, PO.boss, PO.ied, PO.dmg, PO.cd, PO.cr, ...FSTATS, PO.fatk, PO.fmatk],
+  // 모자 (보공/방무 없음, 쿨감)
+  hat: [...STATS, PO.hp, PO.mp, PO.cool, ...FSTATS, PO.fhp],
+  // 상의·하의·망토·어깨장식 (방어 옵션만)
+  armor: [...STATS, PO.hp, PO.mp, ...FSTATS, PO.fhp],
+  // 신발 (방어 + 이동/점프)
+  shoes: [...STATS, PO.hp, PO.mp, PO.spd, PO.jump, ...FSTATS, PO.fhp],
+  // 장갑 (크뎀 + 드메 + 공마 고정)
+  glove: [...STATS, PO.cd, PO.meso, PO.drop, ...FSTATS, PO.fatk, PO.fmatk],
+  // 반지 (크확 + 드메 + 공마 고정)
+  ring: [...STATS, PO.hp, PO.mp, PO.cr, PO.meso, PO.drop, ...FSTATS, PO.fatk, PO.fmatk],
   // 펜던트 (크확)
-  pendant: [...STATS, PO.hp, PO.cr, ...FSTATS, PO.fatk, PO.fmatk],
-  // 얼굴장식·눈장식 (크확)
-  faceEye: [...STATS, PO.hp, PO.cr, ...FSTATS],
-  // 귀고리 (크확)
-  ear: [...STATS, PO.hp, PO.cr, ...FSTATS],
+  pendant: [...STATS, PO.hp, PO.mp, PO.cr, ...FSTATS],
+  // 얼굴장식·눈장식 (크확 + 드메)
+  faceEye: [...STATS, PO.hp, PO.mp, PO.cr, PO.meso, PO.drop, ...FSTATS],
+  // 귀고리
+  ear: [...STATS, PO.hp, PO.mp, ...FSTATS],
   // 벨트
-  belt: [...STATS, PO.hp, ...FSTATS, PO.fhp],
-  // 기계심장 (공마%)
+  belt: [...STATS, PO.hp, PO.mp, ...FSTATS, PO.fhp],
+  // 기계심장 (공/마%)
   heart: [...STATS, PO.atk, PO.matk, PO.hp, ...FSTATS, PO.fatk, PO.fmatk],
 };
 const SLOT_POT_CAT = {
   weapon: 'wep', subweapon: 'wep', emblem: 'wep',
-  hat: 'hat', cape: 'capeShoulder', shoulder: 'capeShoulder',
-  top: 'topBottom', bottom: 'topBottom', shoes: 'shoes', glove: 'glove',
+  hat: 'hat', cape: 'armor', shoulder: 'armor', top: 'armor', bottom: 'armor',
+  shoes: 'shoes', glove: 'glove',
   ring1: 'ring', ring2: 'ring', ring3: 'ring', ring4: 'ring',
   pendant1: 'pendant', pendant2: 'pendant',
   face: 'faceEye', eye: 'faceEye', ear: 'ear', belt: 'belt', heart: 'heart',
