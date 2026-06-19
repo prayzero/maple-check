@@ -451,7 +451,7 @@ const emptyEquipSlot = () => ({
   item: '',
   star: '', potential: '미설정', potTarget: '',
   addPotential: '미설정', addPotTarget: '',
-  flame: { stat: '', allStat: '', atk: '' },
+  flameDone: false, jakDone: false,
   soul: '',
   cost: 0, priority: 0, done: false, memo: '',
 });
@@ -463,38 +463,39 @@ const normSlot = (s) => {
     ...e, ...o,
     potTarget: o.potTarget || '',
     addPotTarget: o.addPotTarget || '',
-    flame: { ...e.flame, ...(o.flame || {}) },
+    flameDone: !!o.flameDone,
+    jakDone: !!o.jakDone,
   };
 };
 
 /* 부위별로 실제 적용되는 옵션 (메이플 기준)
- * star=스타포스, pot=잠재, addpot=에디셔널잠재, flame=추가옵션(불꽃), soul=소울(무기) */
+ * star=스타포스, pot=잠재, addpot=에디셔널잠재, flame=추가옵션(불꽃/추옵), jak=작, soul=소울(무기) */
 const SLOT_CAP = {
-  weapon:    { star: true,  pot: true,  addpot: true,  flame: true,  soul: true  },
-  subweapon: { star: true,  pot: true,  addpot: true,  flame: false, soul: false },
-  emblem:    { star: false, pot: true,  addpot: true,  flame: false, soul: false },
-  hat:       { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  face:      { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  eye:       { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  ear:       { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  top:       { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  bottom:    { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  shoes:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  glove:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  cape:      { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  shoulder:  { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  belt:      { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  ring1:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  ring2:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  ring3:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  ring4:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  pendant1:  { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  pendant2:  { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
-  heart:     { star: true,  pot: true,  addpot: true,  flame: false, soul: false },
-  medal:     { star: false, pot: false, addpot: false, flame: false, soul: false },
-  badge:     { star: false, pot: false, addpot: false, flame: false, soul: false },
-  pocket:    { star: false, pot: false, addpot: false, flame: false, soul: false },
-  android:   { star: false, pot: false, addpot: false, flame: false, soul: false },
+  weapon:    { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: true  },
+  subweapon: { star: true,  pot: true,  addpot: true,  flame: false, jak: false, soul: false },
+  emblem:    { star: false, pot: true,  addpot: true,  flame: false, jak: false, soul: false },
+  hat:       { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  face:      { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  eye:       { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  ear:       { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  top:       { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  bottom:    { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  shoes:     { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  glove:     { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  cape:      { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  shoulder:  { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  belt:      { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  ring1:     { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  ring2:     { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  ring3:     { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  ring4:     { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  pendant1:  { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  pendant2:  { star: true,  pot: true,  addpot: true,  flame: true,  jak: true,  soul: false },
+  heart:     { star: true,  pot: true,  addpot: true,  flame: false, jak: true,  soul: false },
+  medal:     { star: false, pot: false, addpot: false, flame: false, jak: false, soul: false },
+  badge:     { star: false, pot: false, addpot: false, flame: false, jak: false, soul: false },
+  pocket:    { star: false, pot: false, addpot: false, flame: false, jak: false, soul: false },
+  android:   { star: false, pot: false, addpot: false, flame: false, jak: false, soul: false },
 };
 
 /* 잠재 목표 — 옵션 나열 대신 줄수/이탈 표기 프리셋
@@ -743,6 +744,9 @@ function App() {
           {selected === 'boss_history' && (
             <BossHistoryView />
           )}
+          {selected === 'symbol_price' && (
+            <SymbolPriceView />
+          )}
           {characters.find(c => c.id === selected) && (
             <CharacterView
               character={characters.find(c => c.id === selected)}
@@ -882,6 +886,12 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           onClick={() => onSelect('boss_history')}
           label="📜 결정석의 역사"
           subtitle="가격 변동 이력 보기"
+        />
+        <NavItem
+          active={selected === 'symbol_price'}
+          onClick={() => onSelect('symbol_price')}
+          label="🔮 심볼 가격"
+          subtitle="심볼 레벨별 강화비용"
         />
       </nav>
 
@@ -1875,6 +1885,73 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
     else if (item.type === 'symbols') setGoals(g => ({ ...g, symbols: { ...g.symbols, priority: n } }));
     else if (item.type === 'solerda') setGoals(g => ({ ...g, solErda: { ...g.solErda, priority: n } }));
   };
+  // 예산 우선순위 ▲▼ 이동: 두 항목 위치를 바꾸고 1..N으로 우선순위 재부여
+  const move = (idx, dir) => {
+    const j = idx + dir;
+    if (j < 0 || j >= lineItems.length) return;
+    const arr = [...lineItems];
+    const tmp = arr[idx]; arr[idx] = arr[j]; arr[j] = tmp;
+    arr.forEach((it, i) => setPriority(it, i + 1));
+  };
+
+  const priorityTable = (
+    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>📋</span> 예산 우선순위</h3>
+      <p className="text-xs text-slate-400 mb-4">▲▼ 버튼으로 순서를 조절하고, 완료한 항목은 체크하세요.</p>
+      {lineItems.length === 0 ? (
+        <div className="text-center py-8 text-slate-500 text-sm">
+          비용이 입력된 항목이 없습니다. 장비 슬롯이나 목표치에 예상 비용을 입력해 보세요.
+        </div>
+      ) : (
+        <>
+          <div className="hidden md:grid grid-cols-12 gap-2 text-xs text-slate-400 px-2 py-2 border-b border-maple-border">
+            <div className="col-span-2 text-center">순위</div>
+            <div className="col-span-1 text-center">완료</div>
+            <div className="col-span-4">항목</div>
+            <div className="col-span-3 text-right">예상 비용</div>
+            <div className="col-span-2 text-right">누적</div>
+          </div>
+          <div className="divide-y divide-maple-border">
+            {(() => {
+              let cum = 0;
+              return lineItems.map((it, idx) => {
+                cum += it.cost;
+                return (
+                  <div key={it.key} className={`grid grid-cols-12 gap-2 items-center px-2 py-2.5 ${it.done ? 'opacity-50' : ''}`}>
+                    <div className="col-span-3 md:col-span-2 flex items-center gap-1.5 justify-start md:justify-center">
+                      <span className="text-sm font-bold text-maple-accent w-4 text-center">{idx + 1}</span>
+                      <div className="flex flex-col leading-none">
+                        <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0}
+                          className="px-1 text-slate-300 hover:text-white disabled:opacity-20">▲</button>
+                        <button type="button" onClick={() => move(idx, 1)} disabled={idx === lineItems.length - 1}
+                          className="px-1 text-slate-300 hover:text-white disabled:opacity-20">▼</button>
+                      </div>
+                    </div>
+                    <div className="col-span-2 md:col-span-1 flex items-center justify-center">
+                      <input type="checkbox" checked={it.done} onChange={() => toggleDone(it)} className="w-5 h-5 accent-emerald-400 cursor-pointer" />
+                    </div>
+                    <div className="col-span-7 md:col-span-4 min-w-0">
+                      <div className={`font-medium truncate ${it.done ? 'line-through text-slate-400' : 'text-slate-100'}`}>
+                        {it.name}
+                        {it.type === 'equip' && it.star ? <span className="text-amber-300 text-xs ml-1">★{it.star}</span> : null}
+                      </div>
+                      {it.label && <div className="text-xs text-slate-500 truncate">{it.label}</div>}
+                    </div>
+                    <div className="col-span-7 md:col-span-3 text-right font-semibold text-emerald-300 text-sm md:text-base">{fmtMeso(it.cost)}</div>
+                    <div className="col-span-5 md:col-span-2 text-right text-xs text-slate-400">{fmtMesoShort(cum)}</div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+          <div className="border-t-2 border-maple-border mt-3 pt-3 flex items-center justify-between">
+            <div className="font-semibold">합계</div>
+            <div className="font-bold text-emerald-300 text-base md:text-lg">{fmtMeso(totalCost)}</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -1926,6 +2003,9 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
         )}
       </div>
 
+      {/* 예산 우선순위 — 요약 바로 아래 */}
+      {priorityTable}
+
       {/* 장비창 - 본게임 EQUIPMENT 창 UI */}
       <div>
         <p className="text-xs text-slate-400 mb-3 text-center">슬롯을 눌러 목표 장비를 검색하고 스타포스·잠재·플레임·예상 비용을 입력하세요.</p>
@@ -1974,66 +2054,6 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
       {/* 목표치: 레벨 / 심볼 / 솔 에르다 */}
       <GoalsPanel goals={goals} setGoals={setGoals} />
 
-      {/* 예산 우선순위 표 */}
-      <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
-        <h3 className="font-semibold mb-1 flex items-center gap-2"><span>📋</span> 예산 우선순위</h3>
-        <p className="text-xs text-slate-400 mb-4">우선순위(낮은 숫자가 먼저) 순으로 정렬됩니다. 같은 순위는 비용이 큰 항목이 먼저 표시됩니다.</p>
-
-        {lineItems.length === 0 ? (
-          <div className="text-center py-8 text-slate-500 text-sm">
-            비용이 입력된 항목이 없습니다. 장비 슬롯이나 목표치에 예상 비용을 입력해 보세요.
-          </div>
-        ) : (
-          <>
-            <div className="hidden md:grid grid-cols-12 gap-2 text-xs text-slate-400 px-2 py-2 border-b border-maple-border">
-              <div className="col-span-1 text-center">순위</div>
-              <div className="col-span-1 text-center">완료</div>
-              <div className="col-span-5">항목</div>
-              <div className="col-span-3 text-right">예상 비용</div>
-              <div className="col-span-2 text-right">누적</div>
-            </div>
-            <div className="divide-y divide-maple-border">
-              {(() => {
-                let cum = 0;
-                return lineItems.map((it, idx) => {
-                  cum += it.cost;
-                  return (
-                    <div key={it.key} className={`grid grid-cols-12 gap-2 items-center px-2 py-2.5 ${it.done ? 'opacity-50' : ''}`}>
-                      <div className="col-span-3 md:col-span-1 flex items-center gap-1 justify-start md:justify-center">
-                        <span className="md:hidden text-xs text-slate-500">순위</span>
-                        <input
-                          type="number" min="0"
-                          value={it.priority || ''}
-                          placeholder={String(idx + 1)}
-                          onChange={(e) => setPriority(it, parseNum(e.target.value))}
-                          className="w-12 bg-maple-bg border border-maple-border rounded px-1 py-1 text-sm text-center focus:outline-none focus:border-maple-accent"
-                        />
-                      </div>
-                      <div className="col-span-2 md:col-span-1 flex items-center justify-center">
-                        <input type="checkbox" checked={it.done} onChange={() => toggleDone(it)} className="w-5 h-5 accent-emerald-400 cursor-pointer" />
-                      </div>
-                      <div className="col-span-7 md:col-span-5 min-w-0">
-                        <div className={`font-medium truncate ${it.done ? 'line-through text-slate-400' : 'text-slate-100'}`}>
-                          {it.name}
-                          {it.type === 'equip' && it.star ? <span className="text-amber-300 text-xs ml-1">★{it.star}</span> : null}
-                        </div>
-                        {it.label && <div className="text-xs text-slate-500 truncate">{it.label}{it.type === 'equip' && it.potential && it.potential !== '미설정' ? ` · ${it.potential}` : ''}</div>}
-                      </div>
-                      <div className="col-span-7 md:col-span-3 text-right font-semibold text-emerald-300 text-sm md:text-base">{fmtMeso(it.cost)}</div>
-                      <div className="col-span-5 md:col-span-2 text-right text-xs text-slate-400">{fmtMesoShort(cum)}</div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-            <div className="border-t-2 border-maple-border mt-3 pt-3 flex items-center justify-between">
-              <div className="font-semibold">합계</div>
-              <div className="font-bold text-emerald-300 text-base md:text-lg">{fmtMeso(totalCost)}</div>
-            </div>
-          </>
-        )}
-      </div>
-
       {editingSlot && (
         <SlotEditorModal
           slot={{ id: editingSlot, name: EQUIP_SLOT_NAME[editingSlot] }}
@@ -2070,6 +2090,12 @@ function EquipSlotCell({ slot, data, onClick }) {
             {d.potTarget ? <span className={`text-[9px] md:text-[10px] font-bold ${potColor || 'text-lime-300'}`}>{d.potTarget}</span> : null}
           </div>
           {d.cost ? <div className="text-[8px] md:text-[10px] text-emerald-300 font-semibold leading-none">{fmtMesoShort(d.cost)}</div> : null}
+          {(d.flameDone || d.jakDone) ? (
+            <div className="flex items-center gap-0.5 mt-0.5">
+              {d.flameDone ? <span className="text-[8px] text-emerald-400 font-bold">추✓</span> : null}
+              {d.jakDone ? <span className="text-[8px] text-sky-400 font-bold">작✓</span> : null}
+            </div>
+          ) : null}
           {d.done ? <div className="absolute top-0.5 right-1 text-[9px] text-emerald-400 font-bold">✓</div> : null}
         </>
       ) : (
@@ -2158,17 +2184,20 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             </div>
           )}
 
-          {cap.flame && (
-            <div>
-              <label className="text-sm text-slate-300 block mb-1.5">추가옵션 (환생의 불꽃)</label>
-              <div className="grid grid-cols-3 gap-2">
-                <input type="number" value={d.flame.stat} placeholder="주스탯+"
-                  onChange={(e) => onChange({ flame: { ...d.flame, stat: parseNum(e.target.value) } })} className={INPUT_CLS + ' text-center'} />
-                <input type="number" value={d.flame.allStat} placeholder="올스탯%+"
-                  onChange={(e) => onChange({ flame: { ...d.flame, allStat: parseNum(e.target.value) } })} className={INPUT_CLS + ' text-center'} />
-                <input type="number" value={d.flame.atk} placeholder="공/마+"
-                  onChange={(e) => onChange({ flame: { ...d.flame, atk: parseNum(e.target.value) } })} className={INPUT_CLS + ' text-center'} />
-              </div>
+          {(cap.flame || cap.jak) && (
+            <div className="flex gap-2">
+              {cap.flame && (
+                <button type="button" onClick={() => onChange({ flameDone: !d.flameDone })}
+                  className={`flex-1 rounded border px-3 py-2 text-sm font-semibold transition ${d.flameDone ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-maple-bg border-maple-border text-slate-400'}`}>
+                  추옵 {d.flameDone ? '완료 ✓' : '미완료'}
+                </button>
+              )}
+              {cap.jak && (
+                <button type="button" onClick={() => onChange({ jakDone: !d.jakDone })}
+                  className={`flex-1 rounded border px-3 py-2 text-sm font-semibold transition ${d.jakDone ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-maple-bg border-maple-border text-slate-400'}`}>
+                  작 {d.jakDone ? '완료 ✓' : '미완료'}
+                </button>
+              )}
             </div>
           )}
 
@@ -2181,17 +2210,10 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
           )}
 
           <div className="text-[11px] text-slate-500 -mb-1">── 예산 ──</div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm text-slate-300 block mb-1.5">예상 비용 (메소)</label>
-              <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} />
-            </div>
-            <div>
-              <label className="text-sm text-slate-300 block mb-1.5">우선순위</label>
-              <input type="number" min="0" value={d.priority || ''} placeholder="미설정"
-                onChange={(e) => onChange({ priority: parseNum(e.target.value) })}
-                className={INPUT_CLS + ' text-center'} />
-            </div>
+          <div>
+            <label className="text-sm text-slate-300 block mb-1.5">예상 비용 (메소)</label>
+            <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} />
+            <p className="text-[11px] text-slate-500 mt-1">※ 우선순위는 예산 우선순위 표에서 ▲▼로 조절합니다.</p>
           </div>
 
           <div>
@@ -2288,17 +2310,9 @@ function GoalsPanel({ goals, setGoals }) {
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 mt-4 items-end">
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">우선순위</label>
-            <input type="number" min="0" value={goals.symbols.priority || ''} placeholder="미설정"
-              onChange={(e) => setGoals(g => ({ ...g, symbols: { ...g.symbols, priority: parseNum(e.target.value) } }))}
-              className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-maple-accent" />
-          </div>
-          <div className="bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-2.5 text-right">
-            <div className="text-[11px] text-slate-400">심볼 강화 예상 비용 (현재→목표 자동계산)</div>
-            <div className="text-base font-bold text-emerald-300">{fmtMeso(symbolCost)}</div>
-          </div>
+        <div className="mt-4 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-2.5 flex items-center justify-between">
+          <div className="text-[11px] text-slate-400">심볼 강화 예상 비용 (현재→목표 자동계산)</div>
+          <div className="text-base font-bold text-emerald-300">{fmtMeso(symbolCost)}</div>
         </div>
         <p className="text-[11px] text-slate-500 mt-2">※ 아케인·어센틱·그랜드 어센틱 전 지역 정확 가격표 기준으로 자동 계산됩니다.</p>
       </div>
@@ -2332,17 +2346,9 @@ function GoalsPanel({ goals, setGoals }) {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">조각 1개 가격 (메소)</label>
-            <MesoInput value={goals.solErda.fragPrice || 0} onChange={(n) => setGoals(g => ({ ...g, solErda: { ...g.solErda, fragPrice: n } }))} />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">우선순위</label>
-            <input type="number" min="0" value={goals.solErda.priority || ''} placeholder="미설정"
-              onChange={(e) => setGoals(g => ({ ...g, solErda: { ...g.solErda, priority: parseNum(e.target.value) } }))}
-              className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-maple-accent" />
-          </div>
+        <div className="mt-4 max-w-xs">
+          <label className="text-xs text-slate-400 block mb-1">조각 1개 가격 (메소)</label>
+          <MesoInput value={goals.solErda.fragPrice || 0} onChange={(n) => setGoals(g => ({ ...g, solErda: { ...g.solErda, fragPrice: n } }))} />
         </div>
         <div className="mt-3 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3 flex items-center justify-between">
           <div className="text-xs text-slate-400">
@@ -2353,6 +2359,73 @@ function GoalsPanel({ goals, setGoals }) {
           <div className="text-base font-bold text-emerald-300">{fmtMeso(calcSolErdaCost(goals.solErda))}</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* =========================================================
+ * 심볼 가격 (레벨별 강화비용 기록)
+ * ========================================================= */
+function SymbolCostTable({ title, accent, regions, table, maxLevel }) {
+  const levels = [];
+  for (let L = 2; L <= maxLevel; L++) levels.push(L);
+  return (
+    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <h3 className={`font-semibold mb-3 ${accent}`}>{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px] md:text-xs border-collapse min-w-[640px]">
+          <thead>
+            <tr className="text-slate-400 border-b border-maple-border">
+              <th className="text-left py-1.5 px-2 sticky left-0 bg-maple-panel">도달</th>
+              {regions.map(r => <th key={r.id} className="text-right py-1.5 px-2 whitespace-nowrap">{r.name}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {levels.map(L => (
+              <tr key={L} className="border-b border-maple-border/40">
+                <td className="py-1 px-2 text-slate-300 sticky left-0 bg-maple-panel">{L}렙</td>
+                {regions.map(r => {
+                  const arr = table[r.id] || [];
+                  const step = (arr[L] || 0) - (arr[L - 1] || 0);
+                  return <td key={r.id} className="text-right py-1 px-2 text-slate-200 tabular-nums">{step.toLocaleString()}</td>;
+                })}
+              </tr>
+            ))}
+            <tr className="border-t-2 border-maple-border font-bold">
+              <td className="py-1.5 px-2 text-maple-accent sticky left-0 bg-maple-panel">합계</td>
+              {regions.map(r => {
+                const arr = table[r.id] || [];
+                return <td key={r.id} className="text-right py-1.5 px-2 text-emerald-300 tabular-nums">{(arr[maxLevel] || 0).toLocaleString()}</td>;
+              })}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SymbolPriceView() {
+  const arcaneTotal = ARCANE_REGIONS.reduce((a, r) => a + (ARCANE_COST[r.id]?.[ARCANE_MAX] || 0), 0);
+  const authTotal = AUTHENTIC_REGIONS.reduce((a, r) => a + (AUTHENTIC_COST[r.id]?.[AUTHENTIC_MAX] || 0), 0);
+  const grandTotal = GRAND_REGIONS.reduce((a, r) => a + (GRAND_COST[r.id]?.[GRAND_MAX] || 0), 0);
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div>
+        <h2 className="text-2xl md:text-3xl font-bold">🔮 심볼 가격</h2>
+        <p className="text-slate-400 mt-1">심볼 레벨별 강화비용 기록 (도달 레벨까지 단계별 비용 · 단위 메소)</p>
+      </div>
+
+      <div className="bg-gradient-to-br from-violet-500/15 to-sky-500/5 border border-violet-500/30 rounded-xl p-5 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div><div className="text-xs text-slate-400">아케인 6종</div><div className="text-base md:text-lg font-bold text-sky-300 break-all">{fmtMeso(arcaneTotal)}</div></div>
+        <div><div className="text-xs text-slate-400">어센틱 6종</div><div className="text-base md:text-lg font-bold text-violet-300 break-all">{fmtMeso(authTotal)}</div></div>
+        <div><div className="text-xs text-slate-400">그랜드 어센틱 2종</div><div className="text-base md:text-lg font-bold text-rose-300 break-all">{fmtMeso(grandTotal)}</div></div>
+        <div><div className="text-xs text-slate-400">전체 합계 (만렙)</div><div className="text-base md:text-lg font-bold text-maple-accent break-all">{fmtMeso(arcaneTotal + authTotal + grandTotal)}</div></div>
+      </div>
+
+      <SymbolCostTable title={`아케인심볼 (1→${ARCANE_MAX}렙)`} accent="text-sky-300" regions={ARCANE_REGIONS} table={ARCANE_COST} maxLevel={ARCANE_MAX} />
+      <SymbolCostTable title={`어센틱심볼 (1→${AUTHENTIC_MAX}렙)`} accent="text-violet-300" regions={AUTHENTIC_REGIONS} table={AUTHENTIC_COST} maxLevel={AUTHENTIC_MAX} />
+      <SymbolCostTable title={`그랜드 어센틱심볼 (1→${GRAND_MAX}렙)`} accent="text-rose-300" regions={GRAND_REGIONS} table={GRAND_COST} maxLevel={GRAND_MAX} />
     </div>
   );
 }
