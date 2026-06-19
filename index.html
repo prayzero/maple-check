@@ -395,8 +395,100 @@ const AUTHENTIC_MAX = 11;  // 어센틱심볼 최대 레벨
 
 // 캐릭터 객체에 예산 플래너 기본값 채우기 (구버전 데이터 호환)
 const emptyEquipSlot = () => ({
-  item: '', star: '', potential: '미설정', cost: 0, priority: 0, done: false, memo: '',
+  itemId: null, item: '', icon: '',
+  star: '', potential: '미설정', potLines: ['', '', ''],
+  addPotential: '미설정', addPotLines: ['', ''],
+  flame: { stat: '', allStat: '', atk: '' },
+  soul: '',
+  cost: 0, priority: 0, done: false, memo: '',
 });
+// 구버전/부분 데이터를 안전하게 보정해서 읽기
+const normSlot = (s) => {
+  const e = emptyEquipSlot();
+  const o = s || {};
+  return {
+    ...e, ...o,
+    potLines: [...(o.potLines || []), '', '', ''].slice(0, 3),
+    addPotLines: [...(o.addPotLines || []), '', ''].slice(0, 2),
+    flame: { ...e.flame, ...(o.flame || {}) },
+  };
+};
+
+/* 부위별로 실제 적용되는 옵션 (메이플 기준)
+ * star=스타포스, pot=잠재, addpot=에디셔널잠재, flame=추가옵션(불꽃), soul=소울(무기) */
+const SLOT_CAP = {
+  weapon:    { star: true,  pot: true,  addpot: true,  flame: true,  soul: true  },
+  subweapon: { star: true,  pot: true,  addpot: true,  flame: false, soul: false },
+  emblem:    { star: false, pot: true,  addpot: true,  flame: false, soul: false },
+  hat:       { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  face:      { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  eye:       { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  ear:       { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  top:       { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  bottom:    { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  shoes:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  glove:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  cape:      { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  shoulder:  { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  belt:      { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  ring1:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  ring2:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  ring3:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  ring4:     { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  pendant1:  { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  pendant2:  { star: true,  pot: true,  addpot: true,  flame: true,  soul: false },
+  heart:     { star: true,  pot: true,  addpot: true,  flame: false, soul: false },
+  medal:     { star: false, pot: false, addpot: false, flame: false, soul: false },
+  badge:     { star: false, pot: false, addpot: false, flame: false, soul: false },
+  pocket:    { star: false, pot: false, addpot: false, flame: false, soul: false },
+  android:   { star: false, pot: false, addpot: false, flame: false, soul: false },
+};
+
+// 잠재옵션 입력 자동완성용 (자유 입력도 가능)
+const POT_LINE_PRESETS = [
+  'STR +12%', 'DEX +12%', 'INT +12%', 'LUK +12%', '올스탯 +9%',
+  '보스 몬스터 데미지 +40%', '보스 몬스터 데미지 +35%', '보스 몬스터 데미지 +30%',
+  '데미지 +12%', '크리티컬 데미지 +8%', '크리티컬 데미지 +6%',
+  '몬스터 방어율 무시 +40%', '몬스터 방어율 무시 +35%',
+  '공격력 +12%', '마력 +12%', '공격력 +9%', '마력 +9%',
+  'STR +40', 'DEX +40', 'INT +40', 'LUK +40', 'HP +12%', '공격 시 20% 확률로 240의 추가 피해',
+];
+
+// 본게임 EQUIPMENT 창 배치 (좌 2열 / 가운데 캐릭터+무기 / 우 2열)
+const EQUIP_LEFT = [
+  ['ring1', 'emblem'], ['ring2', 'badge'], ['ring3', 'pendant1'],
+  ['ring4', 'pendant2'], ['pocket', 'medal'], ['heart', 'android'],
+];
+const EQUIP_RIGHT = [
+  ['hat', null], ['face', 'cape'], ['eye', 'shoulder'],
+  ['ear', 'glove'], ['top', 'belt'], ['bottom', 'shoes'],
+];
+
+/* maplestory.io 아이템 검색 / 아이콘 */
+const MAPLE_API = 'https://maplestory.io/api';
+let _mapleVersion = null;
+async function getMapleVersion() {
+  if (_mapleVersion) return _mapleVersion;
+  try {
+    const r = await fetch(`${MAPLE_API}/KMS`);
+    const j = await r.json();
+    const v = Array.isArray(j) && j.length ? (j[0].mapleVersionId || j[0].version || j[0].id) : null;
+    _mapleVersion = v || '389';
+  } catch { _mapleVersion = '389'; }
+  return _mapleVersion;
+}
+async function searchMapleItems(q) {
+  const v = await getMapleVersion();
+  const r = await fetch(`${MAPLE_API}/KMS/${v}/item?searchFor=${encodeURIComponent(q)}&count=24`);
+  const j = await r.json();
+  return (Array.isArray(j) ? j : []).map(it => ({
+    id: it.id,
+    name: it.name,
+    icon: `${MAPLE_API}/KMS/${v}/item/${it.id}/icon`,
+    sub: [it.typeInfo?.subCategory || it.typeInfo?.category, it.requiredLevel ? `Lv${it.requiredLevel}` : '']
+      .filter(Boolean).join(' · '),
+  }));
+}
 const emptyGoals = () => ({
   level: { current: '', target: '' },
   symbols: {
@@ -1806,16 +1898,48 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
         )}
       </div>
 
-      {/* 장비창 */}
-      <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
-        <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🛡️</span> 장비창</h3>
-        <p className="text-xs text-slate-400 mb-4">슬롯을 눌러 목표 장비 · 스타포스 · 잠재 · 예상 비용 · 우선순위를 입력하세요.</p>
-        <div className="grid grid-cols-5 gap-1.5 md:gap-2 max-w-xl mx-auto">
-          {EQUIP_GRID.flat().map((slotId, i) => (
-            slotId
-              ? <EquipSlotCell key={i} slot={{ id: slotId, name: EQUIP_SLOT_NAME[slotId] }} data={equipment[slotId]} onClick={() => setEditingSlot(slotId)} />
-              : <div key={i} />
-          ))}
+      {/* 장비창 - 본게임 EQUIPMENT 창 UI */}
+      <div>
+        <p className="text-xs text-slate-400 mb-3 text-center">슬롯을 눌러 목표 장비를 검색하고 스타포스·잠재·플레임·예상 비용을 입력하세요.</p>
+        <div className="bg-[#243042] border-2 border-black/40 rounded-xl overflow-hidden max-w-2xl mx-auto shadow-xl">
+          {/* 타이틀 바 */}
+          <div className="bg-[#2c3a4f] px-4 py-2.5 flex items-center justify-between">
+            <span className="font-extrabold tracking-wide text-slate-100">EQUIPMENT</span>
+            <span className="text-xs font-bold text-slate-300 bg-[#3b4a61] border border-slate-500/50 rounded px-3 py-1">치장 ›</span>
+          </div>
+          {/* 보드 */}
+          <div className="p-3 md:p-4 flex justify-center items-start gap-2 md:gap-3">
+            <div className="grid grid-cols-2 gap-1.5 md:gap-2">
+              {EQUIP_LEFT.flat().map((slotId, i) => (
+                <EquipSlotCell key={i} slot={{ id: slotId, name: EQUIP_SLOT_NAME[slotId] }} data={equipment[slotId]} onClick={() => setEditingSlot(slotId)} />
+              ))}
+            </div>
+            <div className="flex flex-col items-center justify-between self-stretch">
+              <div className="flex-1 w-[124px] md:w-[164px] bg-[#0e1726] border border-slate-600/50 rounded-lg flex flex-col items-center justify-center py-3">
+                <svg width="46" height="60" viewBox="0 0 46 60" className="opacity-70">
+                  <circle cx="23" cy="16" r="13" fill="#cbd5e1" />
+                  <path d="M5 56 q18 -30 36 0 z" fill="#94a3b8" />
+                </svg>
+                <div className="text-[10px] text-slate-500 mt-2">캐릭터 미리보기</div>
+              </div>
+              <div className="flex gap-1.5 md:gap-2 mt-1.5 md:mt-2">
+                <EquipSlotCell slot={{ id: 'weapon', name: '무기' }} data={equipment.weapon} onClick={() => setEditingSlot('weapon')} />
+                <EquipSlotCell slot={{ id: 'subweapon', name: '보조무기' }} data={equipment.subweapon} onClick={() => setEditingSlot('subweapon')} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 md:gap-2">
+              {EQUIP_RIGHT.flat().map((slotId, i) => (
+                slotId
+                  ? <EquipSlotCell key={i} slot={{ id: slotId, name: EQUIP_SLOT_NAME[slotId] }} data={equipment[slotId]} onClick={() => setEditingSlot(slotId)} />
+                  : <div key={i} className="w-[60px] h-[60px] md:w-[76px] md:h-[76px]" />
+              ))}
+            </div>
+          </div>
+          {/* PRESETS 바 (표시용) */}
+          <div className="bg-[#2c3a4f]/70 border-t border-black/30 px-4 py-2.5 flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 tracking-wide">PRESETS</span>
+            <span className="text-[11px] text-slate-500">장비 프리셋 (게임 내 기능)</span>
+          </div>
         </div>
       </div>
 
@@ -1896,100 +2020,223 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
 }
 
 function EquipSlotCell({ slot, data, onClick }) {
-  const filled = data && ((data.cost || 0) > 0 || (data.item && data.item.trim()));
+  const d = normSlot(data);
+  const filled = data && ((d.cost || 0) > 0 || (d.item && d.item.trim()) || d.itemId);
+  const potColor = d.potential && d.potential !== '미설정' ? POTENTIAL_STYLE[d.potential] : '';
   return (
     <button
       onClick={onClick}
-      className={`aspect-square rounded-lg border p-1.5 flex flex-col items-center justify-center text-center transition ${
+      title={slot.name}
+      className={`relative w-[60px] h-[60px] md:w-[76px] md:h-[76px] rounded-lg border p-1 flex flex-col items-center justify-center text-center transition overflow-hidden ${
         filled
-          ? 'bg-maple-accent/10 border-maple-accent/50 hover:bg-maple-accent/20'
-          : 'bg-maple-bg/40 border-dashed border-maple-border hover:border-maple-accent/50'
+          ? 'bg-[#1b2536] border-maple-accent/60 hover:border-maple-accent'
+          : 'bg-[#16202f] border-dashed border-slate-600/70 hover:border-maple-accent/60'
       }`}
     >
-      <div className="text-[10px] md:text-xs text-slate-400 leading-tight">{slot.name}</div>
       {filled ? (
         <>
-          {data.item && <div className="text-[10px] md:text-xs font-medium text-slate-100 leading-tight truncate w-full mt-0.5">{data.item}</div>}
-          <div className="flex items-center gap-1 mt-0.5 flex-wrap justify-center">
-            {data.star ? <span className="text-[9px] md:text-[10px] text-amber-300 font-bold">★{data.star}</span> : null}
-            {data.potential && data.potential !== '미설정' ? <span className={`text-[9px] md:text-[10px] font-bold ${POTENTIAL_STYLE[data.potential]}`}>{data.potential.slice(0, 2)}</span> : null}
+          {d.icon
+            ? <img src={d.icon} alt="" onError={(e) => { e.target.style.display = 'none'; }} className="w-7 h-7 md:w-9 md:h-9 object-contain" />
+            : <div className="text-[9px] md:text-[10px] font-medium text-slate-100 leading-tight line-clamp-2 px-0.5">{d.item}</div>}
+          <div className="flex items-center gap-1 mt-0.5">
+            {d.star ? <span className="text-[9px] md:text-[10px] text-amber-300 font-bold">★{d.star}</span> : null}
+            {potColor ? <span className={`text-[9px] md:text-[10px] font-bold ${potColor}`}>{d.potential.slice(0, 2)}</span> : null}
           </div>
-          {data.cost ? <div className="text-[9px] md:text-[10px] text-emerald-300 font-semibold mt-0.5">{fmtMesoShort(data.cost)}</div> : null}
-          {data.done ? <div className="text-[9px] text-emerald-400">✓완료</div> : null}
+          {d.cost ? <div className="text-[8px] md:text-[10px] text-emerald-300 font-semibold leading-none">{fmtMesoShort(d.cost)}</div> : null}
+          {d.done ? <div className="absolute top-0.5 right-1 text-[9px] text-emerald-400 font-bold">✓</div> : null}
         </>
       ) : (
-        <div className="text-slate-600 text-lg leading-none mt-0.5">+</div>
+        <>
+          <div className="text-[9px] md:text-[10px] text-slate-500 leading-tight">{slot.name}</div>
+          <div className="text-slate-600 text-base leading-none mt-0.5">+</div>
+        </>
       )}
     </button>
   );
 }
 
+const INPUT_CLS = 'w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent';
+
+function ItemSearch({ onPick }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setResults([]); setErr(''); return; }
+    let alive = true;
+    setLoading(true); setErr('');
+    const t = setTimeout(() => {
+      searchMapleItems(term)
+        .then(list => { if (alive) { setResults(list); setLoading(false); } })
+        .catch(() => { if (alive) { setErr('검색 실패 (인터넷 연결 확인)'); setLoading(false); } });
+    }, 400);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q]);
+
+  return (
+    <div>
+      <label className="text-xs text-slate-400 block mb-1">아이템 검색 (maplestory.io)</label>
+      <input
+        type="text" value={q} placeholder="예: 에테르넬"
+        onChange={(e) => setQ(e.target.value)}
+        className={INPUT_CLS + ' border-maple-accent/60'}
+      />
+      {loading && <div className="text-xs text-slate-500 mt-2">검색 중…</div>}
+      {err && <div className="text-xs text-maple-danger mt-2">{err}</div>}
+      {results.length > 0 && (
+        <div className="mt-2 max-h-44 overflow-y-auto space-y-1 border border-maple-border rounded-lg p-1 bg-maple-bg/50">
+          {results.map(it => (
+            <button
+              key={it.id}
+              onClick={() => { onPick(it); setResults([]); setQ(''); }}
+              className="w-full flex items-center gap-2 text-left rounded px-2 py-1.5 hover:bg-maple-accent/10"
+            >
+              <img src={it.icon} alt="" className="w-7 h-7 object-contain flex-shrink-0" onError={(e) => { e.target.style.visibility = 'hidden'; }} />
+              <div className="min-w-0">
+                <div className="text-sm text-slate-100 truncate">{it.name}</div>
+                {it.sub && <div className="text-[10px] text-slate-500 truncate">{it.sub}</div>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
+  const d = normSlot(data);
+  const cap = SLOT_CAP[slot.id] || { star: true, pot: true, addpot: true, flame: true, soul: false };
+  const setPotLine = (i, v) => { const a = [...d.potLines]; a[i] = v; onChange({ potLines: a }); };
+  const setAddPotLine = (i, v) => { const a = [...d.addPotLines]; a[i] = v; onChange({ addPotLines: a }); };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
       <div className="bg-maple-panel border border-maple-border rounded-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <datalist id="potline-presets">
+          {POT_LINE_PRESETS.map(p => <option key={p} value={p} />)}
+        </datalist>
+
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-lg flex items-center gap-2"><span>🛡️</span> {slot.name}</h3>
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            {d.icon && <img src={d.icon} alt="" className="w-7 h-7 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />}
+            <span>{slot.name} 슬롯</span>
+          </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white p-1">✕</button>
         </div>
 
         <div className="space-y-4">
+          {/* 아이템 검색 */}
+          <ItemSearch onPick={(it) => onChange({ itemId: it.id, item: it.name, icon: it.icon })} />
+
+          {/* 선택/직접입력 아이템명 */}
           <div>
             <label className="text-sm text-slate-300 block mb-1.5">목표 아이템명</label>
             <input
-              type="text" value={data.item || ''} placeholder="예: 에테르넬 나이트로드 모자"
+              type="text" value={d.item} placeholder="검색해서 선택하거나 직접 입력"
               onChange={(e) => onChange({ item: e.target.value })}
-              className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
+              className={INPUT_CLS}
             />
           </div>
 
+          <div className="text-[11px] text-slate-500 -mt-1">── 목표 스펙 (이 부위에 적용되는 항목만 표시) ──</div>
+
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm text-slate-300 block mb-1.5">목표 스타포스</label>
-              <input
-                type="number" min="0" max="30" value={data.star || ''} placeholder="0"
-                onChange={(e) => onChange({ star: Math.min(30, Math.max(0, parseNum(e.target.value))) })}
-                className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
-              />
-            </div>
-            <div>
-              <label className="text-sm text-slate-300 block mb-1.5">목표 잠재등급</label>
-              <select
-                value={data.potential || '미설정'}
-                onChange={(e) => onChange({ potential: e.target.value })}
-                className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
-              >
-                {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
+            {cap.star && (
+              <div>
+                <label className="text-sm text-slate-300 block mb-1.5">목표 스타포스</label>
+                <input
+                  type="number" min="0" max="30" value={d.star} placeholder="0"
+                  onChange={(e) => onChange({ star: Math.min(30, Math.max(0, parseNum(e.target.value))) })}
+                  className={INPUT_CLS}
+                />
+              </div>
+            )}
+            {cap.pot && (
+              <div>
+                <label className="text-sm text-slate-300 block mb-1.5">목표 잠재등급</label>
+                <select value={d.potential} onChange={(e) => onChange({ potential: e.target.value })} className={INPUT_CLS}>
+                  {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
+          {cap.pot && (
+            <div>
+              <label className="text-sm text-slate-300 block mb-1.5">잠재옵션 (윗잠 3줄)</label>
+              <div className="space-y-1.5">
+                {[0, 1, 2].map(i => (
+                  <input
+                    key={i} list="potline-presets" value={d.potLines[i] || ''} placeholder={`${i + 1}번째 줄 (예: 보스 몬스터 데미지 +40%)`}
+                    onChange={(e) => setPotLine(i, e.target.value)}
+                    className={INPUT_CLS + ' text-[13px]'}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {cap.addpot && (
+            <div>
+              <label className="text-sm text-slate-300 block mb-1.5">에디셔널 잠재</label>
+              <div className="grid grid-cols-2 gap-2">
+                <select value={d.addPotential} onChange={(e) => onChange({ addPotential: e.target.value })} className={INPUT_CLS}>
+                  {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+                <input list="potline-presets" value={d.addPotLines[0] || ''} placeholder="에디 1줄"
+                  onChange={(e) => setAddPotLine(0, e.target.value)} className={INPUT_CLS + ' text-[13px]'} />
+              </div>
+            </div>
+          )}
+
+          {cap.flame && (
+            <div>
+              <label className="text-sm text-slate-300 block mb-1.5">추가옵션 (환생의 불꽃)</label>
+              <div className="grid grid-cols-3 gap-2">
+                <input type="number" value={d.flame.stat} placeholder="주스탯+"
+                  onChange={(e) => onChange({ flame: { ...d.flame, stat: parseNum(e.target.value) } })} className={INPUT_CLS + ' text-center'} />
+                <input type="number" value={d.flame.allStat} placeholder="올스탯%+"
+                  onChange={(e) => onChange({ flame: { ...d.flame, allStat: parseNum(e.target.value) } })} className={INPUT_CLS + ' text-center'} />
+                <input type="number" value={d.flame.atk} placeholder="공/마+"
+                  onChange={(e) => onChange({ flame: { ...d.flame, atk: parseNum(e.target.value) } })} className={INPUT_CLS + ' text-center'} />
+              </div>
+            </div>
+          )}
+
+          {cap.soul && (
+            <div>
+              <label className="text-sm text-slate-300 block mb-1.5">소울 (무기)</label>
+              <input type="text" value={d.soul} placeholder="예: 위대한 데미안의 소울 · 공격력 +x"
+                onChange={(e) => onChange({ soul: e.target.value })} className={INPUT_CLS} />
+            </div>
+          )}
+
+          <div className="text-[11px] text-slate-500 -mb-1">── 예산 ──</div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm text-slate-300 block mb-1.5">예상 비용 (메소)</label>
-              <MesoInput value={data.cost || 0} onChange={(n) => onChange({ cost: n })} />
+              <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} />
             </div>
             <div>
               <label className="text-sm text-slate-300 block mb-1.5">우선순위</label>
-              <input
-                type="number" min="0" value={data.priority || ''} placeholder="미설정"
+              <input type="number" min="0" value={d.priority || ''} placeholder="미설정"
                 onChange={(e) => onChange({ priority: parseNum(e.target.value) })}
-                className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-maple-accent"
-              />
+                className={INPUT_CLS + ' text-center'} />
             </div>
           </div>
 
           <div>
             <label className="text-sm text-slate-300 block mb-1.5">메모</label>
-            <input
-              type="text" value={data.memo || ''} placeholder="예: 보스 잠재 / 추옵 후 강화"
-              onChange={(e) => onChange({ memo: e.target.value })}
-              className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
-            />
+            <input type="text" value={d.memo} placeholder="예: 보스 잠재 / 추옵 후 강화"
+              onChange={(e) => onChange({ memo: e.target.value })} className={INPUT_CLS} />
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={!!data.done} onChange={(e) => onChange({ done: e.target.checked })} className="w-5 h-5 accent-emerald-400" />
+            <input type="checkbox" checked={!!d.done} onChange={(e) => onChange({ done: e.target.checked })} className="w-5 h-5 accent-emerald-400" />
             <span className="text-sm text-slate-300">완료됨</span>
           </label>
         </div>
