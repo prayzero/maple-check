@@ -1,7 +1,7 @@
 /* 메이플 체크 - 서비스 워커
  * 단순 캐시 전략: 첫 로드 시 핵심 파일 캐시 → 이후 네트워크 우선, 실패 시 캐시 폴백
  */
-const CACHE_NAME = 'maple-check-v1';
+const CACHE_NAME = 'maple-check-v2';
 const CORE_ASSETS = [
   './',
   './index.html',
