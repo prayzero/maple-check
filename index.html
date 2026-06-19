@@ -444,15 +444,59 @@ const SLOT_CAP = {
   android:   { star: false, pot: false, addpot: false, flame: false, soul: false },
 };
 
-// 잠재옵션 입력 자동완성용 (자유 입력도 가능)
-const POT_LINE_PRESETS = [
-  'STR +12%', 'DEX +12%', 'INT +12%', 'LUK +12%', '올스탯 +9%',
-  '보스 몬스터 데미지 +40%', '보스 몬스터 데미지 +35%', '보스 몬스터 데미지 +30%',
-  '데미지 +12%', '크리티컬 데미지 +8%', '크리티컬 데미지 +6%',
-  '몬스터 방어율 무시 +40%', '몬스터 방어율 무시 +35%',
-  '공격력 +12%', '마력 +12%', '공격력 +9%', '마력 +9%',
-  'STR +40', 'DEX +40', 'INT +40', 'LUK +40', 'HP +12%', '공격 시 20% 확률로 240의 추가 피해',
-];
+/* 부위별로 실제 등장 가능한 잠재옵션 풀 (게임 기준)
+ * - 자유 입력 없이 이 목록에서만 선택 가능
+ * - 옵션 종류만 제공(정확한 % 수치는 잠재등급에 따라 결정) */
+const PO = {
+  str:'STR +%', dex:'DEX +%', int:'INT +%', luk:'LUK +%', all:'올스탯 +%',
+  atk:'공격력 +%', matk:'마력 +%',
+  boss:'보스 몬스터 데미지 +%', ied:'몬스터 방어율 무시 +%', dmg:'데미지 +%',
+  cr:'크리티컬 확률 +%', cd:'크리티컬 데미지 +%',
+  hp:'HP +%', mp:'MP +%',
+  cool:'재사용 대기시간 감소', cdskip:'재사용 대기시간 미적용 확률 +%',
+  meso:'메소 획득량 +%', drop:'아이템 드롭률 +%',
+  spd:'이동속도 +', jump:'점프력 +',
+  fstr:'STR +(고정)', fdex:'DEX +(고정)', fint:'INT +(고정)', fluk:'LUK +(고정)',
+  fall:'올스탯 +(고정)', fatk:'공격력 +(고정)', fmatk:'마력 +(고정)', fhp:'HP +(고정)',
+};
+const STATS = [PO.str, PO.dex, PO.int, PO.luk, PO.all];
+const FSTATS = [PO.fstr, PO.fdex, PO.fint, PO.fluk, PO.fall];
+// 부위 카테고리별 옵션 풀
+const POT_POOL_BY_CAT = {
+  // 무기·보조무기·엠블렘 (공격 부위)
+  wep: [...STATS, PO.atk, PO.matk, PO.boss, PO.ied, PO.dmg, PO.cr, PO.cd, ...FSTATS, PO.fatk, PO.fmatk],
+  // 모자 (보공 + 쿨감)
+  hat: [...STATS, PO.hp, PO.mp, PO.boss, PO.cool, PO.cdskip, ...FSTATS, PO.fhp],
+  // 망토·어깨장식 (보공)
+  capeShoulder: [...STATS, PO.hp, PO.boss, ...FSTATS, PO.fhp],
+  // 상의·하의 (방무)
+  topBottom: [...STATS, PO.hp, PO.ied, ...FSTATS, PO.fhp],
+  // 신발 (방무 + 이동/점프)
+  shoes: [...STATS, PO.hp, PO.ied, PO.spd, PO.jump, ...FSTATS, PO.fhp],
+  // 장갑 (크뎀 + 방무 + 드메)
+  glove: [...STATS, PO.cd, PO.ied, PO.meso, PO.drop, ...FSTATS, PO.fatk, PO.fmatk],
+  // 반지 (크확/크뎀 + 드메 + 공마고정)
+  ring: [...STATS, PO.hp, PO.cr, PO.cd, PO.meso, PO.drop, ...FSTATS, PO.fatk, PO.fmatk],
+  // 펜던트 (크확)
+  pendant: [...STATS, PO.hp, PO.cr, ...FSTATS, PO.fatk, PO.fmatk],
+  // 얼굴장식·눈장식 (크확)
+  faceEye: [...STATS, PO.hp, PO.cr, ...FSTATS],
+  // 귀고리 (크확)
+  ear: [...STATS, PO.hp, PO.cr, ...FSTATS],
+  // 벨트
+  belt: [...STATS, PO.hp, ...FSTATS, PO.fhp],
+  // 기계심장 (공마%)
+  heart: [...STATS, PO.atk, PO.matk, PO.hp, ...FSTATS, PO.fatk, PO.fmatk],
+};
+const SLOT_POT_CAT = {
+  weapon: 'wep', subweapon: 'wep', emblem: 'wep',
+  hat: 'hat', cape: 'capeShoulder', shoulder: 'capeShoulder',
+  top: 'topBottom', bottom: 'topBottom', shoes: 'shoes', glove: 'glove',
+  ring1: 'ring', ring2: 'ring', ring3: 'ring', ring4: 'ring',
+  pendant1: 'pendant', pendant2: 'pendant',
+  face: 'faceEye', eye: 'faceEye', ear: 'ear', belt: 'belt', heart: 'heart',
+};
+const getPotPool = (slotId) => POT_POOL_BY_CAT[SLOT_POT_CAT[slotId]] || [...STATS, PO.hp];
 
 // 본게임 EQUIPMENT 창 배치 (좌 2열 / 가운데 캐릭터+무기 / 우 2열)
 const EQUIP_LEFT = [
@@ -2030,19 +2074,27 @@ function EquipSlotCell({ slot, data, onClick }) {
 
 const INPUT_CLS = 'w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent';
 
+function PotSelect({ pool, value, onChange, idx }) {
+  const has = !value || pool.includes(value);
+  return (
+    <select value={value || ''} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS + ' text-[13px]'}>
+      <option value="">{idx != null ? `${idx + 1}번째 줄 — ` : ''}옵션 선택 안 함</option>
+      {pool.map(o => <option key={o} value={o}>{o}</option>)}
+      {!has && <option value={value}>{value}</option>}
+    </select>
+  );
+}
+
 function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
   const d = normSlot(data);
   const cap = SLOT_CAP[slot.id] || { star: true, pot: true, addpot: true, flame: true, soul: false };
+  const pool = getPotPool(slot.id);
   const setPotLine = (i, v) => { const a = [...d.potLines]; a[i] = v; onChange({ potLines: a }); };
   const setAddPotLine = (i, v) => { const a = [...d.addPotLines]; a[i] = v; onChange({ addPotLines: a }); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
       <div className="bg-maple-panel border border-maple-border rounded-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <datalist id="potline-presets">
-          {POT_LINE_PRESETS.map(p => <option key={p} value={p} />)}
-        </datalist>
-
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-lg">{slot.name} 슬롯</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white p-1">✕</button>
@@ -2084,14 +2136,10 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
 
           {cap.pot && (
             <div>
-              <label className="text-sm text-slate-300 block mb-1.5">잠재옵션 (윗잠 3줄)</label>
+              <label className="text-sm text-slate-300 block mb-1.5">잠재옵션 (윗잠 3줄) — 이 부위에 뜨는 옵션만</label>
               <div className="space-y-1.5">
                 {[0, 1, 2].map(i => (
-                  <input
-                    key={i} list="potline-presets" value={d.potLines[i] || ''} placeholder={`${i + 1}번째 줄 (예: 보스 몬스터 데미지 +40%)`}
-                    onChange={(e) => setPotLine(i, e.target.value)}
-                    className={INPUT_CLS + ' text-[13px]'}
-                  />
+                  <PotSelect key={i} idx={i} pool={pool} value={d.potLines[i]} onChange={(v) => setPotLine(i, v)} />
                 ))}
               </div>
             </div>
@@ -2100,12 +2148,13 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
           {cap.addpot && (
             <div>
               <label className="text-sm text-slate-300 block mb-1.5">에디셔널 잠재</label>
-              <div className="grid grid-cols-2 gap-2">
-                <select value={d.addPotential} onChange={(e) => onChange({ addPotential: e.target.value })} className={INPUT_CLS}>
-                  {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-                <input list="potline-presets" value={d.addPotLines[0] || ''} placeholder="에디 1줄"
-                  onChange={(e) => setAddPotLine(0, e.target.value)} className={INPUT_CLS + ' text-[13px]'} />
+              <select value={d.addPotential} onChange={(e) => onChange({ addPotential: e.target.value })} className={INPUT_CLS + ' mb-1.5'}>
+                {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+              <div className="space-y-1.5">
+                {[0, 1].map(i => (
+                  <PotSelect key={i} idx={i} pool={pool} value={d.addPotLines[i]} onChange={(v) => setAddPotLine(i, v)} />
+                ))}
               </div>
             </div>
           )}
