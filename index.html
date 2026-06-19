@@ -334,6 +334,10 @@ const getDifficultyEntry = (boss, diff) => {
 // 숫자 입력 파싱 (콤마/문자 제거)
 const parseNum = (raw) => parseInt(String(raw ?? '').replace(/[^0-9]/g, '')) || 0;
 
+// 솔 에르다 조각 예상 비용 = 조각 단가 × 필요 갯수(목표-현재)
+const solErdaNeed = (se) => Math.max(0, parseNum(se?.fragTgt) - parseNum(se?.fragCur));
+const calcSolErdaCost = (se) => solErdaNeed(se) * parseNum(se?.fragPrice);
+
 /* =========================================================
  * 예산 플래너 데이터 정의
  * - 장비창(메이플 장비탭) 슬롯 / 그리드 배치
@@ -467,7 +471,7 @@ const emptyGoals = () => ({
     authentic: Object.fromEntries(AUTHENTIC_REGIONS.map(r => [r.id, { cur: '', tgt: '' }])),
     cost: 0, priority: 0, done: false,
   },
-  solErda: { erdaCur: '', erdaTgt: '', fragCur: '', fragTgt: '', cost: 0, priority: 0, done: false },
+  solErda: { erdaCur: '', erdaTgt: '', fragCur: '', fragTgt: '', fragPrice: '', cost: 0, priority: 0, done: false },
 });
 const normalizeChar = (c) => ({
   ...c,
@@ -1786,9 +1790,11 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
       items.push({ key: 'symbols', type: 'symbols', name: '심볼 강화', label: '아케인 · 어센틱',
         cost: goals.symbols.cost, priority: goals.symbols.priority || 0, done: !!goals.symbols.done });
     }
-    if ((goals.solErda?.cost || 0) > 0) {
-      items.push({ key: 'solerda', type: 'solerda', name: '솔 에르다', label: '6차 스킬',
-        cost: goals.solErda.cost, priority: goals.solErda.priority || 0, done: !!goals.solErda.done });
+    const solCost = calcSolErdaCost(goals.solErda);
+    if (solCost > 0) {
+      items.push({ key: 'solerda', type: 'solerda', name: '솔 에르다 조각',
+        label: `${solErdaNeed(goals.solErda).toLocaleString()}개 × ${fmtMesoShort(parseNum(goals.solErda?.fragPrice))}`,
+        cost: solCost, priority: goals.solErda.priority || 0, done: !!goals.solErda.done });
     }
     const pr = (p) => (p && p > 0 ? p : Infinity);
     items.sort((a, b) => pr(a.priority) - pr(b.priority) || b.cost - a.cost);
@@ -2266,8 +2272,8 @@ function GoalsPanel({ goals, setGoals }) {
         </div>
         <div className="grid grid-cols-2 gap-3 mt-4">
           <div>
-            <label className="text-xs text-slate-400 block mb-1">솔 에르다 예상 비용 (메소)</label>
-            <MesoInput value={goals.solErda.cost || 0} onChange={(n) => setGoals(g => ({ ...g, solErda: { ...g.solErda, cost: n } }))} />
+            <label className="text-xs text-slate-400 block mb-1">조각 1개 가격 (메소)</label>
+            <MesoInput value={goals.solErda.fragPrice || 0} onChange={(n) => setGoals(g => ({ ...g, solErda: { ...g.solErda, fragPrice: n } }))} />
           </div>
           <div>
             <label className="text-xs text-slate-400 block mb-1">우선순위</label>
@@ -2275,6 +2281,14 @@ function GoalsPanel({ goals, setGoals }) {
               onChange={(e) => setGoals(g => ({ ...g, solErda: { ...g.solErda, priority: parseNum(e.target.value) } }))}
               className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-maple-accent" />
           </div>
+        </div>
+        <div className="mt-3 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3 flex items-center justify-between">
+          <div className="text-xs text-slate-400">
+            예상 비용 = 필요 <span className="text-slate-200 font-semibold">{solErdaNeed(goals.solErda).toLocaleString()}</span>개
+            <span className="text-slate-500"> (목표 {parseNum(goals.solErda.fragTgt).toLocaleString()} − 현재 {parseNum(goals.solErda.fragCur).toLocaleString()})</span>
+            {' × '}{fmtMeso(parseNum(goals.solErda.fragPrice))}
+          </div>
+          <div className="text-base font-bold text-emerald-300">{fmtMeso(calcSolErdaCost(goals.solErda))}</div>
         </div>
       </div>
     </div>
