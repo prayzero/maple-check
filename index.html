@@ -395,7 +395,7 @@ const AUTHENTIC_MAX = 11;  // 어센틱심볼 최대 레벨
 
 // 캐릭터 객체에 예산 플래너 기본값 채우기 (구버전 데이터 호환)
 const emptyEquipSlot = () => ({
-  itemId: null, item: '', icon: '',
+  item: '',
   star: '', potential: '미설정', potLines: ['', '', ''],
   addPotential: '미설정', addPotLines: ['', ''],
   flame: { stat: '', allStat: '', atk: '' },
@@ -463,32 +463,6 @@ const EQUIP_RIGHT = [
   ['hat', null], ['face', 'cape'], ['eye', 'shoulder'],
   ['ear', 'glove'], ['top', 'belt'], ['bottom', 'shoes'],
 ];
-
-/* maplestory.io 아이템 검색 / 아이콘 */
-const MAPLE_API = 'https://maplestory.io/api';
-let _mapleVersion = null;
-async function getMapleVersion() {
-  if (_mapleVersion) return _mapleVersion;
-  try {
-    const r = await fetch(`${MAPLE_API}/KMS`);
-    const j = await r.json();
-    const v = Array.isArray(j) && j.length ? (j[0].mapleVersionId || j[0].version || j[0].id) : null;
-    _mapleVersion = v || '389';
-  } catch { _mapleVersion = '389'; }
-  return _mapleVersion;
-}
-async function searchMapleItems(q) {
-  const v = await getMapleVersion();
-  const r = await fetch(`${MAPLE_API}/KMS/${v}/item?searchFor=${encodeURIComponent(q)}&count=24`);
-  const j = await r.json();
-  return (Array.isArray(j) ? j : []).map(it => ({
-    id: it.id,
-    name: it.name,
-    icon: `${MAPLE_API}/KMS/${v}/item/${it.id}/icon`,
-    sub: [it.typeInfo?.subCategory || it.typeInfo?.category, it.requiredLevel ? `Lv${it.requiredLevel}` : '']
-      .filter(Boolean).join(' · '),
-  }));
-}
 const emptyGoals = () => ({
   level: { current: '', target: '' },
   symbols: {
@@ -2021,7 +1995,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
 
 function EquipSlotCell({ slot, data, onClick }) {
   const d = normSlot(data);
-  const filled = data && ((d.cost || 0) > 0 || (d.item && d.item.trim()) || d.itemId);
+  const filled = data && ((d.cost || 0) > 0 || (d.item && d.item.trim()));
   const potColor = d.potential && d.potential !== '미설정' ? POTENTIAL_STYLE[d.potential] : '';
   return (
     <button
@@ -2035,9 +2009,8 @@ function EquipSlotCell({ slot, data, onClick }) {
     >
       {filled ? (
         <>
-          {d.icon
-            ? <img src={d.icon} alt="" onError={(e) => { e.target.style.display = 'none'; }} className="w-7 h-7 md:w-9 md:h-9 object-contain" />
-            : <div className="text-[9px] md:text-[10px] font-medium text-slate-100 leading-tight line-clamp-2 px-0.5">{d.item}</div>}
+          <div className="text-[8px] md:text-[9px] text-slate-500 leading-none mb-0.5">{slot.name}</div>
+          <div className="text-[9px] md:text-[10px] font-medium text-slate-100 leading-tight line-clamp-2 px-0.5">{d.item || '—'}</div>
           <div className="flex items-center gap-1 mt-0.5">
             {d.star ? <span className="text-[9px] md:text-[10px] text-amber-300 font-bold">★{d.star}</span> : null}
             {potColor ? <span className={`text-[9px] md:text-[10px] font-bold ${potColor}`}>{d.potential.slice(0, 2)}</span> : null}
@@ -2057,56 +2030,6 @@ function EquipSlotCell({ slot, data, onClick }) {
 
 const INPUT_CLS = 'w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent';
 
-function ItemSearch({ onPick }) {
-  const [q, setQ] = useState('');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2) { setResults([]); setErr(''); return; }
-    let alive = true;
-    setLoading(true); setErr('');
-    const t = setTimeout(() => {
-      searchMapleItems(term)
-        .then(list => { if (alive) { setResults(list); setLoading(false); } })
-        .catch(() => { if (alive) { setErr('검색 실패 (인터넷 연결 확인)'); setLoading(false); } });
-    }, 400);
-    return () => { alive = false; clearTimeout(t); };
-  }, [q]);
-
-  return (
-    <div>
-      <label className="text-xs text-slate-400 block mb-1">아이템 검색 (maplestory.io)</label>
-      <input
-        type="text" value={q} placeholder="예: 에테르넬"
-        onChange={(e) => setQ(e.target.value)}
-        className={INPUT_CLS + ' border-maple-accent/60'}
-      />
-      {loading && <div className="text-xs text-slate-500 mt-2">검색 중…</div>}
-      {err && <div className="text-xs text-maple-danger mt-2">{err}</div>}
-      {results.length > 0 && (
-        <div className="mt-2 max-h-44 overflow-y-auto space-y-1 border border-maple-border rounded-lg p-1 bg-maple-bg/50">
-          {results.map(it => (
-            <button
-              key={it.id}
-              onClick={() => { onPick(it); setResults([]); setQ(''); }}
-              className="w-full flex items-center gap-2 text-left rounded px-2 py-1.5 hover:bg-maple-accent/10"
-            >
-              <img src={it.icon} alt="" className="w-7 h-7 object-contain flex-shrink-0" onError={(e) => { e.target.style.visibility = 'hidden'; }} />
-              <div className="min-w-0">
-                <div className="text-sm text-slate-100 truncate">{it.name}</div>
-                {it.sub && <div className="text-[10px] text-slate-500 truncate">{it.sub}</div>}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
   const d = normSlot(data);
   const cap = SLOT_CAP[slot.id] || { star: true, pot: true, addpot: true, flame: true, soul: false };
@@ -2121,22 +2044,16 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
         </datalist>
 
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-lg flex items-center gap-2">
-            {d.icon && <img src={d.icon} alt="" className="w-7 h-7 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />}
-            <span>{slot.name} 슬롯</span>
-          </h3>
+          <h3 className="font-bold text-lg">{slot.name} 슬롯</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white p-1">✕</button>
         </div>
 
         <div className="space-y-4">
-          {/* 아이템 검색 */}
-          <ItemSearch onPick={(it) => onChange({ itemId: it.id, item: it.name, icon: it.icon })} />
-
-          {/* 선택/직접입력 아이템명 */}
+          {/* 아이템명 직접 입력 */}
           <div>
             <label className="text-sm text-slate-300 block mb-1.5">목표 아이템명</label>
             <input
-              type="text" value={d.item} placeholder="검색해서 선택하거나 직접 입력"
+              type="text" value={d.item} placeholder="예: 에테르넬 나이트로드 모자"
               onChange={(e) => onChange({ item: e.target.value })}
               className={INPUT_CLS}
             />
