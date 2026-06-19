@@ -396,8 +396,8 @@ const AUTHENTIC_MAX = 11;  // 어센틱심볼 최대 레벨
 // 캐릭터 객체에 예산 플래너 기본값 채우기 (구버전 데이터 호환)
 const emptyEquipSlot = () => ({
   item: '',
-  star: '', potential: '미설정', potLines: ['', '', ''],
-  addPotential: '미설정', addPotLines: ['', ''],
+  star: '', potential: '미설정', potTarget: '',
+  addPotential: '미설정', addPotTarget: '',
   flame: { stat: '', allStat: '', atk: '' },
   soul: '',
   cost: 0, priority: 0, done: false, memo: '',
@@ -408,8 +408,8 @@ const normSlot = (s) => {
   const o = s || {};
   return {
     ...e, ...o,
-    potLines: [...(o.potLines || []), '', '', ''].slice(0, 3),
-    addPotLines: [...(o.addPotLines || []), '', ''].slice(0, 2),
+    potTarget: o.potTarget || '',
+    addPotTarget: o.addPotTarget || '',
     flame: { ...e.flame, ...(o.flame || {}) },
   };
 };
@@ -444,57 +444,12 @@ const SLOT_CAP = {
   android:   { star: false, pot: false, addpot: false, flame: false, soul: false },
 };
 
-/* 부위별로 실제 등장 가능한 잠재옵션 풀 (게임 기준)
- * - 자유 입력 없이 이 목록에서만 선택 가능
- * - 옵션 종류만 제공(정확한 % 수치는 잠재등급에 따라 결정) */
-const PO = {
-  str:'STR +%', dex:'DEX +%', int:'INT +%', luk:'LUK +%', all:'올스탯 +%',
-  atk:'공격력 +%', matk:'마력 +%',
-  boss:'보스 몬스터 데미지 +%', ied:'몬스터 방어율 무시 +%', dmg:'데미지 +%',
-  cr:'크리티컬 확률 +%', cd:'크리티컬 데미지 +%',
-  hp:'HP +%', mp:'MP +%',
-  cool:'재사용 대기시간 감소', cdskip:'재사용 대기시간 미적용 확률 +%',
-  meso:'메소 획득량 +%', drop:'아이템 드롭률 +%',
-  spd:'이동속도 +', jump:'점프력 +',
-  fstr:'STR +(고정)', fdex:'DEX +(고정)', fint:'INT +(고정)', fluk:'LUK +(고정)',
-  fall:'올스탯 +(고정)', fatk:'공격력 +(고정)', fmatk:'마력 +(고정)', fhp:'HP +(고정)',
-};
-const STATS = [PO.str, PO.dex, PO.int, PO.luk, PO.all];
-const FSTATS = [PO.fstr, PO.fdex, PO.fint, PO.fluk, PO.fall];
-// 부위 카테고리별 옵션 풀 (공식 옵션 기준)
-const POT_POOL_BY_CAT = {
-  // 무기·보조무기·엠블렘 (공격 옵션 전용: 공/마%, 보스뎀, 방무, 데미지, 크뎀, 크확)
-  wep: [...STATS, PO.atk, PO.matk, PO.boss, PO.ied, PO.dmg, PO.cd, PO.cr, ...FSTATS, PO.fatk, PO.fmatk],
-  // 모자 (보공/방무 없음, 쿨감)
-  hat: [...STATS, PO.hp, PO.mp, PO.cool, ...FSTATS, PO.fhp],
-  // 상의·하의·망토·어깨장식 (방어 옵션만)
-  armor: [...STATS, PO.hp, PO.mp, ...FSTATS, PO.fhp],
-  // 신발 (방어 + 이동/점프)
-  shoes: [...STATS, PO.hp, PO.mp, PO.spd, PO.jump, ...FSTATS, PO.fhp],
-  // 장갑 (크뎀 + 드메 + 공마 고정)
-  glove: [...STATS, PO.cd, PO.meso, PO.drop, ...FSTATS, PO.fatk, PO.fmatk],
-  // 반지 (크확 + 드메 + 공마 고정)
-  ring: [...STATS, PO.hp, PO.mp, PO.cr, PO.meso, PO.drop, ...FSTATS, PO.fatk, PO.fmatk],
-  // 펜던트 (크확)
-  pendant: [...STATS, PO.hp, PO.mp, PO.cr, ...FSTATS],
-  // 얼굴장식·눈장식 (크확 + 드메)
-  faceEye: [...STATS, PO.hp, PO.mp, PO.cr, PO.meso, PO.drop, ...FSTATS],
-  // 귀고리
-  ear: [...STATS, PO.hp, PO.mp, ...FSTATS],
-  // 벨트
-  belt: [...STATS, PO.hp, PO.mp, ...FSTATS, PO.fhp],
-  // 기계심장 (공/마%)
-  heart: [...STATS, PO.atk, PO.matk, PO.hp, ...FSTATS, PO.fatk, PO.fmatk],
-};
-const SLOT_POT_CAT = {
-  weapon: 'wep', subweapon: 'wep', emblem: 'wep',
-  hat: 'hat', cape: 'armor', shoulder: 'armor', top: 'armor', bottom: 'armor',
-  shoes: 'shoes', glove: 'glove',
-  ring1: 'ring', ring2: 'ring', ring3: 'ring', ring4: 'ring',
-  pendant1: 'pendant', pendant2: 'pendant',
-  face: 'faceEye', eye: 'faceEye', ear: 'ear', belt: 'belt', heart: 'heart',
-};
-const getPotPool = (slotId) => POT_POOL_BY_CAT[SLOT_POT_CAT[slotId]] || [...STATS, PO.hp];
+/* 잠재 목표 — 옵션 나열 대신 줄수/이탈 표기 프리셋
+ * - 일반 부위: 2줄 / 3줄 / 3줄이탈 / 올이탈 / 아확
+ * - 장갑: 2줄 / 크크(크뎀2) / 크크주(크뎀2+주스탯) */
+const POT_TARGETS = ['2줄', '3줄', '3줄이탈', '올이탈', '아확'];
+const POT_TARGETS_GLOVE = ['2줄', '크크', '크크주'];
+const getPotTargets = (slotId) => (slotId === 'glove' ? POT_TARGETS_GLOVE : POT_TARGETS);
 
 // 본게임 EQUIPMENT 창 배치 (좌 2열 / 가운데 캐릭터+무기 / 우 2열)
 const EQUIP_LEFT = [
@@ -2055,7 +2010,7 @@ function EquipSlotCell({ slot, data, onClick }) {
           <div className="text-[9px] md:text-[10px] font-medium text-slate-100 leading-tight line-clamp-2 px-0.5">{d.item || '—'}</div>
           <div className="flex items-center gap-1 mt-0.5">
             {d.star ? <span className="text-[9px] md:text-[10px] text-amber-300 font-bold">★{d.star}</span> : null}
-            {potColor ? <span className={`text-[9px] md:text-[10px] font-bold ${potColor}`}>{d.potential.slice(0, 2)}</span> : null}
+            {d.potTarget ? <span className={`text-[9px] md:text-[10px] font-bold ${potColor || 'text-lime-300'}`}>{d.potTarget}</span> : null}
           </div>
           {d.cost ? <div className="text-[8px] md:text-[10px] text-emerald-300 font-semibold leading-none">{fmtMesoShort(d.cost)}</div> : null}
           {d.done ? <div className="absolute top-0.5 right-1 text-[9px] text-emerald-400 font-bold">✓</div> : null}
@@ -2072,12 +2027,12 @@ function EquipSlotCell({ slot, data, onClick }) {
 
 const INPUT_CLS = 'w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent';
 
-function PotSelect({ pool, value, onChange, idx }) {
-  const has = !value || pool.includes(value);
+function TargetSelect({ targets, value, onChange }) {
+  const has = !value || targets.includes(value);
   return (
-    <select value={value || ''} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS + ' text-[13px]'}>
-      <option value="">{idx != null ? `${idx + 1}번째 줄 — ` : ''}옵션 선택 안 함</option>
-      {pool.map(o => <option key={o} value={o}>{o}</option>)}
+    <select value={value || ''} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS}>
+      <option value="">목표 미설정</option>
+      {targets.map(o => <option key={o} value={o}>{o}</option>)}
       {!has && <option value={value}>{value}</option>}
     </select>
   );
@@ -2086,9 +2041,7 @@ function PotSelect({ pool, value, onChange, idx }) {
 function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
   const d = normSlot(data);
   const cap = SLOT_CAP[slot.id] || { star: true, pot: true, addpot: true, flame: true, soul: false };
-  const pool = getPotPool(slot.id);
-  const setPotLine = (i, v) => { const a = [...d.potLines]; a[i] = v; onChange({ potLines: a }); };
-  const setAddPotLine = (i, v) => { const a = [...d.addPotLines]; a[i] = v; onChange({ addPotLines: a }); };
+  const targets = getPotTargets(slot.id);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
@@ -2134,26 +2087,17 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
 
           {cap.pot && (
             <div>
-              <label className="text-sm text-slate-300 block mb-1.5">잠재옵션 (윗잠 3줄) — 이 부위에 뜨는 옵션만</label>
-              <div className="space-y-1.5">
-                {[0, 1, 2].map(i => (
-                  <PotSelect key={i} idx={i} pool={pool} value={d.potLines[i]} onChange={(v) => setPotLine(i, v)} />
-                ))}
-              </div>
+              <label className="text-sm text-slate-300 block mb-1.5">
+                잠재 목표 {slot.id === 'glove' ? '(장갑: 크크 = 크뎀 2줄)' : '(2줄·3줄·이탈 표기)'}
+              </label>
+              <TargetSelect targets={targets} value={d.potTarget} onChange={(v) => onChange({ potTarget: v })} />
             </div>
           )}
 
           {cap.addpot && (
             <div>
-              <label className="text-sm text-slate-300 block mb-1.5">에디셔널 잠재</label>
-              <select value={d.addPotential} onChange={(e) => onChange({ addPotential: e.target.value })} className={INPUT_CLS + ' mb-1.5'}>
-                {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
-              <div className="space-y-1.5">
-                {[0, 1].map(i => (
-                  <PotSelect key={i} idx={i} pool={pool} value={d.addPotLines[i]} onChange={(v) => setAddPotLine(i, v)} />
-                ))}
-              </div>
+              <label className="text-sm text-slate-300 block mb-1.5">에디셔널 잠재 목표</label>
+              <TargetSelect targets={targets} value={d.addPotTarget} onChange={(v) => onChange({ addPotTarget: v })} />
             </div>
           )}
 
