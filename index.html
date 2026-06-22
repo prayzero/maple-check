@@ -1152,7 +1152,8 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
 
   const toggleBoss = (bossId, difficulty) => {
     onUpdate(c => {
-      let list = c.bosses || [];
+      // 현재 보스 목록에 없는(일간 전환 등으로 제거된) 보스 선택은 정리
+      let list = (c.bosses || []).filter(b => bossData.find(x => x.id === b.bossId));
       const boss = bossData.find(b => b.id === bossId);
       const idx = list.findIndex(b => b.bossId === bossId && b.difficulty === difficulty);
       if (idx >= 0) {
@@ -1161,11 +1162,11 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
       }
       // 같은 보스는 한 난이도만 선택 가능 → 같은 보스의 다른 난이도는 자동 해제
       list = list.filter(b => b.bossId !== bossId);
-      // 주간 12개 한도: 월간 보스는 카운트에서 제외
+      // 주간 12개 한도: 월간 보스/제거된(목록에 없는) 보스는 카운트에서 제외
       if (!boss?.monthly) {
         const weeklyCount = list.filter(b => {
           const bd = bossData.find(x => x.id === b.bossId);
-          return !bd?.monthly;
+          return bd && !bd.monthly;
         }).length;
         if (weeklyCount >= WEEKLY_LIMIT) return c; // 안전장치
       }
@@ -1533,14 +1534,12 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
           </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="text-sm font-medium">
-            주간 <span className={isFull ? 'text-maple-warn font-bold' : 'text-maple-accent font-bold'}>
-              {weeklyCount}
-            </span>
+          <div className={`text-sm font-medium px-2.5 py-1 rounded-md border ${isFull ? 'bg-emerald-500/15 border-emerald-500/50' : 'bg-maple-bg border-maple-border'}`}>
+            주간 <span className={isFull ? 'text-emerald-300 font-bold' : 'text-maple-accent font-bold'}>{weeklyCount}</span>
             <span className="text-slate-500"> / {weeklyLimit}</span>
-            {monthlyCount > 0 && (
-              <span className="text-slate-500 ml-2">· 월간 <span className="text-violet-300 font-bold">{monthlyCount}</span></span>
-            )}
+            {isFull && <span className="text-emerald-300 font-bold ml-1">✓ 가득참</span>}
+            {/* 월간 카운터는 항상 표시 → 선택해도 레이아웃이 밀리지 않음 */}
+            <span className="text-slate-500 ml-2">· 월간 <span className="text-violet-300 font-bold">{monthlyCount}</span></span>
           </div>
           <div className="flex items-center gap-0.5 bg-maple-bg border border-maple-border rounded p-0.5">
             <SortBtn active={sortMode === 'natural'} onClick={() => setSortMode('natural')}>기본</SortBtn>
