@@ -1232,10 +1232,11 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
         </button>
       </div>
 
-      {/* 탭 전환: 보스 수익 / 예산 플래너 */}
-      <div className="flex items-center gap-1 bg-maple-panel border border-maple-border rounded-lg p-1 w-fit">
-        <TabBtn active={tab === 'boss'} onClick={() => setTab('boss')}>💎 보스 수익 & 기간제</TabBtn>
+      {/* 탭 전환: 보스 수익 / 예산 플래너 / 기간제 */}
+      <div className="flex items-center gap-1 bg-maple-panel border border-maple-border rounded-lg p-1 w-fit flex-wrap">
+        <TabBtn active={tab === 'boss'} onClick={() => setTab('boss')}>💎 보스 수익</TabBtn>
         <TabBtn active={tab === 'budget'} onClick={() => setTab('budget')}>🧮 예산 플래너</TabBtn>
+        <TabBtn active={tab === 'duration'} onClick={() => setTab('duration')}>📅 기간제</TabBtn>
       </div>
 
       {tab === 'boss' && (
@@ -1257,8 +1258,6 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
             </div>
           </div>
 
-          <DurationsPanel durations={character.durations || {}} setDuration={setDuration} />
-
           <BossRevenueTable
             rows={character.bosses || []}
             bossData={bossData}
@@ -1267,6 +1266,10 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
             onSetMembers={setBossMembers}
           />
         </>
+      )}
+
+      {tab === 'duration' && (
+        <DurationsPanel durations={character.durations || {}} setDuration={setDuration} />
       )}
 
       {tab === 'budget' && (
