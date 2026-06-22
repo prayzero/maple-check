@@ -1191,6 +1191,11 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
     }));
   };
 
+  const resetBosses = () => {
+    if (!confirm('이 캐릭터의 보스 선택(주간·월간)을 모두 초기화할까요?')) return;
+    onUpdate(c => ({ ...c, bosses: [] }));
+  };
+
   const saveName = () => {
     const v = nameInput.trim();
     if (v) onUpdate(c => ({ ...c, name: v }));
@@ -1264,6 +1269,7 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
             weeklyLimit={WEEKLY_LIMIT}
             onToggle={toggleBoss}
             onSetMembers={setBossMembers}
+            onReset={resetBosses}
           />
         </>
       )}
@@ -1462,7 +1468,7 @@ function BossIcon({ id, name, icon }) {
   );
 }
 
-function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers }) {
+function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers, onReset }) {
   const [sortMode, setSortMode] = useState('natural');
 
   // 보스당 선택된 난이도 (보스당 1개) — 현재 보스 목록에 있는 것만 (제거된 보스 무시)
@@ -1526,8 +1532,15 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
   }, [rows, bossData]);
 
   return (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+    <div className="relative bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <button
+        type="button" onClick={onReset}
+        className="absolute top-3 right-3 md:top-4 md:right-4 text-xs font-semibold text-maple-danger border border-red-500/40 hover:bg-red-500/10 px-3 py-1.5 rounded-md z-10"
+        title="선택한 보스(주간·월간)를 모두 해제"
+      >
+        🔄 초기화
+      </button>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3 pr-20">
         <div>
           <h3 className="font-semibold flex items-center gap-2">
             <span>💎</span> 보스 결정석 수익
