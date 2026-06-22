@@ -294,6 +294,14 @@ const fmtMeso = (n) => {
   return (parts.join(' ') || '0') + ' 메소';
 };
 
+// 분 → "X시간 Y분" / "Y분"
+const fmtMinutes = (m) => {
+  m = Math.max(0, Math.round(m || 0));
+  if (m === 0) return '0분';
+  const h = Math.floor(m / 60), mm = m % 60;
+  return (h ? `${h}시간 ` : '') + (mm || !h ? `${mm}분` : '').trim();
+};
+
 const todayStr = () => {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -815,6 +823,7 @@ function App() {
             <CharacterView
               character={characters.find(c => c.id === selected)}
               bossData={bossData}
+              setBossData={setBossData}
               totals={charTotals[selected] || { weekly: 0, monthly: 0, total: 0 }}
               onUpdate={(updater) => updateCharacter(selected, updater)}
               onRemove={() => removeCharacter(selected)}
@@ -1114,7 +1123,7 @@ function Dashboard({ characters, charTotals, grandTotal, onSelect }) {
 /* =========================================================
  * CharacterView (개별 캐릭터)
  * ========================================================= */
-function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopyBudget, onPasteBudget, budgetClip }) {
+function CharacterView({ character, bossData, setBossData, totals, onUpdate, onRemove, onCopyBudget, onPasteBudget, budgetClip }) {
   const [editName, setEditName] = useState(false);
   const [nameInput, setNameInput] = useState(character.name);
   const [tab, setTab] = useState('boss');
@@ -1196,6 +1205,11 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
     onUpdate(c => ({ ...c, bosses: [] }));
   };
 
+  // 보스 소요시간(분) — 보스 공통값으로 저장(가격처럼)
+  const setBossTime = (bossId, minutes) => {
+    setBossData(prev => prev.map(b => b.id === bossId ? { ...b, time: minutes } : b));
+  };
+
   const saveName = () => {
     const v = nameInput.trim();
     if (v) onUpdate(c => ({ ...c, name: v }));
@@ -1270,6 +1284,7 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
             onToggle={toggleBoss}
             onSetMembers={setBossMembers}
             onReset={resetBosses}
+            onSetTime={setBossTime}
           />
         </>
       )}
@@ -1468,7 +1483,7 @@ function BossIcon({ id, name, icon }) {
   );
 }
 
-function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers, onReset }) {
+function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers, onReset, onSetTime }) {
   const [sortMode, setSortMode] = useState('natural');
 
   // 보스당 선택된 난이도 (보스당 1개) — 현재 보스 목록에 있는 것만 (제거된 보스 무시)
@@ -1530,6 +1545,19 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers,
     }
     return { weekly, monthly, total: weekly + monthly };
   }, [rows, bossData]);
+
+  // 소요시간 합산: 선택된 보스 기준
+  // 주간 소요 = 주간보스 시간 합 / 월간 소요 = 주간 소요 ×4 + 월간보스 시간 합
+  const timeSum = useMemo(() => {
+    let weeklyT = 0, monthlyBossT = 0;
+    for (const r of selectedRows) {
+      const boss = bossData.find(b => b.id === r.bossId);
+      if (!boss) continue;
+      const t = Math.max(0, boss.time || 0);
+      if (boss.monthly) monthlyBossT += t; else weeklyT += t;
+    }
+    return { weekly: weeklyT, monthly: weeklyT * 4 + monthlyBossT };
+  }, [selectedRows, bossData]);
 
   return (
     <div className="relative bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
@@ -1620,6 +1648,13 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers,
               <div className="flex items-center gap-2 mb-2">
                 <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
                 <span className={`font-medium ${checked ? 'text-slate-100' : 'text-slate-300'}`}>{boss.name}</span>
+                <span className="flex items-center gap-1 text-[11px] text-slate-400" title="이 보스 1회 소요시간(분)">
+                  <span>소요</span>
+                  <input type="number" min="0" value={boss.time || ''} placeholder="-"
+                    onChange={(e) => onSetTime(boss.id, Math.max(0, parseInt(String(e.target.value).replace(/[^0-9]/g, '')) || 0))}
+                    className="w-12 bg-maple-bg border border-maple-border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-maple-accent" />
+                  <span>분</span>
+                </span>
                 {monthly && (
                   <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-violet-500/15 text-violet-300 border-violet-500/40">월간</span>
                 )}
@@ -1672,12 +1707,20 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers,
 
       <div className="border-t-2 border-maple-border mt-3 pt-3 space-y-1.5">
         <div className="flex items-center justify-between text-sm">
-          <div className="text-slate-300">주간 합계</div>
+          <div className="text-slate-300">주간 수익</div>
           <div className="font-semibold text-sky-300">{fmtMeso(revenue.weekly)}</div>
         </div>
-        <div className="flex items-center justify-between text-sm">
-          <div className="text-slate-300">월간 합계</div>
+        <div className="flex items-center justify-between text-xs">
+          <div className="text-slate-400">주간 소요시간</div>
+          <div className="font-medium text-sky-200/80">{fmtMinutes(timeSum.weekly)}</div>
+        </div>
+        <div className="flex items-center justify-between text-sm pt-1">
+          <div className="text-slate-300">월간 수익</div>
           <div className="font-semibold text-violet-300">{fmtMeso(revenue.monthly)}</div>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <div className="text-slate-400">월간 소요시간 <span className="text-slate-500">(주간×4 + 월간보스)</span></div>
+          <div className="font-medium text-violet-200/80">{fmtMinutes(timeSum.monthly)}</div>
         </div>
         <div className="flex items-center justify-between pt-1.5 border-t border-maple-border">
           <div className="font-semibold">총 수익 합계</div>
