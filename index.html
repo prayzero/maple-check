@@ -1457,72 +1457,36 @@ function BossIcon({ id, name, icon }) {
 function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers }) {
   const [sortMode, setSortMode] = useState('natural');
 
-  // 전체 (보스 × 난이도) 엔트리 평탄화
-  const entries = useMemo(() => {
-    const arr = [];
-    for (const boss of bossData) {
-      for (const diff of Object.keys(boss.difficulties)) {
-        const { price, max } = getDifficultyEntry(boss, diff);
-        arr.push({
-          bossId: boss.id,
-          bossName: boss.name,
-          icon: boss.icon,
-          level: boss.level,
-          monthly: !!boss.monthly,
-          difficulty: diff,
-          price,
-          max,
-        });
-      }
-    }
-    return arr;
-  }, [bossData]);
-
-  const sortedEntries = useMemo(() => {
-    const e = [...entries];
-    if (sortMode === 'price_desc') {
-      e.sort((a, b) => b.price - a.price);
-    } else if (sortMode === 'price_asc') {
-      e.sort((a, b) => a.price - b.price);
-    } else if (sortMode === 'grouped') {
-      // 같은 보스 난이도끼리 묶고, 보스는 최고가 기준 내림차순 / 보스 내에서는 가격 내림차순
-      const bossMax = {};
-      for (const en of entries) bossMax[en.bossId] = Math.max(bossMax[en.bossId] || 0, en.price);
-      e.sort((a, b) => {
-        if (bossMax[b.bossId] !== bossMax[a.bossId]) return bossMax[b.bossId] - bossMax[a.bossId];
-        if (a.bossId !== b.bossId) return a.bossId < b.bossId ? -1 : 1;
-        return b.price - a.price;
-      });
-    } else {
-      const bossOrder = bossData.map(b => b.id);
-      e.sort((a, b) => {
-        const ai = bossOrder.indexOf(a.bossId);
-        const bi = bossOrder.indexOf(b.bossId);
-        if (ai !== bi) return ai - bi;
-        return (DIFF_ORDER[a.difficulty] ?? 99) - (DIFF_ORDER[b.difficulty] ?? 99);
-      });
-    }
-    return e;
-  }, [entries, sortMode, bossData]);
-
-  const selectedMap = useMemo(() => {
+  // 보스당 선택된 난이도 (보스당 1개)
+  const selByBoss = useMemo(() => {
     const m = {};
-    for (const r of rows) m[`${r.bossId}_${r.difficulty}`] = r;
+    for (const r of rows) m[r.bossId] = r;
     return m;
   }, [rows]);
 
-  // 현재 선택된 보스 id 집합 (같은 보스 난이도 변경 허용 판정에 사용)
-  const selectedBossIds = useMemo(() => new Set(rows.map(r => r.bossId)), [rows]);
-
-  // 월간 보스 id 집합
   const monthlyIds = useMemo(() => {
     const s = new Set();
     for (const b of bossData) if (b.monthly) s.add(b.id);
     return s;
   }, [bossData]);
 
-  // 주간 한도 카운트: 월간 보스는 제외
-  const selectedRows = Object.values(selectedMap);
+  // 보스별 묶음 (난이도 배지 정렬)
+  const bossList = useMemo(() => {
+    const list = bossData.map(boss => {
+      const diffs = Object.keys(boss.difficulties).map(diff => {
+        const { price, max } = getDifficultyEntry(boss, diff);
+        return { diff, price, max };
+      });
+      diffs.sort((a, b) => (DIFF_ORDER[a.diff] ?? 99) - (DIFF_ORDER[b.diff] ?? 99));
+      const maxPrice = diffs.reduce((a, d) => Math.max(a, d.price), 0);
+      return { boss, diffs, maxPrice, monthly: !!boss.monthly };
+    });
+    if (sortMode === 'price_desc') list.sort((a, b) => b.maxPrice - a.maxPrice);
+    else if (sortMode === 'price_asc') list.sort((a, b) => a.maxPrice - b.maxPrice);
+    return list;
+  }, [bossData, sortMode]);
+
+  const selectedRows = Object.values(selByBoss);
   const weeklyCount = selectedRows.filter(r => !monthlyIds.has(r.bossId)).length;
   const monthlyCount = selectedRows.filter(r => monthlyIds.has(r.bossId)).length;
   const isFull = weeklyCount >= weeklyLimit;
@@ -1549,7 +1513,7 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
             <span>💎</span> 보스 결정석 수익
           </h3>
           <div className="text-xs text-slate-400 mt-1">
-            주간 보스는 캐릭터당 최대 12개까지. 한 보스는 한 난이도만 선택할 수 있습니다. 월간 보스(검은 마법사)는 한도에서 제외됩니다.
+            보스마다 <span className="text-slate-300">난이도 배지를 클릭</span>해 선택하세요. 다시 누르면 해제됩니다. 한 보스는 한 난이도만, 주간 최대 12개. 월간 보스(검은 마법사)는 한도 제외.
           </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
@@ -1564,7 +1528,6 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
           </div>
           <div className="flex items-center gap-0.5 bg-maple-bg border border-maple-border rounded p-0.5">
             <SortBtn active={sortMode === 'natural'} onClick={() => setSortMode('natural')}>기본</SortBtn>
-            <SortBtn active={sortMode === 'grouped'} onClick={() => setSortMode('grouped')}>보스묶음 ↓</SortBtn>
             <SortBtn active={sortMode === 'price_desc'} onClick={() => setSortMode('price_desc')}>가격 ↓</SortBtn>
             <SortBtn active={sortMode === 'price_asc'} onClick={() => setSortMode('price_asc')}>가격 ↑</SortBtn>
           </div>
@@ -1577,87 +1540,66 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
         </div>
       )}
 
-      <div className="hidden md:grid grid-cols-12 gap-2 text-xs text-slate-400 px-3 py-2 border-b border-maple-border">
-        <div className="col-span-1">선택</div>
-        <div className="col-span-5">보스 / 난이도</div>
-        <div className="col-span-3 text-center">파티원</div>
-        <div className="col-span-3 text-right">결정석 가격 (1/N)</div>
-      </div>
-
       <div className="divide-y divide-maple-border">
-        {sortedEntries.map(entry => {
-          const key = `${entry.bossId}_${entry.difficulty}`;
-          const selected = selectedMap[key];
-          const checked = !!selected;
-          // 같은 보스의 다른 난이도가 이미 선택돼 있으면 (난이도 변경이므로) 비활성화하지 않음
-          const sameBossSelected = selectedBossIds.has(entry.bossId);
-          // 월간 보스는 주간 12개 한도와 무관 → 비활성화하지 않음
-          const disabled = !checked && isFull && !entry.monthly && !sameBossSelected;
-          const rawMembers = selected?.partyMembers || 1;
-          const members = Math.min(Math.max(1, rawMembers), entry.max);
-          const revenue = checked ? Math.floor(entry.price / members) : 0;
+        {bossList.map(({ boss, diffs, monthly }) => {
+          const sel = selByBoss[boss.id];
+          const checked = !!sel;
+          const selEntry = checked ? getDifficultyEntry(boss, sel.difficulty) : null;
+          const max = selEntry ? selEntry.max : 6;
+          const members = checked ? Math.min(Math.max(1, sel.partyMembers || 1), max) : 1;
+          const revenueVal = checked ? Math.floor(selEntry.price / members) : 0;
+          const cannotAdd = !checked && isFull && !monthly; // 한도 초과 시 새 보스 추가 불가
 
           return (
-            <label
-              key={key}
-              className={`
-                grid grid-cols-12 gap-2 items-center px-2 md:px-3 py-2.5 transition
-                ${checked ? 'bg-maple-accent/5' : ''}
-                ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-maple-bg/40'}
-              `}
-            >
-              <div className="col-span-2 md:col-span-1 flex items-center justify-center md:justify-start">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={disabled}
-                  onChange={() => onToggle(entry.bossId, entry.difficulty)}
-                  className="w-5 h-5 accent-amber-400 cursor-pointer disabled:cursor-not-allowed"
-                />
-              </div>
-              <div className="col-span-6 md:col-span-5 flex items-center gap-2 min-w-0">
-                <BossIcon id={entry.bossId} name={entry.bossName} icon={entry.icon} />
-                <div className="flex items-center gap-2 flex-wrap min-w-0">
-                  <span className={`font-medium truncate ${checked ? 'text-slate-100' : 'text-slate-300'}`}>
-                    {entry.bossName}
-                  </span>
-                  <DifficultyBadge difficulty={entry.difficulty} />
-                  {entry.monthly && (
-                    <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-violet-500/15 text-violet-300 border-violet-500/40">
-                      월간
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="col-span-4 md:col-span-3 flex justify-center">
-                <select
-                  value={members}
-                  disabled={!checked}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    onSetMembers(entry.bossId, entry.difficulty, parseInt(e.target.value) || 1);
-                  }}
-                  className="bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm w-16 text-center disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={entry.max === 1 ? '솔로 전용 (1인)' : `최대 ${entry.max}인`}
-                >
-                  {Array.from({ length: entry.max }, (_, i) => i + 1).map(n => (
-                    <option key={n} value={n}>{n}인</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-span-12 md:col-span-3 text-right">
-                {checked ? (
-                  <div className="font-semibold text-maple-accent text-sm md:text-base">
-                    {fmtMeso(revenue)}
-                  </div>
-                ) : (
-                  <div className="text-slate-500 text-xs md:text-sm">
-                    {fmtMeso(entry.price)}
-                  </div>
+            <div key={boss.id} className={`px-1 md:px-2 py-3 transition ${checked ? 'bg-maple-accent/5' : 'hover:bg-maple-bg/30'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
+                <span className={`font-medium ${checked ? 'text-slate-100' : 'text-slate-300'}`}>{boss.name}</span>
+                {monthly && (
+                  <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-violet-500/15 text-violet-300 border-violet-500/40">월간</span>
+                )}
+                {checked && (
+                  <span className="ml-auto font-bold text-maple-accent text-sm md:text-base">{fmtMeso(revenueVal)}</span>
                 )}
               </div>
-            </label>
+              <div className="flex flex-wrap items-center gap-1.5 pl-1">
+                {diffs.map(d => {
+                  const active = checked && sel.difficulty === d.diff;
+                  const disableThis = cannotAdd && !active;
+                  return (
+                    <button
+                      key={d.diff}
+                      type="button"
+                      disabled={disableThis}
+                      onClick={() => onToggle(boss.id, d.diff)}
+                      title={`${d.diff} · ${fmtMeso(d.price)}`}
+                      className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
+                        active
+                          ? 'bg-maple-accent text-slate-900 border-maple-accent font-bold'
+                          : disableThis
+                            ? 'bg-maple-bg border-maple-border text-slate-600 cursor-not-allowed'
+                            : 'bg-maple-bg border-maple-border text-slate-300 hover:border-maple-accent/70'
+                      }`}
+                    >
+                      <span className="font-bold tracking-wider uppercase">{d.diff}</span>
+                      <span className={active ? 'text-slate-800' : 'text-slate-400'}>{fmtMeso(d.price)}</span>
+                    </button>
+                  );
+                })}
+                {checked && (
+                  <select
+                    value={members}
+                    onChange={(e) => onSetMembers(boss.id, sel.difficulty, parseInt(e.target.value) || 1)}
+                    className="ml-1 bg-maple-bg border border-maple-border rounded px-2 py-1 text-xs w-16 text-center"
+                    title={max === 1 ? '솔로 전용 (1인)' : `최대 ${max}인`}
+                  >
+                    {Array.from({ length: max }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>{n}인</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
