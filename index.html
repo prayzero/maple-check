@@ -79,16 +79,6 @@ const DEFAULT_BOSSES = [
   { id: 'zakum', name: '자쿰', level: 90, icon: 'icons/zakum.png', difficulties: {
       'Chaos': { price: 8080000, max: 6 },
   }},
-  { id: 'cygnus', name: '시그너스', level: 165, icon: 'icons/cygnus.png', difficulties: {
-      'Easy':   { price: 4550000, max: 6 },
-      'Normal': { price: 1360000, max: 6 },
-  }},
-  { id: 'pinkbean', name: '핑크빈', level: 170, icon: 'icons/pinkbean.png', difficulties: {
-      'Chaos': { price: 1320000, max: 6 },
-  }},
-  { id: 'hilla', name: '힐라', level: 170, icon: 'icons/hilla.png', difficulties: {
-      'Hard': { price: 1280000, max: 6 },
-  }},
   { id: 'magnus', name: '매그너스', level: 175, icon: 'icons/magnus.png', difficulties: {
       'Hard': { price: 8560000, max: 6 },
   }},
@@ -256,6 +246,17 @@ const snapshotPriceMap = (entry) => {
     merged[id] = { ...CURRENT_PRICE_MAP[id], ...((entry && entry.overrides && entry.overrides[id]) || {}) };
   }
   return merged;
+};
+
+/* 저장된 보스 데이터를 현재 기본 목록과 동기화
+ * - 기본 목록에서 빠진 보스(일간 전환된 힐라/시그너스/핑크빈 등)는 자동 제거
+ * - 새로 추가된 기본 보스는 합류
+ * - 기존 보스의 사용자 가격/인원 수정값은 그대로 유지 */
+const reconcileBossData = (saved) => {
+  if (!Array.isArray(saved)) return JSON.parse(JSON.stringify(DEFAULT_BOSSES));
+  const savedMap = {};
+  for (const b of saved) savedMap[b.id] = b;
+  return DEFAULT_BOSSES.map(def => savedMap[def.id] || JSON.parse(JSON.stringify(def)));
 };
 
 /* =========================================================
@@ -647,7 +648,7 @@ function useExpiryNotifications(characters) {
  * ========================================================= */
 function App() {
   const [characters, setCharacters] = useState(() => loadLS(LS_KEYS.CHARS, []).map(normalizeChar));
-  const [bossData, setBossData]     = useState(() => loadLS(LS_KEYS.BOSS_DATA, DEFAULT_BOSSES));
+  const [bossData, setBossData]     = useState(() => reconcileBossData(loadLS(LS_KEYS.BOSS_DATA, null)));
   const [selected, setSelected]     = useState(() => loadLS(LS_KEYS.SELECTED, 'dashboard'));
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -1460,12 +1461,13 @@ function BossIcon({ id, name, icon }) {
 function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers }) {
   const [sortMode, setSortMode] = useState('natural');
 
-  // 보스당 선택된 난이도 (보스당 1개)
+  // 보스당 선택된 난이도 (보스당 1개) — 현재 보스 목록에 있는 것만 (제거된 보스 무시)
   const selByBoss = useMemo(() => {
+    const valid = new Set(bossData.map(b => b.id));
     const m = {};
-    for (const r of rows) m[r.bossId] = r;
+    for (const r of rows) if (valid.has(r.bossId)) m[r.bossId] = r;
     return m;
-  }, [rows]);
+  }, [rows, bossData]);
 
   const monthlyIds = useMemo(() => {
     const s = new Set();
@@ -1484,9 +1486,20 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
       const maxPrice = diffs.reduce((a, d) => Math.max(a, d.price), 0);
       return { boss, diffs, maxPrice, monthly: !!boss.monthly };
     });
-    if (sortMode === 'price_desc') list.sort((a, b) => b.maxPrice - a.maxPrice);
-    else if (sortMode === 'price_asc') list.sort((a, b) => a.maxPrice - b.maxPrice);
     return list;
+  }, [bossData]);
+
+  // 가격순: 보스×난이도를 펼쳐서 가격순으로만 정렬
+  const flatEntries = useMemo(() => {
+    const arr = [];
+    for (const boss of bossData) {
+      for (const diff of Object.keys(boss.difficulties)) {
+        const { price, max } = getDifficultyEntry(boss, diff);
+        arr.push({ boss, diff, price, max, monthly: !!boss.monthly });
+      }
+    }
+    arr.sort((a, b) => sortMode === 'price_asc' ? a.price - b.price : b.price - a.price);
+    return arr;
   }, [bossData, sortMode]);
 
   const selectedRows = Object.values(selByBoss);
@@ -1544,7 +1557,41 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
       )}
 
       <div className="divide-y divide-maple-border">
-        {bossList.map(({ boss, diffs, monthly }) => {
+        {sortMode !== 'natural' ? flatEntries.map(({ boss, diff, price, max, monthly }) => {
+          const sel = selByBoss[boss.id];
+          const active = !!sel && sel.difficulty === diff;
+          const members = active ? Math.min(Math.max(1, sel.partyMembers || 1), max) : 1;
+          const revenueVal = active ? Math.floor(price / members) : 0;
+          const bossSelected = !!sel;
+          const cannotAdd = !active && !bossSelected && isFull && !monthly;
+          const st = diffStyle(diff);
+          return (
+            <div key={boss.id + '_' + diff} className={`flex items-center gap-2 px-1 md:px-2 py-2.5 transition ${active ? 'bg-maple-accent/5' : 'hover:bg-maple-bg/30'}`}>
+              <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
+              <span className={`font-medium ${active ? 'text-slate-100' : 'text-slate-300'}`}>{boss.name}</span>
+              <button type="button" disabled={cannotAdd} onClick={() => onToggle(boss.id, diff)}
+                title={`${diff} · ${fmtMeso(price)}`}
+                className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
+                  active ? `${st.on} font-bold ring-2 ring-white/40 shadow`
+                    : cannotAdd ? `${st.off} opacity-30 cursor-not-allowed`
+                    : `${st.off} hover:brightness-125`}`}>
+                <span className="font-bold tracking-wider uppercase">{diff}</span>
+                <span className="opacity-90">{fmtMeso(price)}</span>
+              </button>
+              {monthly && (
+                <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-violet-500/15 text-violet-300 border-violet-500/40">월간</span>
+              )}
+              {active && (
+                <select value={members} onChange={(e) => onSetMembers(boss.id, diff, parseInt(e.target.value) || 1)}
+                  className="bg-maple-bg border border-maple-border rounded px-2 py-1 text-xs w-16 text-center"
+                  title={max === 1 ? '솔로 전용 (1인)' : `최대 ${max}인`}>
+                  {Array.from({ length: max }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}인</option>)}
+                </select>
+              )}
+              <span className={`ml-auto text-sm md:text-base ${active ? 'font-bold text-maple-accent' : 'text-slate-500'}`}>{fmtMeso(active ? revenueVal : price)}</span>
+            </div>
+          );
+        }) : bossList.map(({ boss, diffs, monthly }) => {
           const sel = selByBoss[boss.id];
           const checked = !!sel;
           const selEntry = checked ? getDifficultyEntry(boss, sel.difficulty) : null;
