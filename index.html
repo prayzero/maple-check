@@ -1392,15 +1392,18 @@ function DurationsPanel({ durations, setDuration }) {
  * ========================================================= */
 const DIFF_ORDER = { 'Easy': 0, 'Normal': 1, 'Hard': 2, 'Chaos': 3, 'Extreme': 4 };
 
+// 난이도별 색상: off=미선택(연한), on=선택(진한)
+const DIFF_STYLE = {
+  'Easy':    { off: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40', on: 'bg-emerald-500 text-slate-900 border-emerald-300' },
+  'Normal':  { off: 'bg-sky-500/15 text-sky-300 border-sky-500/40',             on: 'bg-sky-500 text-slate-900 border-sky-300' },
+  'Hard':    { off: 'bg-pink-500/15 text-pink-300 border-pink-500/40',           on: 'bg-pink-500 text-slate-900 border-pink-300' },
+  'Chaos':   { off: 'bg-orange-500/15 text-orange-300 border-orange-500/40',     on: 'bg-orange-500 text-slate-900 border-orange-300' },
+  'Extreme': { off: 'bg-red-500/15 text-red-300 border-red-500/40',             on: 'bg-red-500 text-white border-red-300' },
+};
+const diffStyle = (diff) => DIFF_STYLE[diff] || { off: 'bg-slate-500/15 text-slate-300 border-slate-500/40', on: 'bg-slate-400 text-slate-900 border-slate-200' };
+
 function DifficultyBadge({ difficulty }) {
-  const styles = {
-    'Easy':    'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
-    'Normal':  'bg-sky-500/15 text-sky-300 border-sky-500/40',
-    'Hard':    'bg-pink-500/15 text-pink-300 border-pink-500/40',
-    'Chaos':   'bg-orange-500/15 text-orange-300 border-orange-500/40',
-    'Extreme': 'bg-red-500/20 text-red-300 border-red-500/40',
-  };
-  const style = styles[difficulty] || 'bg-slate-500/15 text-slate-300 border-slate-500/40';
+  const style = diffStyle(difficulty).off;
   return (
     <span className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded border ${style}`}>
       {difficulty}
@@ -1566,6 +1569,7 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
                 {diffs.map(d => {
                   const active = checked && sel.difficulty === d.diff;
                   const disableThis = cannotAdd && !active;
+                  const st = diffStyle(d.diff);
                   return (
                     <button
                       key={d.diff}
@@ -1575,14 +1579,14 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers 
                       title={`${d.diff} · ${fmtMeso(d.price)}`}
                       className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
                         active
-                          ? 'bg-maple-accent text-slate-900 border-maple-accent font-bold'
+                          ? `${st.on} font-bold ring-2 ring-white/40 shadow`
                           : disableThis
-                            ? 'bg-maple-bg border-maple-border text-slate-600 cursor-not-allowed'
-                            : 'bg-maple-bg border-maple-border text-slate-300 hover:border-maple-accent/70'
+                            ? `${st.off} opacity-30 cursor-not-allowed`
+                            : `${st.off} hover:brightness-125`
                       }`}
                     >
                       <span className="font-bold tracking-wider uppercase">{d.diff}</span>
-                      <span className={active ? 'text-slate-800' : 'text-slate-400'}>{fmtMeso(d.price)}</span>
+                      <span className={active ? 'opacity-90' : 'opacity-80'}>{fmtMeso(d.price)}</span>
                     </button>
                   );
                 })}
