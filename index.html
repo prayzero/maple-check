@@ -79,16 +79,6 @@ const DEFAULT_BOSSES = [
   { id: 'zakum', name: '자쿰', level: 90, icon: 'icons/zakum.png', difficulties: {
       'Chaos': { price: 8080000, max: 6 },
   }},
-  { id: 'cygnus', name: '시그너스', level: 165, icon: 'icons/cygnus.png', difficulties: {
-      'Easy':   { price: 4550000, max: 6 },
-      'Normal': { price: 1360000, max: 6 },
-  }},
-  { id: 'pinkbean', name: '핑크빈', level: 170, icon: 'icons/pinkbean.png', difficulties: {
-      'Chaos': { price: 1320000, max: 6 },
-  }},
-  { id: 'hilla', name: '힐라', level: 170, icon: 'icons/hilla.png', difficulties: {
-      'Hard': { price: 1280000, max: 6 },
-  }},
   { id: 'magnus', name: '매그너스', level: 175, icon: 'icons/magnus.png', difficulties: {
       'Hard': { price: 8560000, max: 6 },
   }},
@@ -256,6 +246,17 @@ const snapshotPriceMap = (entry) => {
     merged[id] = { ...CURRENT_PRICE_MAP[id], ...((entry && entry.overrides && entry.overrides[id]) || {}) };
   }
   return merged;
+};
+
+/* 저장된 보스 데이터를 현재 기본 목록과 동기화
+ * - 기본 목록에서 빠진 보스(일간 전환된 힐라/시그너스/핑크빈 등)는 자동 제거
+ * - 새로 추가된 기본 보스는 합류
+ * - 기존 보스의 사용자 가격/인원 수정값은 그대로 유지 */
+const reconcileBossData = (saved) => {
+  if (!Array.isArray(saved)) return JSON.parse(JSON.stringify(DEFAULT_BOSSES));
+  const savedMap = {};
+  for (const b of saved) savedMap[b.id] = b;
+  return DEFAULT_BOSSES.map(def => savedMap[def.id] || JSON.parse(JSON.stringify(def)));
 };
 
 /* =========================================================
@@ -647,7 +648,7 @@ function useExpiryNotifications(characters) {
  * ========================================================= */
 function App() {
   const [characters, setCharacters] = useState(() => loadLS(LS_KEYS.CHARS, []).map(normalizeChar));
-  const [bossData, setBossData]     = useState(() => loadLS(LS_KEYS.BOSS_DATA, DEFAULT_BOSSES));
+  const [bossData, setBossData]     = useState(() => reconcileBossData(loadLS(LS_KEYS.BOSS_DATA, null)));
   const [selected, setSelected]     = useState(() => loadLS(LS_KEYS.SELECTED, 'dashboard'));
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -1460,12 +1461,13 @@ function BossIcon({ id, name, icon }) {
 function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers }) {
   const [sortMode, setSortMode] = useState('natural');
 
-  // 보스당 선택된 난이도 (보스당 1개)
+  // 보스당 선택된 난이도 (보스당 1개) — 현재 보스 목록에 있는 것만 (제거된 보스 무시)
   const selByBoss = useMemo(() => {
+    const valid = new Set(bossData.map(b => b.id));
     const m = {};
-    for (const r of rows) m[r.bossId] = r;
+    for (const r of rows) if (valid.has(r.bossId)) m[r.bossId] = r;
     return m;
-  }, [rows]);
+  }, [rows, bossData]);
 
   const monthlyIds = useMemo(() => {
     const s = new Set();
