@@ -579,6 +579,7 @@ const normalizeChar = (c) => ({
     setMemo: c.goals.setMemo || '',
   } : emptyGoals(),
   budget: c.budget || { total: 0 },
+  bossTimes: c.bossTimes || {},
 });
 
 /* =========================================================
@@ -823,7 +824,6 @@ function App() {
             <CharacterView
               character={characters.find(c => c.id === selected)}
               bossData={bossData}
-              setBossData={setBossData}
               totals={charTotals[selected] || { weekly: 0, monthly: 0, total: 0 }}
               onUpdate={(updater) => updateCharacter(selected, updater)}
               onRemove={() => removeCharacter(selected)}
@@ -1123,7 +1123,7 @@ function Dashboard({ characters, charTotals, grandTotal, onSelect }) {
 /* =========================================================
  * CharacterView (개별 캐릭터)
  * ========================================================= */
-function CharacterView({ character, bossData, setBossData, totals, onUpdate, onRemove, onCopyBudget, onPasteBudget, budgetClip }) {
+function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopyBudget, onPasteBudget, budgetClip }) {
   const [editName, setEditName] = useState(false);
   const [nameInput, setNameInput] = useState(character.name);
   const [tab, setTab] = useState('boss');
@@ -1205,9 +1205,9 @@ function CharacterView({ character, bossData, setBossData, totals, onUpdate, onR
     onUpdate(c => ({ ...c, bosses: [] }));
   };
 
-  // 보스 소요시간(분) — 보스 공통값으로 저장(가격처럼)
+  // 보스 소요시간(분) — 캐릭터별로 저장
   const setBossTime = (bossId, minutes) => {
-    setBossData(prev => prev.map(b => b.id === bossId ? { ...b, time: minutes } : b));
+    onUpdate(c => ({ ...c, bossTimes: { ...(c.bossTimes || {}), [bossId]: minutes } }));
   };
 
   const saveName = () => {
@@ -1280,6 +1280,7 @@ function CharacterView({ character, bossData, setBossData, totals, onUpdate, onR
           <BossRevenueTable
             rows={character.bosses || []}
             bossData={bossData}
+            bossTimes={character.bossTimes || {}}
             weeklyLimit={WEEKLY_LIMIT}
             onToggle={toggleBoss}
             onSetMembers={setBossMembers}
@@ -1483,7 +1484,7 @@ function BossIcon({ id, name, icon }) {
   );
 }
 
-function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers, onReset, onSetTime }) {
+function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggle, onSetMembers, onReset, onSetTime }) {
   const [sortMode, setSortMode] = useState('natural');
 
   // 보스당 선택된 난이도 (보스당 1개) — 현재 보스 목록에 있는 것만 (제거된 보스 무시)
@@ -1553,11 +1554,11 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers,
     for (const r of selectedRows) {
       const boss = bossData.find(b => b.id === r.bossId);
       if (!boss) continue;
-      const t = Math.max(0, boss.time || 0);
+      const t = Math.max(0, bossTimes[boss.id] || 0);
       if (boss.monthly) monthlyBossT += t; else weeklyT += t;
     }
     return { weekly: weeklyT, monthly: weeklyT * 4 + monthlyBossT };
-  }, [selectedRows, bossData]);
+  }, [selectedRows, bossData, bossTimes]);
 
   return (
     <div className="relative bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
@@ -1648,10 +1649,10 @@ function BossRevenueTable({ rows, bossData, weeklyLimit, onToggle, onSetMembers,
               <div className="flex items-center gap-2 mb-2">
                 <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
                 <span className={`font-medium ${checked ? 'text-slate-100' : 'text-slate-300'}`}>{boss.name}</span>
-                <span className="flex items-center gap-1 text-[11px] text-slate-400" title="이 보스 1회 소요시간(분)">
+                <span className="flex items-center gap-1 text-[11px] text-slate-400" title="이 캐릭터의 보스 1회 소요시간(분)">
                   <span>소요</span>
-                  <input type="number" min="0" value={boss.time || ''} placeholder="-"
-                    onChange={(e) => onSetTime(boss.id, Math.max(0, parseInt(String(e.target.value).replace(/[^0-9]/g, '')) || 0))}
+                  <input type="text" inputMode="numeric" value={bossTimes[boss.id] || ''} placeholder="-"
+                    onChange={(e) => onSetTime(boss.id, parseInt(String(e.target.value).replace(/[^0-9]/g, '')) || 0)}
                     className="w-12 bg-maple-bg border border-maple-border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-maple-accent" />
                   <span>분</span>
                 </span>
