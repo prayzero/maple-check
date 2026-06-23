@@ -1210,6 +1210,19 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
     onUpdate(c => ({ ...c, bossTimes: { ...(c.bossTimes || {}), [bossId]: minutes } }));
   };
 
+  // 선택 보스 기준 소요시간 합산 (상단 카드 표시용)
+  const bossTimeSum = useMemo(() => {
+    let w = 0, mb = 0;
+    const times = character.bossTimes || {};
+    for (const r of (character.bosses || [])) {
+      const boss = bossData.find(b => b.id === r.bossId);
+      if (!boss) continue;
+      const t = Math.max(0, times[r.bossId] || 0);
+      if (boss.monthly) mb += t; else w += t;
+    }
+    return { weekly: w, monthly: w * 4 + mb };
+  }, [character.bosses, character.bossTimes, bossData]);
+
   const saveName = () => {
     const v = nameInput.trim();
     if (v) onUpdate(c => ({ ...c, name: v }));
@@ -1269,10 +1282,12 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
               <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
                 <div className="text-xs text-slate-400">주간 수익</div>
                 <div className="text-base md:text-lg font-bold text-sky-300 mt-0.5 break-all">{fmtMeso(totals.weekly)}</div>
+                <div className="text-xs text-slate-400 mt-1">주간 소요시간 <span className="text-sky-200/80 font-medium">{fmtMinutes(bossTimeSum.weekly)}</span></div>
               </div>
               <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
                 <div className="text-xs text-slate-400">월간 수익</div>
                 <div className="text-base md:text-lg font-bold text-violet-300 mt-0.5 break-all">{fmtMeso(totals.monthly)}</div>
+                <div className="text-xs text-slate-400 mt-1">월간 소요시간 <span className="text-violet-200/80 font-medium">{fmtMinutes(bossTimeSum.monthly)}</span></div>
               </div>
             </div>
           </div>
