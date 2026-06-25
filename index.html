@@ -369,10 +369,10 @@ const EQUIP_SLOT_NAME = Object.fromEntries(EQUIP_SLOTS.map(s => [s.id, s.name]))
 
 // 인게임 장비창 칸 배치 (열 단위, 위→아래) — 사용자 제공 순번
 const EQ_COL_LEFT_OUTER  = ['ring1', 'ring2', 'ring3', 'ring4', 'belt', 'pocket'];
-const EQ_COL_LEFT_INNER  = ['face', 'eye', 'pendant1', 'pendant2'];
+const EQ_COL_LEFT_INNER  = ['face', 'eye', 'ear', 'pendant1', 'pendant2'];
 const EQ_CENTER_BOTTOM   = ['weapon', 'subweapon', 'emblem'];
-const EQ_COL_RIGHT_INNER = ['hat', 'top', 'bottom', 'shoes', 'shoulder', 'android', 'title'];
-const EQ_COL_RIGHT_OUTER = ['cape', 'glove', 'ear', 'medal', 'heart', 'badge'];
+const EQ_COL_RIGHT_INNER = ['hat', 'top', 'bottom', 'shoulder', 'android', 'title'];
+const EQ_COL_RIGHT_OUTER = ['cape', 'glove', 'shoes', 'medal', 'heart', 'badge'];
 
 const POTENTIAL_GRADES = ['미설정', '레어', '에픽', '유니크', '레전드리'];
 const POTENTIAL_STYLE = {
@@ -2273,26 +2273,26 @@ function EquipSlotCell({ slot, data, onClick }) {
         !filled
           ? 'bg-[#16202f] border-dashed border-slate-600/70 hover:border-maple-accent/60'
           : d.done
-            ? 'bg-emerald-500/15 border-emerald-500/70 hover:border-emerald-400'
+            ? 'bg-emerald-500/40 border-emerald-400 hover:border-emerald-300'
             : 'bg-[#1b2536] border-maple-accent/60 hover:border-maple-accent'
       }`}
     >
       {filled ? (
         <>
-          <div className="text-[8px] md:text-[9px] text-slate-500 leading-none mb-0.5">{slot.name}</div>
-          <div className="text-[9px] md:text-[10px] font-medium text-slate-100 leading-tight line-clamp-2 px-0.5">{d.item || '—'}</div>
+          <div className={`text-[8px] md:text-[9px] leading-none mb-0.5 ${d.done ? 'text-emerald-100/80' : 'text-slate-500'}`}>{slot.name}</div>
+          <div className={`text-[9px] md:text-[10px] font-medium leading-tight line-clamp-2 px-0.5 ${d.done ? 'text-white' : 'text-slate-100'}`}>{d.item || '—'}</div>
           <div className="flex items-center gap-1 mt-0.5">
             {d.star ? <span className="text-[9px] md:text-[10px] text-amber-300 font-bold">★{d.star}</span> : null}
-            {d.potTarget ? <span className={`text-[9px] md:text-[10px] font-bold ${potColor || 'text-lime-300'}`}>{d.potTarget}</span> : null}
+            {d.potTarget ? <span className={`text-[9px] md:text-[10px] font-bold ${d.done ? 'text-white' : (potColor || 'text-lime-300')}`}>{d.potTarget}</span> : null}
           </div>
-          {d.cost ? <div className="text-[8px] md:text-[10px] text-emerald-300 font-semibold leading-none">{fmtMesoShort(d.cost)}</div> : null}
+          {d.cost ? <div className={`text-[8px] md:text-[10px] font-semibold leading-none ${d.done ? 'text-emerald-50' : 'text-emerald-300'}`}>{fmtMesoShort(d.cost)}</div> : null}
           {(d.flameDone || d.jakDone) ? (
             <div className="flex items-center gap-0.5 mt-0.5">
-              {d.flameDone ? <span className="text-[8px] text-emerald-400 font-bold">추✓</span> : null}
-              {d.jakDone ? <span className="text-[8px] text-sky-400 font-bold">작✓</span> : null}
+              {d.flameDone ? <span className={`text-[8px] font-bold ${d.done ? 'text-white' : 'text-emerald-400'}`}>추✓</span> : null}
+              {d.jakDone ? <span className={`text-[8px] font-bold ${d.done ? 'text-white' : 'text-sky-400'}`}>작✓</span> : null}
             </div>
           ) : null}
-          {d.done ? <div className="absolute top-0.5 right-1 text-[9px] text-emerald-400 font-bold">✓</div> : null}
+          {d.done ? <div className="absolute top-0.5 right-1 text-[10px] text-white font-extrabold drop-shadow">✓</div> : null}
         </>
       ) : (
         <>
