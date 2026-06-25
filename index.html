@@ -361,22 +361,18 @@ const EQUIP_SLOTS = [
   { id: 'hat', name: '모자' }, { id: 'face', name: '얼굴장식' }, { id: 'eye', name: '눈장식' }, { id: 'ear', name: '귀고리' },
   { id: 'top', name: '상의' }, { id: 'bottom', name: '하의' },
   { id: 'shoes', name: '신발' }, { id: 'glove', name: '장갑' }, { id: 'cape', name: '망토' },
-  { id: 'shoulder', name: '어깨장식' }, { id: 'belt', name: '벨트' },
+  { id: 'shoulder', name: '견장' }, { id: 'belt', name: '벨트' },
   { id: 'medal', name: '훈장' }, { id: 'badge', name: '뱃지' }, { id: 'pocket', name: '포켓' },
-  { id: 'heart', name: '기계심장' }, { id: 'android', name: '안드로이드' },
+  { id: 'heart', name: '기계심장' }, { id: 'android', name: '안드로이드' }, { id: 'title', name: '칭호' },
 ];
 const EQUIP_SLOT_NAME = Object.fromEntries(EQUIP_SLOTS.map(s => [s.id, s.name]));
 
-// 메이플 장비탭과 유사한 5열 배치 (null = 빈 칸)
-const EQUIP_GRID = [
-  ['ring1',  null,       'hat',       null,     'emblem'],
-  ['ring2',  null,       'face',      null,     'badge'],
-  ['ring3',  'pendant1', 'eye',       null,     'medal'],
-  ['ring4',  'pendant2', 'ear',       null,     'shoulder'],
-  ['weapon', 'top',      'subweapon', 'pocket', 'heart'],
-  [null,     'bottom',    null,        null,    'android'],
-  ['glove',  'shoes',    'cape',      'belt',    null],
-];
+// 인게임 장비창 칸 배치 (열 단위, 위→아래) — 사용자 제공 순번
+const EQ_COL_LEFT_OUTER  = ['ring1', 'ring2', 'ring3', 'ring4', 'belt', 'pocket'];
+const EQ_COL_LEFT_INNER  = ['face', 'eye', 'ear', 'pendant1', 'pendant2'];
+const EQ_CENTER_BOTTOM   = ['weapon', 'subweapon', 'emblem'];
+const EQ_COL_RIGHT_INNER = ['hat', 'top', 'bottom', 'shoulder', 'android', 'title'];
+const EQ_COL_RIGHT_OUTER = ['cape', 'glove', 'shoes', 'medal', 'heart', 'badge'];
 
 const POTENTIAL_GRADES = ['미설정', '레어', '에픽', '유니크', '레전드리'];
 const POTENTIAL_STYLE = {
@@ -505,6 +501,7 @@ const SLOT_CAP = {
   badge:     { star: false, pot: false, addpot: false, flame: false, jak: false, soul: false },
   pocket:    { star: false, pot: false, addpot: false, flame: false, jak: false, soul: false },
   android:   { star: false, pot: false, addpot: false, flame: false, jak: false, soul: false },
+  title:     { star: false, pot: false, addpot: false, flame: false, jak: false, soul: false },
 };
 
 /* 잠재 목표 — 옵션 나열 대신 줄수/이탈 표기 프리셋 (부위별) */
@@ -542,14 +539,6 @@ const SLOT_ITEM_PRESETS = {
 };
 
 // 본게임 EQUIPMENT 창 배치 (좌 2열 / 가운데 캐릭터+무기 / 우 2열)
-const EQUIP_LEFT = [
-  ['ring1', 'emblem'], ['ring2', 'badge'], ['ring3', 'pendant1'],
-  ['ring4', 'pendant2'], ['pocket', 'medal'], ['heart', 'android'],
-];
-const EQUIP_RIGHT = [
-  ['hat', null], ['face', 'cape'], ['eye', 'shoulder'],
-  ['ear', 'glove'], ['top', 'belt'], ['bottom', 'shoes'],
-];
 const emptyGoals = () => ({
   level: { current: '', target: '', percent: '' },
   symbols: {
@@ -2209,15 +2198,21 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
             <span className="font-extrabold tracking-wide text-slate-100">EQUIPMENT</span>
             <span className="text-xs font-bold text-slate-300 bg-[#3b4a61] border border-slate-500/50 rounded px-3 py-1">치장 ›</span>
           </div>
-          {/* 보드 */}
-          <div className="p-3 md:p-4 flex justify-center items-start gap-2 md:gap-3">
-            <div className="grid grid-cols-2 gap-1.5 md:gap-2">
-              {EQUIP_LEFT.flat().map((slotId, i) => (
-                <EquipSlotCell key={i} slot={{ id: slotId, name: EQUIP_SLOT_NAME[slotId] }} data={equipment[slotId]} onClick={() => openSlot(slotId)} />
+          {/* 보드 — 인게임 순번: 좌 2열 / 가운데(캐릭터+무기·보조·엠블렘) / 우 2열 */}
+          <div className="p-3 md:p-4 overflow-x-auto">
+           <div className="flex justify-center items-start gap-1.5 md:gap-2 min-w-max mx-auto">
+            <div className="flex flex-col gap-1.5 md:gap-2">
+              {EQ_COL_LEFT_OUTER.map(id => (
+                <EquipSlotCell key={id} slot={{ id, name: EQUIP_SLOT_NAME[id] }} data={equipment[id]} onClick={() => openSlot(id)} />
               ))}
             </div>
-            <div className="flex flex-col items-center justify-between self-stretch">
-              <div className="flex-1 w-[124px] md:w-[164px] bg-[#0e1726] border border-slate-600/50 rounded-lg flex flex-col items-center justify-center py-3">
+            <div className="flex flex-col gap-1.5 md:gap-2">
+              {EQ_COL_LEFT_INNER.map(id => (
+                <EquipSlotCell key={id} slot={{ id, name: EQUIP_SLOT_NAME[id] }} data={equipment[id]} onClick={() => openSlot(id)} />
+              ))}
+            </div>
+            <div className="flex flex-col items-center self-stretch">
+              <div className="flex-1 w-[110px] md:w-[150px] min-h-[180px] bg-[#0e1726] border border-slate-600/50 rounded-lg flex flex-col items-center justify-center py-3">
                 <svg width="46" height="60" viewBox="0 0 46 60" className="opacity-70">
                   <circle cx="23" cy="16" r="13" fill="#cbd5e1" />
                   <path d="M5 56 q18 -30 36 0 z" fill="#94a3b8" />
@@ -2225,17 +2220,22 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
                 <div className="text-[10px] text-slate-500 mt-2">캐릭터 미리보기</div>
               </div>
               <div className="flex gap-1.5 md:gap-2 mt-1.5 md:mt-2">
-                <EquipSlotCell slot={{ id: 'weapon', name: '무기' }} data={equipment.weapon} onClick={() => openSlot('weapon')} />
-                <EquipSlotCell slot={{ id: 'subweapon', name: '보조무기' }} data={equipment.subweapon} onClick={() => openSlot('subweapon')} />
+                {EQ_CENTER_BOTTOM.map(id => (
+                  <EquipSlotCell key={id} slot={{ id, name: EQUIP_SLOT_NAME[id] }} data={equipment[id]} onClick={() => openSlot(id)} />
+                ))}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-1.5 md:gap-2">
-              {EQUIP_RIGHT.flat().map((slotId, i) => (
-                slotId
-                  ? <EquipSlotCell key={i} slot={{ id: slotId, name: EQUIP_SLOT_NAME[slotId] }} data={equipment[slotId]} onClick={() => openSlot(slotId)} />
-                  : <div key={i} className="w-[60px] h-[60px] md:w-[76px] md:h-[76px]" />
+            <div className="flex flex-col gap-1.5 md:gap-2">
+              {EQ_COL_RIGHT_INNER.map(id => (
+                <EquipSlotCell key={id} slot={{ id, name: EQUIP_SLOT_NAME[id] }} data={equipment[id]} onClick={() => openSlot(id)} />
               ))}
             </div>
+            <div className="flex flex-col gap-1.5 md:gap-2">
+              {EQ_COL_RIGHT_OUTER.map(id => (
+                <EquipSlotCell key={id} slot={{ id, name: EQUIP_SLOT_NAME[id] }} data={equipment[id]} onClick={() => openSlot(id)} />
+              ))}
+            </div>
+           </div>
           </div>
           {/* PRESETS 바 (표시용) */}
           <div className="bg-[#2c3a4f]/70 border-t border-black/30 px-4 py-2.5 flex items-center justify-between">
@@ -2273,26 +2273,26 @@ function EquipSlotCell({ slot, data, onClick }) {
         !filled
           ? 'bg-[#16202f] border-dashed border-slate-600/70 hover:border-maple-accent/60'
           : d.done
-            ? 'bg-emerald-500/15 border-emerald-500/70 hover:border-emerald-400'
+            ? 'bg-emerald-500/40 border-emerald-400 hover:border-emerald-300'
             : 'bg-[#1b2536] border-maple-accent/60 hover:border-maple-accent'
       }`}
     >
       {filled ? (
         <>
-          <div className="text-[8px] md:text-[9px] text-slate-500 leading-none mb-0.5">{slot.name}</div>
-          <div className="text-[9px] md:text-[10px] font-medium text-slate-100 leading-tight line-clamp-2 px-0.5">{d.item || '—'}</div>
+          <div className={`text-[8px] md:text-[9px] leading-none mb-0.5 ${d.done ? 'text-emerald-100/80' : 'text-slate-500'}`}>{slot.name}</div>
+          <div className={`text-[9px] md:text-[10px] font-medium leading-tight line-clamp-2 px-0.5 ${d.done ? 'text-white' : 'text-slate-100'}`}>{d.item || '—'}</div>
           <div className="flex items-center gap-1 mt-0.5">
             {d.star ? <span className="text-[9px] md:text-[10px] text-amber-300 font-bold">★{d.star}</span> : null}
-            {d.potTarget ? <span className={`text-[9px] md:text-[10px] font-bold ${potColor || 'text-lime-300'}`}>{d.potTarget}</span> : null}
+            {d.potTarget ? <span className={`text-[9px] md:text-[10px] font-bold ${d.done ? 'text-white' : (potColor || 'text-lime-300')}`}>{d.potTarget}</span> : null}
           </div>
-          {d.cost ? <div className="text-[8px] md:text-[10px] text-emerald-300 font-semibold leading-none">{fmtMesoShort(d.cost)}</div> : null}
+          {d.cost ? <div className={`text-[8px] md:text-[10px] font-semibold leading-none ${d.done ? 'text-emerald-50' : 'text-emerald-300'}`}>{fmtMesoShort(d.cost)}</div> : null}
           {(d.flameDone || d.jakDone) ? (
             <div className="flex items-center gap-0.5 mt-0.5">
-              {d.flameDone ? <span className="text-[8px] text-emerald-400 font-bold">추✓</span> : null}
-              {d.jakDone ? <span className="text-[8px] text-sky-400 font-bold">작✓</span> : null}
+              {d.flameDone ? <span className={`text-[8px] font-bold ${d.done ? 'text-white' : 'text-emerald-400'}`}>추✓</span> : null}
+              {d.jakDone ? <span className={`text-[8px] font-bold ${d.done ? 'text-white' : 'text-sky-400'}`}>작✓</span> : null}
             </div>
           ) : null}
-          {d.done ? <div className="absolute top-0.5 right-1 text-[9px] text-emerald-400 font-bold">✓</div> : null}
+          {d.done ? <div className="absolute top-0.5 right-1 text-[10px] text-white font-extrabold drop-shadow">✓</div> : null}
         </>
       ) : (
         <>
