@@ -538,6 +538,95 @@ const SLOT_ITEM_PRESETS = {
   pendant2: ['도미', '데브', '고근'],
 };
 
+/* =========================================================
+ * 세트 효과 데이터 (KMS 2026.06) — 누적 적용
+ * 각 단계는 "그 세트수에서 추가되는 옵션". 총합 = 보유 세트수 이하 단계 모두 합산.
+ * 스탯키: atk(공/마), allStat(올스탯), bossPct(보공%), iedPct(방무%),
+ *         critPct(크뎀%), hpmpFlat(HP/MP), hpFlat(HP), hpmpPct(HP/MP%), def(방어력)
+ * ========================================================= */
+const SET_DATA = {
+  absol:   { name: '앱솔랩스', tiers: {
+    2:{hpmpFlat:1500,atk:20,bossPct:10}, 3:{allStat:30,atk:20,bossPct:10}, 4:{atk:25,def:200,iedPct:10},
+    5:{atk:30,bossPct:10}, 6:{hpmpPct:20,atk:20}, 7:{atk:20,iedPct:10} } },
+  arcane:  { name: '아케인셰이드', tiers: {
+    2:{atk:30,bossPct:10}, 3:{atk:30,def:400,iedPct:10}, 4:{allStat:50,atk:35,bossPct:10},
+    5:{hpmpFlat:2000,atk:40,bossPct:10}, 6:{hpmpPct:30,atk:30}, 7:{atk:30,iedPct:10} } },
+  eternel: { name: '에테르넬', tiers: {
+    2:{hpmpFlat:2500,atk:40,bossPct:10}, 3:{allStat:50,atk:40,bossPct:10,def:600}, 4:{hpmpPct:15,atk:40,bossPct:10},
+    5:{atk:40,iedPct:20}, 6:{atk:40,bossPct:15}, 7:{hpmpFlat:2500,allStat:50,atk:40,bossPct:15}, 8:{atk:40,bossPct:15} } },
+  meister: { name: '마이스터', tiers: { 2:{hpmpPct:10}, 3:{atk:40}, 4:{bossPct:20} } },
+  bossAcc: { name: '보스 장신구', tiers: {
+    3:{allStat:10,hpmpPct:5,atk:5}, 5:{allStat:10,hpmpPct:5,atk:5},
+    7:{allStat:10,atk:10,def:80,iedPct:10}, 9:{allStat:15,atk:10,def:100,bossPct:10} } },
+  dawn:    { name: '여명의 보스', tiers: {
+    2:{allStat:10,hpFlat:250,atk:10,bossPct:10}, 3:{allStat:10,hpFlat:250,atk:10},
+    4:{allStat:10,hpFlat:250,atk:10,def:100,iedPct:10} } },
+  dark:    { name: '칠흑의 보스', tiers: {
+    2:{allStat:10,hpFlat:250,atk:10,bossPct:10}, 3:{allStat:10,hpFlat:250,atk:10,def:250,iedPct:10},
+    4:{allStat:15,hpFlat:375,atk:15,critPct:5}, 5:{allStat:15,hpFlat:375,atk:15,bossPct:10},
+    6:{allStat:15,hpFlat:375,atk:15,iedPct:10}, 7:{allStat:15,hpFlat:375,atk:15,critPct:5},
+    8:{allStat:15,hpFlat:375,atk:15,bossPct:10}, 9:{allStat:15,hpFlat:375,atk:15,critPct:5},
+    10:{allStat:20,hpFlat:500,atk:20,bossPct:10} } },
+  radiant: { name: '광휘의 보스', tiers: {
+    2:{allStat:20,hpFlat:500,atk:20,bossPct:15}, 3:{allStat:20,hpFlat:500,atk:20,iedPct:15},
+    4:{allStat:20,hpFlat:500,atk:20,critPct:5}, 5:{allStat:20,hpFlat:500,atk:20,bossPct:15},
+    6:{allStat:20,hpFlat:500,atk:20,critPct:7.5} } },
+};
+// 아이템명/약어 → 세트 매칭 (구체적인 것 먼저, 부분일치)
+const SET_TOKENS = [
+  // 광휘
+  ['근원의 속삭임','radiant'],['황홀한 악몽','radiant'],['죽음의 맹세','radiant'],['불멸의 유산','radiant'],['오만의 원죄','radiant'],['핏빛 원혼','radiant'],['굶주리는','radiant'],
+  // 칠흑
+  ['루컨마','dark'],['루즈 컨트롤','dark'],['마깃안','dark'],['마력이 깃든','dark'],['컨플','dark'],['컴플리트','dark'],['블랙 하트','dark'],['블랙하트','dark'],['몽벨','dark'],['몽환','dark'],['고근','dark'],['고통의 근원','dark'],['창뱃','dark'],['창세','dark'],['커포','dark'],['커맨더','dark'],['거공','dark'],['거대한 공포','dark'],['마도서','dark'],['미트라','dark'],
+  // 여명 (가엔링보다 먼저: 여명가엔링)
+  ['트왈마','dawn'],['트와일라이트','dawn'],['에스텔라','dawn'],['여명','dawn'],['데브','dawn'],['데이브레이크','dawn'],
+  // 마이스터
+  ['마이스터','meister'],['마이링','meister'],['마이 ','meister'],
+  // 보스 장신구
+  ['응축','bossAcc'],['아쿠아틱','bossAcc'],['블빈마','bossAcc'],['블랙빈','bossAcc'],['파풀마','bossAcc'],['파풀라투스','bossAcc'],['데아','bossAcc'],['지옥의 불꽃','bossAcc'],['실버블라썸','bossAcc'],['이피아','bossAcc'],['혼테일','bossAcc'],['매커네이터','bossAcc'],['도미','bossAcc'],['골클벨','bossAcc'],['골든 클로버','bossAcc'],['분자벨','bossAcc'],['분노한','bossAcc'],['로얄 블랙메탈','bossAcc'],['웬투스','bossAcc'],['성배','bossAcc'],['영생','bossAcc'],['가엔링','bossAcc'],['가디언 엔젤','bossAcc'],
+  // 방어구/무기
+  ['앱솔','absol'],['아케인','arcane'],['에테','eternel'],['제네시스','eternel'],['데스티니','eternel'],
+];
+const detectSetId = (itemText) => {
+  if (!itemText) return null;
+  const s = String(itemText);
+  for (const [tok, sid] of SET_TOKENS) if (s.includes(tok)) return sid;
+  return null;
+};
+const STAT_LABELS = [
+  ['atk','공/마','+',''], ['allStat','올스탯','+',''], ['bossPct','보공','+','%'],
+  ['iedPct','방무','+','%'], ['critPct','크뎀','+','%'], ['hpmpPct','HP/MP','+','%'],
+  ['hpmpFlat','HP/MP','+',''], ['hpFlat','HP','+',''], ['def','방어력','+',''],
+];
+const fmtSetBonus = (o) => STAT_LABELS
+  .filter(([k]) => o[k]).map(([k, label, , unit]) => `${label} +${o[k]}${unit}`).join(', ');
+// 장비 → 세트별 카운트 / 누적 합산
+const computeSetEffects = (equipment) => {
+  const counts = {};
+  for (const slot of EQUIP_SLOTS) {
+    const it = equipment?.[slot.id]?.item;
+    const sid = detectSetId(it);
+    if (sid) counts[sid] = (counts[sid] || 0) + 1;
+  }
+  const sets = [];
+  const total = {};
+  for (const sid of Object.keys(counts)) {
+    const def = SET_DATA[sid]; if (!def) continue;
+    const cnt = counts[sid];
+    const sum = {}; const activeTiers = [];
+    for (const k of Object.keys(def.tiers)) {
+      if (Number(k) <= cnt) {
+        activeTiers.push(Number(k));
+        for (const [stat, v] of Object.entries(def.tiers[k])) { sum[stat] = (sum[stat] || 0) + v; total[stat] = (total[stat] || 0) + v; }
+      }
+    }
+    const maxTier = Math.max(0, ...Object.keys(def.tiers).map(Number));
+    sets.push({ sid, name: def.name, count: cnt, maxTier, activeTier: Math.min(cnt, maxTier), sum });
+  }
+  sets.sort((a, b) => b.count - a.count);
+  return { sets, total };
+};
+
 // 본게임 EQUIPMENT 창 배치 (좌 2열 / 가운데 캐릭터+무기 / 우 2열)
 const emptyGoals = () => ({
   level: { current: '', target: '', percent: '' },
@@ -1978,6 +2067,41 @@ function ProgressBar({ value, tone }) {
   );
 }
 
+// 착용 장비 기반 세트 효과 패널
+function SetEffectPanel({ equipment }) {
+  const { sets, total } = useMemo(() => computeSetEffects(equipment || {}), [equipment]);
+  const totalText = fmtSetBonus(total);
+  return (
+    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🧩</span> 세트 효과 <span className="text-xs text-slate-500 font-normal">(착용 장비 자동 인식)</span></h3>
+      <p className="text-xs text-slate-400 mb-3">장비창에 입력한 아이템으로 세트 수를 세어 누적 옵션을 보여줍니다.</p>
+      {sets.length === 0 ? (
+        <div className="text-center py-6 text-slate-500 text-sm">인식된 세트가 없습니다. 장비 슬롯에 아이템(앱솔/아케인/에테/보스 장신구 등)을 입력해 보세요.</div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {sets.map(s => (
+              <div key={s.sid} className="bg-maple-bg/50 border border-maple-border rounded-lg px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-slate-100">
+                    {s.name} <span className="text-maple-accent">{s.activeTier}세트</span>
+                    <span className="text-xs text-slate-500 ml-1">(착용 {s.count}{s.count >= s.maxTier ? ' · 최대' : ''})</span>
+                  </div>
+                </div>
+                <div className="text-xs text-emerald-300 mt-0.5">{fmtSetBonus(s.sum) || '효과 없음(2세트 미만)'}</div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t-2 border-maple-border mt-3 pt-3">
+            <div className="text-sm font-semibold mb-1">합산 세트 효과</div>
+            <div className="text-sm text-maple-accent font-medium break-words">{totalText || '없음'}</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // 예산 라인 아이템 집계 (장비 + 심볼 + 솔 에르다) — 플래너/요약 공용
 function buildBudgetItems(character) {
   const equipment = character.equipment || {};
@@ -2244,6 +2368,9 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
           </div>
         </div>
       </div>
+
+      {/* 세트 효과 (착용 장비 자동 인식) */}
+      <SetEffectPanel equipment={equipment} />
 
       {/* 목표치: 레벨 / 심볼 / 솔 에르다 */}
       <GoalsPanel goals={goals} setGoals={setGoals} />
