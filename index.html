@@ -2080,17 +2080,34 @@ function SetEffectPanel({ equipment }) {
       ) : (
         <>
           <div className="space-y-2">
-            {sets.map(s => (
-              <div key={s.sid} className="bg-maple-bg/50 border border-maple-border rounded-lg px-3 py-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-slate-100">
-                    {s.name} <span className="text-maple-accent">{s.activeTier}세트</span>
-                    <span className="text-xs text-slate-500 ml-1">(착용 {s.count}{s.count >= s.maxTier ? ' · 최대' : ''})</span>
+            {sets.map(s => {
+              const tierKeys = Object.keys(SET_DATA[s.sid].tiers).map(Number).sort((a, b) => a - b);
+              return (
+                <div key={s.sid} className="relative group bg-maple-bg/50 border border-maple-border rounded-lg px-3 py-2 cursor-help">
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold text-slate-100">
+                      {s.name} <span className="text-maple-accent">{s.activeTier}세트</span>
+                      <span className="text-xs text-slate-500 ml-1">(착용 {s.count}{s.count >= s.maxTier ? ' · 최대' : ''})</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500">단계 보기 ⓘ</span>
+                  </div>
+                  <div className="text-xs text-emerald-300 mt-0.5">{fmtSetBonus(s.sum) || '효과 없음(2세트 미만)'}</div>
+                  {/* 호버 시 단계별 옵션 (적용=흰색 / 미적용=회색) */}
+                  <div className="hidden group-hover:block absolute left-2 right-2 top-full mt-1 z-30 bg-[#0b1220] border border-maple-border rounded-lg p-3 shadow-xl">
+                    <div className="text-xs font-bold text-slate-200 mb-1.5">{s.name} · 단계별 효과</div>
+                    <div className="space-y-1">
+                      {tierKeys.map(t => (
+                        <div key={t} className={`text-[11px] leading-snug ${t <= s.count ? 'text-white' : 'text-slate-500'}`}>
+                          <span className="font-bold">{t}세트</span>
+                          <span className="ml-1">{fmtSetBonus(SET_DATA[s.sid].tiers[t])}</span>
+                          {t <= s.count && <span className="ml-1 text-emerald-400">✓</span>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                <div className="text-xs text-emerald-300 mt-0.5">{fmtSetBonus(s.sum) || '효과 없음(2세트 미만)'}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="border-t-2 border-maple-border mt-3 pt-3">
             <div className="text-sm font-semibold mb-1">합산 세트 효과</div>
