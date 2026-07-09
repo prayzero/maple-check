@@ -373,7 +373,7 @@ const HEXA_LEVEL_COST = {
 const HEXA_SLOTS = [
   { id: 's61', name: '6차 1', quad: 'skill', table: 'skill' },
   { id: 's62', name: '6차 2', quad: 'skill', table: 'skill' },
-  { id: 's63', name: '6차 3', quad: 'skill', table: 'skill' },
+  { id: 's63', name: '6차 3', quad: 'skill', table: 'jobCommon', badge: '4,035' },
   { id: 'm41', name: '4차 1', quad: 'mastery', table: 'mastery' },
   { id: 'm42', name: '4차 2', quad: 'mastery', table: 'mastery' },
   { id: 'm43', name: '4차 3', quad: 'mastery', table: 'mastery' },
@@ -384,7 +384,7 @@ const HEXA_SLOTS = [
   { id: 'e54', name: '5차 4', quad: 'enhance', table: 'enhance' },
   { id: 'c1', name: '솔 야누스', quad: 'common', table: 'common' },
   { id: 'c2', name: '솔 헤카테', quad: 'common', table: 'common' },
-  { id: 'c3', name: '직업군 공용', quad: 'common', table: 'jobCommon' },
+  { id: 'c3', name: '5차 강화', quad: 'common', table: 'common' },
 ];
 const HEXA_QUADS = [
   { key: 'skill',   title: '6차 스킬 (스킬 코어)',      color: 'text-violet-300', pos: '좌상' },
@@ -2300,7 +2300,7 @@ function HexaPlannerPanel({ hexa, setHexa, fragPrice, onFragPrice }) {
         </div>
         <div className="font-bold text-emerald-300 text-base md:text-lg">{fmtMeso(sum.cost)}</div>
       </div>
-      <p className="text-[11px] text-slate-500 mt-2">※ 합계는 예산 우선순위에 'HEXA 스킬' 항목으로 자동 반영됩니다. 총 조각: 스킬코어 4,500 · 마스터리 2,252 · 강화 3,383 · 야누스/헤카테 각 6,268 · 직업군 공용 4,035. (6차 3은 공식 표 미확정 → 스킬 코어 표 기준)</p>
+      <p className="text-[11px] text-slate-500 mt-2">※ 합계는 예산 우선순위에 'HEXA 스킬' 항목으로 자동 반영됩니다. 총 조각: 6차 1·2 각 4,500 · 6차 3 = 4,035 · 마스터리 2,252 · 강화 3,383 · 공용(야누스/헤카테/5차 강화) 각 6,268.</p>
     </div>
   );
 }
