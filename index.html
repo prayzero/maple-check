@@ -8,8 +8,8 @@
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json" />
-<link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="icon" href="icon.png" type="image/png" />
+<link rel="apple-touch-icon" href="icon.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="메이플 체크" />
@@ -794,7 +794,7 @@ function useExpiryNotifications(characters) {
         `[내일 만료] ${it.charName} - ${it.typeLabel}`;
       const body = `${it.typeLabel} 만료일: ${it.date}`;
       try {
-        new Notification(title, { body, icon: 'icon.svg', tag: key });
+        new Notification(title, { body, icon: 'icon.png', tag: key });
       } catch {}
       nextKeys.push(key);
     }
