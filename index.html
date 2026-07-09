@@ -348,6 +348,75 @@ const solErdaNeed = (se) => Math.max(0, parseNum(se?.fragTgt) - parseNum(se?.fra
 const calcSolErdaCost = (se) => solErdaNeed(se) * parseNum(se?.fragPrice);
 
 /* =========================================================
+ * HEXA 스킬 플래너 — 코어별 레벨당 필요량 (도달레벨 1~30, [솔 에르다, 조각])
+ * 스킬 150/4,500 · 마스터리 83/2,252 · 강화 123/3,383
+ * 공용(야누스·헤카테) 208/6,268 · 직업군 공용 137/4,035
+ * ========================================================= */
+const HEXA_LEVEL_COST = {
+  skill: [[5,100],[1,30],[1,35],[1,40],[2,45],[2,50],[2,55],[3,60],[3,65],[10,200],
+    [3,80],[3,90],[4,100],[4,110],[4,120],[4,130],[4,140],[4,150],[5,160],[15,350],
+    [5,170],[5,180],[5,190],[5,200],[5,210],[6,220],[6,230],[6,240],[7,250],[20,500]],
+  mastery: [[3,50],[1,15],[1,18],[1,20],[1,23],[1,25],[1,28],[2,30],[2,33],[5,100],
+    [2,40],[2,45],[2,50],[2,55],[2,60],[2,65],[2,70],[2,75],[3,80],[8,175],
+    [3,85],[3,90],[3,95],[3,100],[3,105],[3,110],[3,115],[3,120],[4,125],[10,250]],
+  enhance: [[4,75],[1,23],[1,27],[1,30],[2,34],[2,38],[2,42],[3,45],[3,49],[8,150],
+    [3,60],[3,68],[3,75],[3,83],[3,90],[3,98],[3,105],[3,113],[4,120],[12,263],
+    [4,128],[4,135],[4,143],[4,150],[4,158],[5,165],[5,173],[5,180],[6,188],[15,375]],
+  common: [[7,125],[2,38],[2,44],[2,50],[3,57],[3,63],[3,69],[5,75],[5,82],[14,300],
+    [5,110],[5,124],[6,138],[6,152],[6,165],[6,179],[6,193],[6,207],[7,220],[17,525],
+    [7,234],[7,248],[7,262],[7,275],[7,289],[9,303],[9,317],[9,330],[10,344],[20,750]],
+  jobCommon: [[4,90],[1,25],[1,30],[1,35],[2,40],[2,45],[2,50],[3,55],[3,60],[9,180],
+    [3,73],[3,81],[3,90],[3,98],[4,107],[4,115],[4,124],[4,132],[4,141],[14,315],
+    [4,151],[5,160],[5,170],[5,179],[5,189],[5,198],[5,208],[5,217],[6,227],[18,450]],
+};
+// 고정 슬롯 (인게임 매트릭스 4분면)
+const HEXA_SLOTS = [
+  { id: 's61', name: '6차 1', quad: 'skill', table: 'skill' },
+  { id: 's62', name: '6차 2', quad: 'skill', table: 'skill' },
+  { id: 's63', name: '6차 3', quad: 'skill', table: 'skill' },
+  { id: 'm41', name: '4차 1', quad: 'mastery', table: 'mastery' },
+  { id: 'm42', name: '4차 2', quad: 'mastery', table: 'mastery' },
+  { id: 'm43', name: '4차 3', quad: 'mastery', table: 'mastery' },
+  { id: 'm44', name: '4차 4', quad: 'mastery', table: 'mastery' },
+  { id: 'e51', name: '5차 1', quad: 'enhance', table: 'enhance' },
+  { id: 'e52', name: '5차 2', quad: 'enhance', table: 'enhance' },
+  { id: 'e53', name: '5차 3', quad: 'enhance', table: 'enhance' },
+  { id: 'e54', name: '5차 4', quad: 'enhance', table: 'enhance' },
+  { id: 'c1', name: '솔 야누스', quad: 'common', table: 'common' },
+  { id: 'c2', name: '솔 헤카테', quad: 'common', table: 'common' },
+  { id: 'c3', name: '직업군 공용', quad: 'common', table: 'jobCommon' },
+];
+const HEXA_QUADS = [
+  { key: 'skill',   title: '6차 스킬 (스킬 코어)',      color: 'text-violet-300', pos: '좌상' },
+  { key: 'mastery', title: '4차 강화 (마스터리 코어)',  color: 'text-pink-300',   pos: '우상' },
+  { key: 'enhance', title: '5차 강화 (강화 코어)',      color: 'text-sky-300',    pos: '좌하' },
+  { key: 'common',  title: '공용 (공용 코어)',          color: 'text-amber-300',  pos: '우하' },
+];
+// 현재→목표 필요량
+const hexaNeed = (table, cur, tgt) => {
+  const t = HEXA_LEVEL_COST[table] || [];
+  const lo = Math.max(0, Math.min(30, parseNum(cur)));
+  const hi = Math.max(0, Math.min(30, parseNum(tgt)));
+  let erda = 0, frag = 0;
+  for (let L = lo; L < hi; L++) { erda += t[L][0]; frag += t[L][1]; }
+  return { erda, frag };
+};
+const emptyHexa = () => ({
+  slots: Object.fromEntries(HEXA_SLOTS.map(s => [s.id, { cur: '', tgt: '' }])),
+  priority: 0, done: false,
+});
+const calcHexa = (hexa, fragPrice) => {
+  let erda = 0, frag = 0;
+  for (const s of HEXA_SLOTS) {
+    const v = hexa?.slots?.[s.id];
+    if (!v) continue;
+    const n = hexaNeed(s.table, v.cur, v.tgt);
+    erda += n.erda; frag += n.frag;
+  }
+  return { erda, frag, cost: frag * parseNum(fragPrice) };
+};
+
+/* =========================================================
  * 예산 플래너 데이터 정의
  * - 장비창(메이플 장비탭) 슬롯 / 그리드 배치
  * - 심볼(아케인/어센틱) 지역
@@ -658,6 +727,11 @@ const normalizeChar = (c) => ({
   } : emptyGoals(),
   budget: c.budget || { total: 0 },
   bossTimes: c.bossTimes || {},
+  hexaSkills: c.hexaSkills ? {
+    slots: { ...emptyHexa().slots, ...(c.hexaSkills.slots || {}) },
+    priority: c.hexaSkills.priority || 0,
+    done: !!c.hexaSkills.done,
+  } : emptyHexa(),
 });
 
 /* =========================================================
@@ -815,6 +889,7 @@ function App() {
           equipment: JSON.parse(JSON.stringify(c.equipment || {})),
           goals: JSON.parse(JSON.stringify(c.goals || emptyGoals())),
           budget: JSON.parse(JSON.stringify(c.budget || { total: 0 })),
+          hexaSkills: JSON.parse(JSON.stringify(c.hexaSkills || emptyHexa())),
           from: c.name,
         };
         setBudgetClip(clip);
@@ -831,6 +906,7 @@ function App() {
       equipment: JSON.parse(JSON.stringify(budgetClip.equipment || {})),
       goals: JSON.parse(JSON.stringify(budgetClip.goals || emptyGoals())),
       budget: JSON.parse(JSON.stringify(budgetClip.budget || { total: 0 })),
+      hexaSkills: JSON.parse(JSON.stringify(budgetClip.hexaSkills || emptyHexa())),
     }) : c));
   }, [budgetClip]);
 
@@ -1238,6 +1314,9 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
   const setBudgetTotal = (n) => {
     onUpdate(c => ({ ...c, budget: { ...(c.budget || {}), total: n } }));
   };
+  const setHexa = (updater) => {
+    onUpdate(c => ({ ...c, hexaSkills: updater(c.hexaSkills || emptyHexa()) }));
+  };
 
   const WEEKLY_LIMIT = 12;
 
@@ -1408,6 +1487,7 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
             clearEquipSlot={clearEquipSlot}
             setGoals={setGoals}
             setBudgetTotal={setBudgetTotal}
+            setHexa={setHexa}
           />
         </>
       )}
@@ -2150,7 +2230,82 @@ function SetEffectPanel({ equipment }) {
   );
 }
 
-// 예산 라인 아이템 집계 (장비 + 심볼 + 솔 에르다) — 플래너/요약 공용
+/* HEXA 스킬 플래너 (6차) — 고정 슬롯, 현재→목표 레벨로 조각/에르다/비용 자동 계산 */
+function HexaLevelInput({ value, onChange }) {
+  return (
+    <input type="text" inputMode="numeric" value={value} placeholder="0"
+      onChange={(e) => onChange(Math.min(30, Math.max(0, parseNum(e.target.value))) || (e.target.value === '' ? '' : 0))}
+      className="w-11 bg-maple-bg border border-maple-border rounded px-1 py-1 text-sm text-center focus:outline-none focus:border-maple-accent" />
+  );
+}
+
+function HexaPlannerPanel({ hexa, setHexa, fragPrice, onFragPrice }) {
+  const setSlot = (id, v) => setHexa(h => ({ ...h, slots: { ...h.slots, [id]: v } }));
+  const sum = calcHexa(hexa, fragPrice);
+  return (
+    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🔷</span> HEXA 스킬 (6차) <span className="text-xs text-slate-500 font-normal">현재→목표 레벨로 조각 비용 자동 계산</span></h3>
+      <div className="flex items-center justify-between flex-wrap gap-2 bg-maple-bg/50 border border-maple-border rounded-lg px-3 py-2 mb-4">
+        <label className="text-xs text-slate-400 flex items-center gap-2">솔 에르다 조각 1개 가격
+          <MesoInput value={fragPrice || 0} onChange={onFragPrice}
+            className="w-32 bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-maple-accent" />
+          <span className="text-slate-500">메소</span>
+        </label>
+        <span className="text-[11px] text-slate-500">에르다는 파밍 재화 → 수량만 표기 · 비용 = 조각 × 단가</span>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        {HEXA_QUADS.map(q => (
+          <div key={q.key} className="bg-maple-bg/40 border border-maple-border rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-sm font-bold ${q.color}`}>⬡ {q.title}</span>
+              <span className="text-[10px] text-slate-600">매트릭스 {q.pos}</span>
+            </div>
+            <div className="space-y-1.5">
+              {HEXA_SLOTS.filter(s => s.quad === q.key).map(s => {
+                const v = (hexa.slots || {})[s.id] || { cur: '', tgt: '' };
+                const n = hexaNeed(s.table, v.cur, v.tgt);
+                const cost = n.frag * parseNum(fragPrice);
+                return (
+                  <div key={s.id} className="flex items-center gap-1.5 bg-maple-bg rounded-md border border-maple-border/70 px-2 py-1.5 text-xs flex-wrap">
+                    <span className="font-semibold text-slate-200 w-16 flex-shrink-0">
+                      {s.name}
+                      {s.badge && <span className="ml-1 text-[9px] font-bold px-1 py-px rounded border text-rose-300 border-rose-400/50 bg-rose-500/10">{s.badge}</span>}
+                    </span>
+                    <HexaLevelInput value={v.cur} onChange={(x) => setSlot(s.id, { ...v, cur: x })} />
+                    <span className="text-slate-500">→</span>
+                    <HexaLevelInput value={v.tgt} onChange={(x) => setSlot(s.id, { ...v, tgt: x })} />
+                    <span className="ml-auto text-right">
+                      {n.frag > 0 ? (
+                        <>
+                          <span className="text-sky-300">조각 {n.frag.toLocaleString()} · 에르다 {n.erda.toLocaleString()}</span>
+                          <span className="ml-1.5 font-bold text-emerald-300">{cost > 0 ? fmtMesoShort(cost) : ''}</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-600">-</span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t-2 border-maple-border mt-3 pt-3 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-sm font-semibold">HEXA 합계</div>
+          <div className="text-xs text-slate-400">필요 조각 <span className="text-sky-300 font-bold">{sum.frag.toLocaleString()}</span> · 필요 에르다 <span className="text-violet-300 font-bold">{sum.erda.toLocaleString()}</span></div>
+        </div>
+        <div className="font-bold text-emerald-300 text-base md:text-lg">{fmtMeso(sum.cost)}</div>
+      </div>
+      <p className="text-[11px] text-slate-500 mt-2">※ 합계는 예산 우선순위에 'HEXA 스킬' 항목으로 자동 반영됩니다. 총 조각: 스킬코어 4,500 · 마스터리 2,252 · 강화 3,383 · 야누스/헤카테 각 6,268 · 직업군 공용 4,035. (6차 3은 공식 표 미확정 → 스킬 코어 표 기준)</p>
+    </div>
+  );
+}
+
+// 예산 라인 아이템 집계 (장비 + 심볼 + HEXA) — 플래너/요약 공용
 function buildBudgetItems(character) {
   const equipment = character.equipment || {};
   const goals = character.goals || emptyGoals();
@@ -2166,10 +2321,10 @@ function buildBudgetItems(character) {
   const symCost = calcSymbolCost(goals.symbols);
   if (symCost > 0) items.push({ key: 'symbols', type: 'symbols', name: '심볼 강화', label: '아케인 · 어센틱 · 그랜드',
     cost: symCost, priority: goals.symbols.priority || 0, done: !!goals.symbols.done });
-  const solCost = calcSolErdaCost(goals.solErda);
-  if (solCost > 0) items.push({ key: 'solerda', type: 'solerda', name: '솔 에르다 조각',
-    label: `${solErdaNeed(goals.solErda).toLocaleString()}개 × ${fmtMesoShort(parseNum(goals.solErda?.fragPrice))}`,
-    cost: solCost, priority: goals.solErda.priority || 0, done: !!goals.solErda.done });
+  const hx = calcHexa(character.hexaSkills, goals.solErda?.fragPrice);
+  if (hx.cost > 0) items.push({ key: 'hexa', type: 'hexa', name: 'HEXA 스킬',
+    label: `조각 ${hx.frag.toLocaleString()}개 × ${fmtMesoShort(parseNum(goals.solErda?.fragPrice))} · 에르다 ${hx.erda.toLocaleString()}`,
+    cost: hx.cost, priority: character.hexaSkills?.priority || 0, done: !!character.hexaSkills?.done });
   const pr = (p) => (p && p > 0 ? p : Infinity);
   items.sort((a, b) => pr(a.priority) - pr(b.priority) || b.cost - a.cost);
   return items;
@@ -2181,7 +2336,7 @@ function budgetSummary(character) {
   return { items, total, done, remaining: Math.max(0, total - done), pct: total > 0 ? (done / total) * 100 : 0 };
 }
 
-function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoals, setBudgetTotal }) {
+function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoals, setBudgetTotal, setHexa }) {
   const equipment = character.equipment || {};
   const goals = character.goals || emptyGoals();
   const budget = character.budget || { total: 0 };
@@ -2198,7 +2353,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
   };
 
   // 예산 라인 아이템 집계 (공용 헬퍼)
-  const lineItems = useMemo(() => buildBudgetItems(character), [equipment, goals]);
+  const lineItems = useMemo(() => buildBudgetItems(character), [equipment, goals, character.hexaSkills]);
 
   const totalCost = lineItems.reduce((a, it) => a + it.cost, 0);
   const doneCost = lineItems.reduce((a, it) => a + (it.done ? it.cost : 0), 0);
@@ -2216,12 +2371,12 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
   const toggleDone = (item) => {
     if (item.type === 'equip') setEquipSlot(item.slotId, { done: !item.done });
     else if (item.type === 'symbols') setGoals(g => ({ ...g, symbols: { ...g.symbols, done: !g.symbols.done } }));
-    else if (item.type === 'solerda') setGoals(g => ({ ...g, solErda: { ...g.solErda, done: !g.solErda.done } }));
+    else if (item.type === 'hexa') setHexa(h => ({ ...h, done: !h.done }));
   };
   const setPriority = (item, n) => {
     if (item.type === 'equip') setEquipSlot(item.slotId, { priority: n });
     else if (item.type === 'symbols') setGoals(g => ({ ...g, symbols: { ...g.symbols, priority: n } }));
-    else if (item.type === 'solerda') setGoals(g => ({ ...g, solErda: { ...g.solErda, priority: n } }));
+    else if (item.type === 'hexa') setHexa(h => ({ ...h, priority: n }));
   };
   // 예산 우선순위 ▲▼ 이동: 두 항목 위치를 바꾸고 1..N으로 우선순위 재부여
   const move = (idx, dir) => {
@@ -2420,7 +2575,15 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
       {/* 세트 효과 (착용 장비 자동 인식) */}
       <SetEffectPanel equipment={equipment} />
 
-      {/* 목표치: 레벨 / 심볼 / 솔 에르다 */}
+      {/* HEXA 스킬 플래너 (6차) */}
+      <HexaPlannerPanel
+        hexa={character.hexaSkills || emptyHexa()}
+        setHexa={setHexa}
+        fragPrice={goals.solErda?.fragPrice || 0}
+        onFragPrice={(n) => setGoals(g => ({ ...g, solErda: { ...g.solErda, fragPrice: n } }))}
+      />
+
+      {/* 목표치: 레벨 / 심볼 */}
       <GoalsPanel goals={goals} setGoals={setGoals} />
 
       {editingSlot && (
@@ -2726,49 +2889,6 @@ function GoalsPanel({ goals, setGoals }) {
           <div className="text-base font-bold text-emerald-300">{fmtMeso(symbolCost)}</div>
         </div>
         <p className="text-[11px] text-slate-500 mt-2">※ 아케인·어센틱·그랜드 어센틱 전 지역 정확 가격표 기준으로 자동 계산됩니다.</p>
-      </div>
-
-      {/* 솔 에르다 */}
-      <div className="pt-4 border-t border-maple-border">
-        <div className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2"><span>🌟</span> 솔 에르다 / 조각 (6차 스킬)</div>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">솔 에르다 (현재 → 목표)</label>
-            <div className="flex items-center gap-2">
-              <input type="number" min="0" value={goals.solErda.erdaCur} placeholder="현재"
-                onChange={(e) => setGoals(g => ({ ...g, solErda: { ...g.solErda, erdaCur: parseNum(e.target.value) } }))}
-                className="w-16 bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-center focus:outline-none focus:border-maple-accent" />
-              <span className="text-slate-500 text-xs">→</span>
-              <input type="number" min="0" value={goals.solErda.erdaTgt} placeholder="목표"
-                onChange={(e) => setGoals(g => ({ ...g, solErda: { ...g.solErda, erdaTgt: parseNum(e.target.value) } }))}
-                className="w-16 bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-center focus:outline-none focus:border-maple-accent" />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">솔 에르다 조각 (현재 → 목표)</label>
-            <div className="flex items-center gap-2">
-              <input type="number" min="0" value={goals.solErda.fragCur} placeholder="현재"
-                onChange={(e) => setGoals(g => ({ ...g, solErda: { ...g.solErda, fragCur: parseNum(e.target.value) } }))}
-                className="w-16 bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-center focus:outline-none focus:border-maple-accent" />
-              <span className="text-slate-500 text-xs">→</span>
-              <input type="number" min="0" value={goals.solErda.fragTgt} placeholder="목표"
-                onChange={(e) => setGoals(g => ({ ...g, solErda: { ...g.solErda, fragTgt: parseNum(e.target.value) } }))}
-                className="w-16 bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-center focus:outline-none focus:border-maple-accent" />
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 max-w-xs">
-          <label className="text-xs text-slate-400 block mb-1">조각 1개 가격 (메소)</label>
-          <MesoInput value={goals.solErda.fragPrice || 0} onChange={(n) => setGoals(g => ({ ...g, solErda: { ...g.solErda, fragPrice: n } }))} />
-        </div>
-        <div className="mt-3 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3 flex items-center justify-between">
-          <div className="text-xs text-slate-400">
-            예상 비용 = 필요 <span className="text-slate-200 font-semibold">{solErdaNeed(goals.solErda).toLocaleString()}</span>개
-            <span className="text-slate-500"> (목표 {parseNum(goals.solErda.fragTgt).toLocaleString()} − 현재 {parseNum(goals.solErda.fragCur).toLocaleString()})</span>
-            {' × '}{fmtMeso(parseNum(goals.solErda.fragPrice))}
-          </div>
-          <div className="text-base font-bold text-emerald-300">{fmtMeso(calcSolErdaCost(goals.solErda))}</div>
-        </div>
       </div>
 
       {/* 세트효과 메모 */}
