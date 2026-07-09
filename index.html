@@ -8,8 +8,8 @@
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json" />
-<link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="icon" href="icon.png" type="image/png" />
+<link rel="apple-touch-icon" href="icon.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="메이플 체크" />
@@ -794,7 +794,7 @@ function useExpiryNotifications(characters) {
         `[내일 만료] ${it.charName} - ${it.typeLabel}`;
       const body = `${it.typeLabel} 만료일: ${it.date}`;
       try {
-        new Notification(title, { body, icon: 'icon.svg', tag: key });
+        new Notification(title, { body, icon: 'icon.png', tag: key });
       } catch {}
       nextKeys.push(key);
     }
@@ -915,6 +915,37 @@ function App() {
     }) : c));
   }, [budgetClip]);
 
+  // 데이터 백업: JSON 파일 내보내기 / 가져오기
+  const exportData = useCallback(() => {
+    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `maple-check-backup-${todayStr()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [characters, bossData]);
+
+  const importDataFile = useCallback((file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const j = JSON.parse(reader.result);
+        if (!j || !Array.isArray(j.characters)) { alert('올바른 메이플체크 백업 파일이 아닙니다.'); return; }
+        if (!confirm(`백업 불러오기: ${j.exportedAt || '날짜 미상'} · 캐릭터 ${j.characters.length}명\n현재 이 브라우저의 데이터를 덮어씁니다. 진행할까요?`)) return;
+        setCharacters(j.characters.map(normalizeChar));
+        if (Array.isArray(j.bossData)) setBossData(reconcileBossData(j.bossData));
+        setSelected('dashboard');
+        alert('불러오기 완료!');
+      } catch {
+        alert('파일을 읽을 수 없습니다. (JSON 형식 오류)');
+      }
+    };
+    reader.readAsText(file);
+  }, []);
+
   return (
     <div className="flex h-full w-full overflow-hidden">
       {sidebarOpen && (
@@ -932,6 +963,8 @@ function App() {
         onAdd={addCharacter}
         onRemove={removeCharacter}
         open={sidebarOpen}
+        onExport={exportData}
+        onImportFile={importDataFile}
       />
 
       <main className="flex-1 overflow-y-auto">
@@ -1056,7 +1089,7 @@ function ExpiryBanner({ items, permission, onAskPermission, onSelect }) {
 /* =========================================================
  * Sidebar
  * ========================================================= */
-function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, open }) {
+function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, open, onExport, onImportFile }) {
   const [newName, setNewName] = useState('');
 
   const handleAdd = (e) => {
@@ -1135,6 +1168,35 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           label="🔮 심볼 가격"
           subtitle="심볼 레벨별 강화비용"
         />
+
+        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-500">
+          데이터 백업
+        </div>
+        <div className="flex gap-2 px-2">
+          <button
+            type="button"
+            onClick={onExport}
+            className="flex-1 text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 rounded-md px-2 py-2 text-slate-200"
+            title="모든 데이터를 JSON 파일로 저장"
+          >
+            💾 내보내기
+          </button>
+          <label
+            className="flex-1 text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 rounded-md px-2 py-2 text-slate-200 text-center cursor-pointer"
+            title="백업 JSON 파일 불러오기 (현재 데이터 덮어씀)"
+          >
+            📥 가져오기
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => { onImportFile(e.target.files && e.target.files[0]); e.target.value = ''; }}
+            />
+          </label>
+        </div>
+        <p className="px-2 pt-1 text-[10px] text-slate-600 leading-snug">
+          데이터는 이 브라우저에만 저장됩니다. 다른 기기로 옮기거나 백업할 때 사용하세요.
+        </p>
       </nav>
 
       <form onSubmit={handleAdd} className="p-3 border-t border-maple-border space-y-2">
