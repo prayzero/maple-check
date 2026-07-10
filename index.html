@@ -978,7 +978,9 @@ function App() {
               <path d="M3 6h18M3 12h18M3 18h18" />
             </svg>
           </button>
-          <h1 className="text-lg font-bold text-maple-accent">🍁 메이플 체크</h1>
+          <h1 className="text-lg font-bold text-maple-accent flex items-center gap-2">
+            <img src="icon.png" alt="" className="w-7 h-7 rounded-lg object-cover" /> 메이플 체크
+          </h1>
         </header>
 
         <div className="p-4 md:p-8">
@@ -1108,7 +1110,7 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
     >
       <div className="px-5 pt-6 pb-4 border-b border-maple-border">
         <h1 className="text-xl font-bold text-maple-accent flex items-center gap-2">
-          <span>🍁</span> 메이플 체크
+          <img src="icon.png" alt="" className="w-8 h-8 rounded-lg object-cover" /> 메이플 체크
         </h1>
         <p className="text-xs text-slate-400 mt-1">보스 수익 & 기간제 통합 관리</p>
       </div>
