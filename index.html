@@ -537,6 +537,128 @@ const calcSymbolCost = (symbols) => {
 };
 
 // 캐릭터 객체에 예산 플래너 기본값 채우기 (구버전 데이터 호환)
+/* =========================================================
+ * 스타포스 기대비용 데이터 (KMS 2026-03-19 이후, 일반 장비)
+ * SF_TABLE[성] = [기본 성공률, 실패 후 조건부 파괴율, 비용 분모]
+ * - 스타캐치 삭제 → 성공률 ×1.05 상시 적용(계산에서 처리)
+ * ========================================================= */
+const SF_TABLE = [
+  [0.95,0,36],[0.90,0,36],[0.85,0,36],[0.85,0,36],[0.80,0,36],
+  [0.75,0,36],[0.70,0,36],[0.65,0,36],[0.60,0,36],[0.55,0,36],
+  [0.50,0,571],[0.45,0,314],[0.40,0,214],[0.35,0,157],[0.30,0,107],
+  [0.30,0.03,200],[0.30,0.03,200],[0.15,0.08,150],[0.15,0.08,70],[0.15,0.10,45],
+  [0.30,0.15,200],[0.15,0.15,125],[0.15,0.20,200],[0.10,0.20,200],[0.10,0.20,200],
+  [0.10,0.20,200],[0.07,0.20,200],[0.05,0.20,200],[0.03,0.20,200],[0.01,0.20,200],
+];
+// 온전 복구 메소 (파괴 성 15~22 × 장비 레벨 140/160/200/250)
+const SF_RESTORE = {
+  140:{15:149000000,16:359000000,17:606000000,18:1380000000,19:2280000000,20:4020000000,21:5050000000,22:8290000000},
+  160:{15:222000000,16:535000000,17:904000000,18:2060000000,19:3410000000,20:6000000000,21:7540000000,22:12400000000},
+  200:{15:433000000,16:1050000000,17:1770000000,18:4010000000,19:6650000000,20:11800000000,21:14800000000,22:24200000000},
+  250:{15:846000000,16:2040000000,17:3450000000,18:7830000000,19:13000000000,20:22900000000,21:28800000000,22:47300000000},
+};
+const sfMaxStar = (lvl) => lvl <= 94 ? 5 : lvl <= 107 ? 8 : lvl <= 117 ? 10 : lvl <= 127 ? 15 : lvl <= 137 ? 20 : 30;
+const round100 = (x) => Math.round(x / 100) * 100;
+
+/* 스타포스 기대비용 (엑셀 계산기 로직 1:1 포팅)
+ * - 12성 복구: 파괴 시 12성으로 복귀 → 12~(n-1)성 재등반 비용/시도(선택 전략 기준)가 재귀 포함
+ * - 흔적 복구: 파괴 성 유지, 온전 복구 메소 + 동일장비 K개 소모
+ * - 파괴방지: 15~17성, 기본 클릭비 200% 추가
+ * opt: { level, from, to, spare, mvp(0/0.03/0.05/0.1), pcRoom, disc30,
+ *        ev51015, boomReduce30, restoreDisc20, recover('spare12'|'restore'|'auto'),
+ *        guard('none'|'all1517'|'auto') } */
+const sfExpect = (o) => {
+  const lvl = o.level;
+  const hasRestore = !!SF_RESTORE[lvl];
+  const rows = [];
+  let cumP = 0, cumR = 0, cumS = 0, cumT = 0, cumU = 0; // 12성부터의 누적 (재등반용)
+  for (let n = 0; n < 30; n++) {
+    const [base, cond, denom] = SF_TABLE[n];
+    const succ = (o.ev51015 && (n === 5 || n === 10 || n === 15)) ? 1 : Math.min(1, base * 1.05);
+    const boom = succ === 1 ? 0 : (1 - succ) * cond * ((o.boomReduce30 && n <= 21) ? 0.7 : 1);
+    const H = round100(1000 + Math.pow(lvl, 3) * Math.pow(n + 1, n <= 9 ? 1 : 2.7) / denom);
+    const I = round100(H * (n < 17 ? 1 - o.mvp - (o.pcRoom ? 0.05 : 0) : 1) * (o.disc30 ? 0.7 : 1));
+    const J = I + H * 2;
+    const K = n < 15 ? 0 : n <= 18 ? 1 : n <= 20 ? 2 : n === 21 ? 3 : 4;
+    const L = n < 15 ? 0 : (hasRestore ? (SF_RESTORE[lvl][Math.min(n, 22)] || 0) * (o.restoreDisc20 ? 0.8 : 1) : 0);
+    const M = n < 15 ? I / succ : (I + boom * (o.spare + cumP)) / succ;
+    const N = (n < 15 || !hasRestore) ? Infinity : (I + boom * (L + K * o.spare)) / succ;
+    const O = (n >= 15 && n <= 17) ? J / succ : Infinity;
+    let P;
+    if (n < 15) P = M;
+    else if (o.guard === 'all1517' && n <= 17) P = O;
+    else if (o.guard === 'none') P = o.recover === 'spare12' ? M : o.recover === 'restore' ? N : Math.min(M, N);
+    else P = o.recover === 'spare12' ? Math.min(M, O) : o.recover === 'restore' ? Math.min(N, O) : Math.min(M, N, O);
+    const Q = n < 15 ? '일반' : P === O ? '파괴방지' : P === N ? '흔적 복구' : '12성 복구';
+    const R = n < 15 ? I / succ : Q === '파괴방지' ? J / succ : Q === '흔적 복구' ? (I + boom * L) / succ : (I + boom * cumR) / succ;
+    const S = n < 15 ? 0 : Q === '파괴방지' ? 0 : Q === '흔적 복구' ? boom * K / succ : boom * (1 + cumS) / succ;
+    const T = n < 15 ? 1 / succ : Q === '파괴방지' ? 1 / succ : Q === '흔적 복구' ? 1 / succ : (1 + boom * cumT) / succ;
+    const U = (n < 15 || Q === '파괴방지') ? 0 : Q === '흔적 복구' ? boom / succ : boom * (1 + cumU) / succ;
+    if (n >= 12) { cumP += P; cumR += R; cumS += S; cumT += T; cumU += U; }
+    rows.push({ star: n, strategy: Q, P, R, S, T, U });
+  }
+  const res = { total: 0, meso: 0, equips: 0, tries: 0, booms: 0, rows: [] };
+  for (let n = o.from; n < o.to; n++) {
+    const r = rows[n];
+    res.total += r.P; res.meso += r.R; res.equips += r.S; res.tries += r.T; res.booms += r.U;
+    res.rows.push({ star: n, strategy: r.strategy, cost: r.P });
+  }
+  return res;
+};
+
+/* =========================================================
+ * 잠재(큐브) 데이터 — 등급업 확률·천장, 동일등급 줄 확률, 메소 재설정 비용
+ * ========================================================= */
+const GRADES = ['레어', '에픽', '유니크', '레전드리'];
+const CUBE_TIERUP = {
+  '메소 일반/블랙': { r2e: [0.150000001275, 10], e2u: [0.035, 42], u2l: [0.014, 107] },
+  '메소 에디':      { r2e: [0.02381, 62], e2u: [0.009804, 152], u2l: [0.007, 214] },
+};
+const CUBE_SAMELINE = {
+  '메소 일반/블랙': { '레어': [0.2, 0.05], '에픽': [0.2, 0.05], '유니크': [0.2, 0.05], '레전드리': [0.2, 0.05] },
+  '레드':          { '레어': [0.1, 0.01], '에픽': [0.1, 0.01], '유니크': [0.1, 0.01], '레전드리': [0.1, 0.01] },
+  '메소 에디':      { '레어': [0.019608, 0.019608], '에픽': [0.047619, 0.047619], '유니크': [0.019608, 0.019608], '레전드리': [0.004975, 0.004975] },
+  '에디/화이트 에디': { '레어': [0.019608, 0.019608], '에픽': [0.047619, 0.047619], '유니크': [0.019608, 0.019608], '레전드리': [0.004975, 0.004975] },
+  '명장의/골드':    { '레어': [0.166667, 0.166667], '에픽': [0.079994, 0.079994], '유니크': [0.016959, 0.016959], '레전드리': [0.001996, 0.001996] },
+};
+const CUBE_MESO_COST = {
+  normal: [ // 일반 잠재(메소)
+    { lo: 1, hi: 159, c: { '레어': 4000000, '에픽': 16000000, '유니크': 34000000, '레전드리': 40000000 } },
+    { lo: 160, hi: 199, c: { '레어': 4250000, '에픽': 17000000, '유니크': 36125000, '레전드리': 42500000 } },
+    { lo: 200, hi: 249, c: { '레어': 4500000, '에픽': 18000000, '유니크': 38250000, '레전드리': 45000000 } },
+    { lo: 250, hi: 300, c: { '레어': 5000000, '에픽': 20000000, '유니크': 42500000, '레전드리': 50000000 } },
+  ],
+  addi: [ // 에디셔널 잠재(메소)
+    { lo: 1, hi: 159, c: { '레어': 9750000, '에픽': 27300000, '유니크': 66300000, '레전드리': 78000000 } },
+    { lo: 160, hi: 199, c: { '레어': 10375000, '에픽': 29050000, '유니크': 70550000, '레전드리': 83000000 } },
+    { lo: 200, hi: 249, c: { '레어': 11000000, '에픽': 30800000, '유니크': 74800000, '레전드리': 88000000 } },
+    { lo: 250, hi: 300, c: { '레어': 12250000, '에픽': 34300000, '유니크': 83300000, '레전드리': 98000000 } },
+  ],
+};
+const cubeMesoCost = (kind, lvl, grade) => {
+  const row = (CUBE_MESO_COST[kind] || []).find(r => lvl >= r.lo && lvl <= r.hi);
+  return row ? row.c[grade] || 0 : 0;
+};
+// 등급업 기대 (천장 반영): 기대횟수 = (1-(1-p)^남은보장)/p
+const cubeTierExpect = (kind, lvl, fromG, toG, fails) => {
+  const way = kind === 'normal' ? '메소 일반/블랙' : '메소 에디';
+  const tiers = [['레어', '에픽', 'r2e'], ['에픽', '유니크', 'e2u'], ['유니크', '레전드리', 'u2l']];
+  const gi = (g) => GRADES.indexOf(g);
+  let tries = 0, meso = 0;
+  const steps = [];
+  for (const [a, b, key] of tiers) {
+    if (gi(fromG) <= gi(a) && gi(toG) > gi(a)) {
+      const [p, pity] = CUBE_TIERUP[way][key];
+      const remain = Math.max(1, pity - (gi(fromG) === gi(a) ? fails : 0));
+      const t = (1 - Math.pow(1 - p, remain)) / p;
+      const cost1 = cubeMesoCost(kind, lvl, a);
+      tries += t; meso += t * cost1;
+      steps.push({ from: a, to: b, tries: t, meso: t * cost1 });
+    }
+  }
+  return { tries, meso, steps };
+};
+
 const emptyEquipSlot = () => ({
   item: '',
   star: '', potential: '미설정', potTarget: '',
@@ -1023,6 +1145,9 @@ function App() {
           {selected === 'symbol_price' && (
             <SymbolPriceView />
           )}
+          {selected === 'enhance_calc' && (
+            <EnhanceCalcView />
+          )}
           {selected === 'budget_summary' && (
             <BudgetSummaryView characters={characters} charTotals={charTotals} onSelect={setSelected} />
           )}
@@ -1180,6 +1305,12 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           onClick={() => onSelect('symbol_price')}
           label="🔮 심볼 가격"
           subtitle="심볼 레벨별 강화비용"
+        />
+        <NavItem
+          active={selected === 'enhance_calc'}
+          onClick={() => onSelect('enhance_calc')}
+          label="⭐ 강화 기대비용"
+          subtitle="스타포스·잠재 계산기"
         />
 
         <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-500">
@@ -3106,6 +3237,214 @@ function BudgetSummaryView({ characters, charTotals, onSelect }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/* =========================================================
+ * 강화 기대비용 계산기 (스타포스 · 잠재) — KMS 2026 규칙
+ * ========================================================= */
+const SEL_CLS = 'bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-maple-accent';
+function CalcField({ label, children }) {
+  return (
+    <label className="block">
+      <span className="text-[11px] text-slate-400 block mb-1">{label}</span>
+      {children}
+    </label>
+  );
+}
+function ResultRow({ label, value, strong }) {
+  return (
+    <div className="flex items-center justify-between text-sm py-1">
+      <span className="text-slate-300">{label}</span>
+      <span className={strong ? 'font-bold text-maple-accent text-base' : 'font-semibold text-emerald-300'}>{value}</span>
+    </div>
+  );
+}
+
+function StarforceCalc() {
+  const [c, setC] = useState({ level: 200, from: 12, to: 22, spare: 0, mvp: 0, pcRoom: false, disc30: false, ev51015: false, boomReduce30: false, restoreDisc20: false, recover: 'spare12', guard: 'auto' });
+  const set = (k, v) => setC(p => ({ ...p, [k]: v }));
+  const maxStar = sfMaxStar(c.level);
+  const err = c.level < 1 || c.level > 300 ? '장비 레벨 오류'
+    : (c.from < 0 || c.to <= c.from || c.to > maxStar) ? `성급 입력 오류 (이 레벨 최대 ${maxStar}성)` : '';
+  const hasRestore = !!SF_RESTORE[c.level];
+  const r = !err ? sfExpect(c) : null;
+  const num = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  return (
+    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>⭐</span> 스타포스 기대비용</h3>
+      <p className="text-xs text-slate-400 mb-4">2026-03-19 이후 KMS 일반 장비 · 하락 없음 · 스타캐치 보너스(×1.05) 상시 적용</p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <CalcField label="장비 레벨"><input type="number" value={c.level} onChange={(e) => set('level', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="시작 성"><input type="number" value={c.from} onChange={(e) => set('from', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="목표 성"><input type="number" value={c.to} onChange={(e) => set('to', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="동일 장비(스페어) 1개 가격"><MesoInput value={c.spare} onChange={(n) => set('spare', n)} /></CalcField>
+        <CalcField label="MVP 등급">
+          <select value={c.mvp} onChange={(e) => set('mvp', Number(e.target.value))} className={SEL_CLS + ' w-full'}>
+            <option value={0}>없음</option><option value={0.03}>실버 (3%)</option><option value={0.05}>골드 (5%)</option><option value={0.1}>다이아/레드 (10%)</option>
+          </select>
+        </CalcField>
+        <CalcField label="파괴 후 복구 방식">
+          <select value={c.recover} onChange={(e) => set('recover', e.target.value)} className={SEL_CLS + ' w-full'}>
+            <option value="spare12">12성 복구 (스페어)</option>
+            <option value="restore" disabled={!hasRestore}>흔적 복구 (성급 유지)</option>
+            <option value="auto">자동 (최저비용)</option>
+          </select>
+        </CalcField>
+        <CalcField label="파괴방지 (15~17성)">
+          <select value={c.guard} onChange={(e) => set('guard', e.target.value)} className={SEL_CLS + ' w-full'}>
+            <option value="none">사용 안 함</option>
+            <option value="all1517">15~17성 모두</option>
+            <option value="auto">최적 자동</option>
+          </select>
+        </CalcField>
+        <div className="flex flex-col justify-end gap-1 text-[11px]">
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.pcRoom} onChange={(e) => set('pcRoom', e.target.checked)} className="accent-amber-400" /> PC방 5%</label>
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.disc30} onChange={(e) => set('disc30', e.target.checked)} className="accent-amber-400" /> 강화비용 30% 할인</label>
+        </div>
+        <div className="flex flex-col justify-start gap-1 text-[11px] col-span-2 md:col-span-4 md:flex-row md:gap-5">
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.ev51015} onChange={(e) => set('ev51015', e.target.checked)} className="accent-amber-400" /> 5/10/15성 100% 이벤트</label>
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.boomReduce30} onChange={(e) => set('boomReduce30', e.target.checked)} className="accent-amber-400" /> 21성 이하 파괴율 30% 감소</label>
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.restoreDisc20} onChange={(e) => set('restoreDisc20', e.target.checked)} className="accent-amber-400" /> 흔적 복구 메소 20% 할인</label>
+        </div>
+      </div>
+
+      {err ? (
+        <div className="mt-4 bg-red-500/10 border border-red-500/40 text-red-200 text-xs rounded px-3 py-2">⚠️ {err}</div>
+      ) : (
+        <div className="mt-4 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
+          <div className="text-xs text-slate-500 mb-1">{c.from}성 → {c.to}성 · {c.level}제{hasRestore ? '' : ' · 온전 복구표 미지원 레벨(140/160/200/250만) → 12성 복구 기준'}</div>
+          <ResultRow label="총 기대가치 (스페어 포함)" value={fmtMeso(Math.round(r.total))} strong />
+          <ResultRow label="순수 기대 메소" value={fmtMeso(Math.round(r.meso))} />
+          <ResultRow label="기대 스페어 소모" value={num(r.equips) + '개'} />
+          <ResultRow label="기대 시도 횟수" value={num(r.tries) + '회'} />
+          <ResultRow label="기대 파괴 횟수" value={num(r.booms) + '회'} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PotentialCalc() {
+  const [c, setC] = useState({ kind: 'normal', level: 200, from: '레어', to: '레전드리', fails: 0 });
+  const set = (k, v) => setC(p => ({ ...p, [k]: v }));
+  const gi = (g) => GRADES.indexOf(g);
+  const err = c.level < 1 || c.level > 300 ? '레벨 오류' : gi(c.from) >= gi(c.to) ? '등급 순서 오류' : '';
+  const r = !err ? cubeTierExpect(c.kind, c.level, c.from, c.to, c.fails) : null;
+
+  const [g, setG] = useState({ way: '메소 일반/블랙', grade: '레전드리', mode: 'prime3', direct: 1, pPrime: 10, pLow: 10, lines: 3, cubeCost: 0 });
+  const setGo = (k, v) => setG(p => ({ ...p, [k]: v }));
+  const [p2, p3] = (CUBE_SAMELINE[g.way] || {})[g.grade] || [0, 0];
+  const f21 = g.pPrime / 100;
+  const f22 = p2 * f21 + (1 - p2) * (g.pLow / 100);
+  const f23 = p3 * f21 + (1 - p3) * (g.pLow / 100);
+  let f24 = 0;
+  if (g.mode === 'prime3') f24 = p2 * p3;
+  else if (g.mode === 'direct') f24 = g.direct / 100;
+  else if (g.lines <= 1) f24 = 1 - (1 - f21) * (1 - f22) * (1 - f23);
+  else if (g.lines === 2) f24 = f21 * f22 + f21 * f23 + f22 * f23 - 2 * f21 * f22 * f23;
+  else f24 = f21 * f22 * f23;
+  const gTries = f24 > 0 ? 1 / f24 : 0;
+  const gCost1 = g.way === '메소 일반/블랙' ? cubeMesoCost('normal', c.level, g.grade)
+    : g.way === '메소 에디' ? cubeMesoCost('addi', c.level, g.grade) : g.cubeCost;
+  return (
+    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-5">
+      <div>
+        <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🎲</span> 잠재 등급업 기대비용</h3>
+        <p className="text-xs text-slate-400 mb-3">메소 재설정(일반/에디) · 천장(보장 회차) 반영</p>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <CalcField label="잠재 종류">
+            <select value={c.kind} onChange={(e) => set('kind', e.target.value)} className={SEL_CLS + ' w-full'}>
+              <option value="normal">일반 잠재(메소)</option><option value="addi">에디셔널(메소)</option>
+            </select>
+          </CalcField>
+          <CalcField label="장비 레벨"><input type="number" value={c.level} onChange={(e) => set('level', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+          <CalcField label="현재 등급">
+            <select value={c.from} onChange={(e) => set('from', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.slice(0, 3).map(x => <option key={x}>{x}</option>)}</select>
+          </CalcField>
+          <CalcField label="목표 등급">
+            <select value={c.to} onChange={(e) => set('to', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.slice(1).map(x => <option key={x}>{x}</option>)}</select>
+          </CalcField>
+          <CalcField label="현재 연속 실패 수"><input type="number" value={c.fails} onChange={(e) => set('fails', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        </div>
+        {err ? (
+          <div className="mt-3 bg-red-500/10 border border-red-500/40 text-red-200 text-xs rounded px-3 py-2">⚠️ {err}</div>
+        ) : (
+          <div className="mt-3 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
+            {r.steps.map(st => (
+              <div key={st.from} className="flex items-center justify-between text-xs py-0.5 text-slate-400">
+                <span>{st.from} → {st.to}</span>
+                <span>기대 {st.tries.toFixed(1)}회 · {fmtMeso(Math.round(st.meso))}</span>
+              </div>
+            ))}
+            <div className="border-t border-maple-border mt-1.5 pt-1.5">
+              <ResultRow label={`총 기대 재설정 (${c.from}→${c.to})`} value={r.tries.toFixed(1) + '회'} />
+              <ResultRow label="총 기대 메소" value={fmtMeso(Math.round(r.meso))} strong />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="pt-4 border-t border-maple-border">
+        <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🎯</span> 목표 옵션 기대비용 (근사)</h3>
+        <p className="text-xs text-slate-400 mb-3">동일 등급 줄 확률 기반 근사 — 옵션 제한·동일결과 재추첨 미반영</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <CalcField label="재설정 방식">
+            <select value={g.way} onChange={(e) => setGo('way', e.target.value)} className={SEL_CLS + ' w-full'}>
+              {Object.keys(CUBE_SAMELINE).map(w => <option key={w}>{w}</option>)}
+            </select>
+          </CalcField>
+          <CalcField label="등급">
+            <select value={g.grade} onChange={(e) => setGo('grade', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.map(x => <option key={x}>{x}</option>)}</select>
+          </CalcField>
+          <CalcField label="목표 정의">
+            <select value={g.mode} onChange={(e) => setGo('mode', e.target.value)} className={SEL_CLS + ' w-full'}>
+              <option value="prime3">세 줄 모두 같은 등급(프라임)</option>
+              <option value="lines">유효 N줄 이상</option>
+              <option value="direct">직접 1회 성공확률(%)</option>
+            </select>
+          </CalcField>
+          {g.mode === 'lines' && (
+            <CalcField label="필요 유효 줄 수">
+              <select value={g.lines} onChange={(e) => setGo('lines', Number(e.target.value))} className={SEL_CLS + ' w-full'}>
+                <option value={1}>1줄 이상</option><option value={2}>2줄 이상</option><option value={3}>3줄</option>
+              </select>
+            </CalcField>
+          )}
+          {g.mode === 'direct' && (
+            <CalcField label="1회 성공확률 (%)"><input type="number" step="0.001" value={g.direct} onChange={(e) => setGo('direct', Number(e.target.value) || 0)} className={SEL_CLS + ' w-full'} /></CalcField>
+          )}
+          {g.mode === 'lines' && (
+            <>
+              <CalcField label="프라임 풀 목표옵션 확률 (%)"><input type="number" step="0.1" value={g.pPrime} onChange={(e) => setGo('pPrime', Number(e.target.value) || 0)} className={SEL_CLS + ' w-full'} /></CalcField>
+              <CalcField label="하위등급 풀 목표옵션 확률 (%)"><input type="number" step="0.1" value={g.pLow} onChange={(e) => setGo('pLow', Number(e.target.value) || 0)} className={SEL_CLS + ' w-full'} /></CalcField>
+            </>
+          )}
+          {g.way !== '메소 일반/블랙' && g.way !== '메소 에디' && (
+            <CalcField label="큐브 1개 기회비용 (메소)"><MesoInput value={g.cubeCost} onChange={(n) => setGo('cubeCost', n)} /></CalcField>
+          )}
+        </div>
+        <div className="mt-3 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
+          <div className="text-xs text-slate-500 mb-1">2번째 줄 동일등급 {Math.round(p2 * 1000) / 10}% · 3번째 줄 {Math.round(p3 * 1000) / 10}% · 1회 성공확률 {(f24 * 100).toFixed(4)}%</div>
+          <ResultRow label="기대 재설정 횟수" value={(gTries ? gTries.toFixed(1) : '-') + '회'} />
+          <ResultRow label="기대 비용" value={fmtMeso(Math.round(gTries * gCost1))} strong />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnhanceCalcView() {
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div>
+        <h2 className="text-2xl md:text-3xl font-bold">⭐ 강화 기대비용</h2>
+        <p className="text-slate-400 mt-1">스타포스·잠재 기대비용 계산기 (KMS 2026 규칙, 확률·천장·흔적 복구 반영)</p>
+      </div>
+      <StarforceCalc />
+      <PotentialCalc />
     </div>
   );
 }
