@@ -667,8 +667,8 @@ function cubeExactRoll(data, method, partId, level, picks) {
   return { ok: true, lines, perRoll: lines[0].p * lines[1].p * lines[2].p, complete };
 }
 
-// 등급업 단계 (천장·연속실패 반영) — 계산 보조 H22:J24
-function cubeGradeUp({ method, level, curGrade, fails }) {
+// 등급업 단계 (천장·연속실패 반영) — 계산 보조 H22:J24. targetGrade에서 멈춤(기본 레전드리)
+function cubeGradeUp({ method, level, curGrade, targetGrade = '레전드리', fails }) {
   const gi = g => GRADES.indexOf(g);
   const way = method === 'black' ? 'normal' : 'addi';
   const tierKey = method === 'black' ? '메소 일반/블랙' : '메소 에디';
@@ -676,7 +676,7 @@ function cubeGradeUp({ method, level, curGrade, fails }) {
   const failArr = [fails.r2e || 0, fails.e2u || 0, fails.u2l || 0];
   let tries = 0, meso = 0; const rows = [];
   stepsDef.forEach(([a, b, k], idx) => {
-    if (gi(curGrade) <= gi(a)) {
+    if (gi(curGrade) <= gi(a) && gi(a) < gi(targetGrade)) {
       const [p, pity] = CUBE_TIERUP[tierKey][k];
       const f = gi(curGrade) === gi(a) ? failArr[idx] : 0;
       const remain = pity - f;
@@ -705,6 +705,59 @@ function useCubeData() {
   }, []);
   return { data, err };
 }
+
+// 줄별 강옵 우선순위 (줄마다 다른 강옵 → 공/보뎀/방무 조합)
+const CUBE_PREF_BY_LINE = [
+  ['공격력 +12%', '마력 +12%', 'STR +12%', 'DEX +12%', 'INT +12%', 'LUK +12%', '올스탯 +9%', '크리티컬 데미지 +8%'],
+  ['보스 몬스터 데미지 +40%', '보스 몬스터 데미지 +35%', '공격력 +12%', '마력 +12%', '크리티컬 데미지 +8%', '올스탯 +9%'],
+  ['몬스터 방어율 무시 +40%', '몬스터 방어율 무시 +35%', '크리티컬 데미지 +8%', '공격력 +12%', '마력 +12%', '올스탯 +9%'],
+];
+// 현재 문맥의 줄별 옵션 목록 (확률 내림차순). 없으면 null
+const cubeLineRows = (cube, method, partId, level) => {
+  if (!cube) return null;
+  const ctx = cube.ctx[String(cubeContextKey(method, partId, level))];
+  if (!ctx) return null;
+  return ctx.map(di => di < 0 ? [] : cube.dists[di]
+    .map(([oi, p]) => ({ idx: oi, text: cube.options[oi][0], prob: p }))
+    .sort((a, b) => b.prob - a.prob));
+};
+const cubePickStrong = (rows, li) => {
+  for (const key of CUBE_PREF_BY_LINE[li]) { const m = rows.find(r => r.text.includes(key)); if (m) return m.idx; }
+  return rows.length ? rows[0].idx : 'any';
+};
+// 슬롯 id → 큐브 부위 id (옵션 확률 조회용)
+const SLOT_TO_CUBE_PART = {
+  weapon: 1, emblem: 2, subweapon: 3, hat: 6, top: 7, bottom: 9, shoes: 10, glove: 11,
+  cape: 12, belt: 13, shoulder: 14, face: 15, eye: 16, ear: 17,
+  ring1: 18, ring2: 18, ring3: 18, ring4: 18, pendant1: 19, pendant2: 19, heart: 20,
+};
+// 잠재 프리셋 → 목표 유효 줄수(추정)
+const presetLineCount = (t) => {
+  if (!t) return 3;
+  if (/3줄|크크주|3초주|4초주|5초|6초|1초주주/.test(t)) return 3;
+  if (/2줄|크크|아확|올이탈|3줄이탈|2초주주|1초주/.test(t)) return 2;
+  if (/1초/.test(t)) return 1;
+  return 3;
+};
+// 슬롯 자동 잠재 비용: 등급업(cur→target) + 목표 N줄(부위별 강옵) 통합 기대 메소
+const cubeAutoPotentialCost = ({ cube, method, partId, level, curGrade, targetGrade, nLines }) => {
+  const gi = (g) => GRADES.indexOf(g);
+  if (gi(targetGrade) < 0) return { ok: false };
+  const gup = cubeGradeUp({ method, level, curGrade, targetGrade, fails: {} });
+  const rows = cubeLineRows(cube, method, partId, level);
+  const way = method === 'black' ? 'normal' : 'addi';
+  const costL = cubeMesoCost(way, level, targetGrade);
+  let targetMeso = 0, H = 0;
+  if (rows && targetGrade === '레전드리') {
+    const picks = rows.map((r, li) => li < nLines ? cubePickStrong(r, li) : 'any');
+    const roll = cubeExactRoll(cube, method, partId, level, picks);
+    H = roll.perRoll;
+    const upgrading = gi(curGrade) < gi('레전드리');
+    const tries = H > 0 ? (upgrading ? (1 - H) / H : 1 / H) : 0;
+    targetMeso = tries * costL;
+  }
+  return { ok: true, gupMeso: gup.meso, targetMeso, total: gup.meso + targetMeso, H, nLines };
+};
 
 const emptyEquipSlot = () => ({
   item: '',
@@ -2913,6 +2966,99 @@ function TargetSelect({ targets, value, onChange }) {
   );
 }
 
+/* 슬롯 예상 비용 자동계산 — 스타포스(현재→목표성) + 잠재/에디(현재→목표등급 · 목표 줄수) */
+function SlotAutoCost({ slot, d, cap, onFill }) {
+  const { data: cube } = useCubeData();
+  const partId = SLOT_TO_CUBE_PART[slot.id];
+  const [open, setOpen] = useState(false);
+  const [level, setLevel] = useState(200);
+  const [sfCur, setSfCur] = useState(17);
+  const [potCur, setPotCur] = useState('유니크');
+  const [potLines, setPotLines] = useState(presetLineCount(d.potTarget));
+  const [addCur, setAddCur] = useState('유니크');
+  const [addLines, setAddLines] = useState(presetLineCount(d.addPotTarget));
+
+  const tgtStar = parseNum(d.star);
+  const maxStar = sfMaxStar(level);
+  const sfTo = Math.min(tgtStar, maxStar);
+  const sfFrom = Math.min(sfCur, sfTo);
+  const sfCost = (cap.star && sfTo > sfFrom && sfTo > 0)
+    ? sfExpect({ level, from: sfFrom, to: sfTo, spare: 0, mvp: 0, pcRoom: false, disc30: false, ev51015: false, boomReduce30: false, restoreDisc20: false, recover: 'spare12', guard: 'auto' }).total : 0;
+
+  const potR = (cap.pot && partId && cube && d.potential !== '미설정')
+    ? cubeAutoPotentialCost({ cube, method: 'black', partId, level, curGrade: potCur, targetGrade: d.potential, nLines: potLines }) : null;
+  const potCost = potR && potR.ok ? potR.total : 0;
+  const addR = (cap.addpot && partId && cube && d.addPotential !== '미설정')
+    ? cubeAutoPotentialCost({ cube, method: 'addi', partId, level, curGrade: addCur, targetGrade: d.addPotential, nLines: addLines }) : null;
+  const addCost = addR && addR.ok ? addR.total : 0;
+
+  const total = Math.round(sfCost + potCost + addCost);
+  const miniSel = 'bg-maple-bg border border-maple-border rounded px-1.5 py-1 text-xs focus:outline-none focus:border-maple-accent';
+  const gradesUpTo = POTENTIAL_GRADES.filter(g => g !== '미설정');
+
+  return (
+    <div className="border border-maple-border rounded-lg overflow-hidden">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-maple-bg/60 hover:bg-maple-bg text-sm">
+        <span className="flex items-center gap-1.5"><span>⚡</span> 예상 비용 자동계산 <span className="text-[10px] text-slate-500">(KMS 공식 확률)</span></span>
+        <span className="text-slate-400">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="p-3 space-y-2.5 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400 w-16">아이템 레벨</span>
+            <input type="number" value={level} onChange={(e) => setLevel(parseNum(e.target.value))} className={miniSel + ' w-20'} />
+            {!partId && cap.pot && <span className="text-amber-400/80 text-[10px]">이 부위는 잠재 확률표 없음</span>}
+          </div>
+
+          {cap.star && (
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 w-16">스타포스</span>
+              <span>현재</span>
+              <input type="number" min="0" max="30" value={sfCur} onChange={(e) => setSfCur(Math.min(30, Math.max(0, parseNum(e.target.value))))} className={miniSel + ' w-14'} />
+              <span>→ 목표 <b className="text-amber-300">{tgtStar || 0}★</b></span>
+              <span className="ml-auto text-emerald-300 font-semibold">{sfCost > 0 ? fmtMeso(Math.round(sfCost)) : '-'}</span>
+            </div>
+          )}
+
+          {cap.pot && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-slate-400 w-16">잠재</span>
+              <select value={potCur} onChange={(e) => setPotCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
+              <span>→ <b className="text-amber-300">{d.potential}</b></span>
+              <select value={potLines} onChange={(e) => setPotLines(Number(e.target.value))} className={miniSel}>
+                <option value={1}>1줄</option><option value={2}>2줄</option><option value={3}>3줄</option>
+              </select>
+              <span className="ml-auto text-emerald-300 font-semibold">{potCost > 0 ? fmtMeso(Math.round(potCost)) : '-'}</span>
+            </div>
+          )}
+
+          {cap.addpot && d.addPotential !== '미설정' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-slate-400 w-16">에디</span>
+              <select value={addCur} onChange={(e) => setAddCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
+              <span>→ <b className="text-amber-300">{d.addPotential}</b></span>
+              <select value={addLines} onChange={(e) => setAddLines(Number(e.target.value))} className={miniSel}>
+                <option value={1}>1줄</option><option value={2}>2줄</option><option value={3}>3줄</option>
+              </select>
+              <span className="ml-auto text-emerald-300 font-semibold">{addCost > 0 ? fmtMeso(Math.round(addCost)) : '-'}</span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-2 border-t border-maple-border">
+            <span className="text-slate-300 font-semibold">합계 <span className="text-maple-accent">{fmtMeso(total)}</span></span>
+            <button type="button" onClick={() => onFill(total)} disabled={total <= 0}
+              className={`px-3 py-1.5 rounded text-xs font-semibold ${total > 0 ? 'bg-maple-accent text-slate-900 hover:bg-amber-300' : 'bg-maple-bg text-slate-500 cursor-not-allowed'}`}>
+              예상 비용에 채우기
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500">스타포스는 12성 복구·스페어 0·최적 파방 기준, 잠재는 목표 줄수만큼 부위별 강옵 3줄 조합 추정입니다.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
   const d = normSlot(data);
   const cap = SLOT_CAP[slot.id] || { star: true, pot: true, addpot: true, flame: true, soul: false };
@@ -3020,6 +3166,9 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
           )}
 
           <div className="text-[11px] text-slate-500 -mb-1">── 예산 ──</div>
+          {(cap.star || cap.pot || cap.addpot) && (
+            <SlotAutoCost slot={slot} d={d} cap={cap} onFill={(n) => onChange({ cost: n })} />
+          )}
           <div>
             <label className="text-sm text-slate-300 block mb-1.5">예상 비용 (메소)</label>
             <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} />
@@ -3385,27 +3534,11 @@ function PotentialCalc() {
   // 현재 문맥의 줄별 옵션 목록 (확률 내림차순)
   const lineOpts = useMemo(() => {
     if (!cube) return null;
-    const ctx = cube.ctx[String(cubeContextKey(c.method, c.partId, c.level))];
-    if (!ctx) return { missing: true, lines: [] };
-    const lines = ctx.map(di => {
-      if (di < 0) return [];
-      return cube.dists[di]
-        .map(([oi, p]) => ({ idx: oi, text: cube.options[oi][0], prob: p }))
-        .sort((a, b) => b.prob - a.prob);
-    });
-    return { missing: false, lines };
+    const rows = cubeLineRows(cube, c.method, c.partId, c.level);
+    return rows ? { missing: false, lines: rows } : { missing: true, lines: [] };
   }, [cube, c.method, c.partId, c.level]);
 
-  // 문맥이 바뀌면 각 줄을 의미있는 강옵으로 기본 선택 (줄마다 다른 강옵 우선 → 공/보뎀/방무 조합 재현)
-  const PREF_BY_LINE = [
-    ['공격력 +12%', '마력 +12%', 'STR +12%', 'DEX +12%', 'INT +12%', 'LUK +12%', '올스탯 +9%', '크리티컬 데미지 +8%'],
-    ['보스 몬스터 데미지 +40%', '보스 몬스터 데미지 +35%', '공격력 +12%', '마력 +12%', '크리티컬 데미지 +8%', '올스탯 +9%'],
-    ['몬스터 방어율 무시 +40%', '몬스터 방어율 무시 +35%', '크리티컬 데미지 +8%', '공격력 +12%', '마력 +12%', '올스탯 +9%'],
-  ];
-  const pickDefault = (rows, li) => {
-    for (const key of PREF_BY_LINE[li]) { const m = rows.find(r => r.text.includes(key)); if (m) return m.idx; }
-    return rows.length ? rows[0].idx : 'any';
-  };
+  const pickDefault = (rows, li) => cubePickStrong(rows, li);
   // 옵션 문맥(줄 분포)이 실제로 바뀌면 렌더 중 동기적으로 기본 선택 재설정 (페인트 전 → 깜빡임 없음)
   // 같은 버킷 내 레벨 편집은 ctxKey가 그대로라 선택 유지
   const ctxKey = cubeContextKey(c.method, c.partId, c.level);
