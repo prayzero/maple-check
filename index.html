@@ -614,13 +614,6 @@ const CUBE_TIERUP = {
   '메소 일반/블랙': { r2e: [0.150000001275, 10], e2u: [0.035, 42], u2l: [0.014, 107] },
   '메소 에디':      { r2e: [0.02381, 62], e2u: [0.009804, 152], u2l: [0.007, 214] },
 };
-const CUBE_SAMELINE = {
-  '메소 일반/블랙': { '레어': [0.2, 0.05], '에픽': [0.2, 0.05], '유니크': [0.2, 0.05], '레전드리': [0.2, 0.05] },
-  '레드':          { '레어': [0.1, 0.01], '에픽': [0.1, 0.01], '유니크': [0.1, 0.01], '레전드리': [0.1, 0.01] },
-  '메소 에디':      { '레어': [0.019608, 0.019608], '에픽': [0.047619, 0.047619], '유니크': [0.019608, 0.019608], '레전드리': [0.004975, 0.004975] },
-  '에디/화이트 에디': { '레어': [0.019608, 0.019608], '에픽': [0.047619, 0.047619], '유니크': [0.019608, 0.019608], '레전드리': [0.004975, 0.004975] },
-  '명장의/골드':    { '레어': [0.166667, 0.166667], '에픽': [0.079994, 0.079994], '유니크': [0.016959, 0.016959], '레전드리': [0.001996, 0.001996] },
-};
 const CUBE_MESO_COST = {
   normal: [ // 일반 잠재(메소)
     { lo: 1, hi: 159, c: { '레어': 4000000, '에픽': 16000000, '유니크': 34000000, '레전드리': 40000000 } },
@@ -639,25 +632,79 @@ const cubeMesoCost = (kind, lvl, grade) => {
   const row = (CUBE_MESO_COST[kind] || []).find(r => lvl >= r.lo && lvl <= r.hi);
   return row ? row.c[grade] || 0 : 0;
 };
-// 등급업 기대 (천장 반영): 기대횟수 = (1-(1-p)^남은보장)/p
-const cubeTierExpect = (kind, lvl, fromG, toG, fails) => {
-  const way = kind === 'normal' ? '메소 일반/블랙' : '메소 에디';
-  const tiers = [['레어', '에픽', 'r2e'], ['에픽', '유니크', 'e2u'], ['유니크', '레전드리', 'u2l']];
-  const gi = (g) => GRADES.indexOf(g);
-  let tries = 0, meso = 0;
-  const steps = [];
-  for (const [a, b, key] of tiers) {
-    if (gi(fromG) <= gi(a) && gi(toG) > gi(a)) {
-      const [p, pity] = CUBE_TIERUP[way][key];
-      const remain = Math.max(1, pity - (gi(fromG) === gi(a) ? fails : 0));
-      const t = (1 - Math.pow(1 - p, remain)) / p;
-      const cost1 = cubeMesoCost(kind, lvl, a);
-      tries += t; meso += t * cost1;
-      steps.push({ from: a, to: b, tries: t, meso: t * cost1 });
-    }
+/* =========================================================
+ * 정밀 큐브 목표옵션 (KMS 공식 API 확률, 2026-07-13) — cube-options.json 지연 로드
+ * data = { parts:[[name,id]], options:[[text,rg,maxlines]], dists:[[[optIdx,prob]]], ctx:{numkey:[d1,d2,d3]} }
+ * numeric_lookup_key = method(0/1e7) + 레전드리(4e6) + part×1e4 + 대표레벨
+ * ========================================================= */
+const CUBE_REP_LEVEL = (L) => L <= 9 ? 0 : L <= 120 ? (L % 10 === 0 ? L : Math.floor(L / 10) * 10 + 1) : L <= 200 ? 120 : 201;
+const cubeContextKey = (method, partId, level) => (method === 'black' ? 0 : 10000000) + 4000000 + partId * 10000 + CUBE_REP_LEVEL(level);
+const CUBE_RGROUPS = [['usable_skill', 1], ['after_hit_invincibility', 1], ['on_hit_damage_ignore', 2], ['on_hit_invincibility', 2]];
+
+// picks = [pick1,pick2,pick3]; 각 pick = 옵션 전역 인덱스(number) | 'any'(무시) | null(미선택)
+function cubeExactRoll(data, method, partId, level, picks) {
+  const ctx = data && data.ctx[String(cubeContextKey(method, partId, level))];
+  if (!ctx) return { ok: false, reason: 'no-context', lines: [], perRoll: 0 };
+  const dists = ctx.map(di => di >= 0 ? data.dists[di] : null);
+  const rawProb = (d, o) => { if (!d || o == null) return 0; const r = d.find(x => x[0] === o); return r ? r[1] : 0; };
+  const groupMass = (d, rg) => { if (!d || !rg) return 0; let s = 0; for (const [oi, p] of d) if ((data.options[oi][1] || '') === rg) s += p; return s; };
+  const priorRG = []; const lines = []; let complete = true;
+  for (let li = 0; li < 3; li++) {
+    const d = dists[li], o = picks[li];
+    if (o === 'any') { lines.push({ any: true, p: 1, present: true }); continue; }
+    if (o == null) { complete = false; lines.push({ p: 0, present: false }); continue; }
+    const raw = rawProb(d, o);
+    let excl = 0;
+    for (const [g, maxl] of CUBE_RGROUPS) if (priorRG.filter(x => x === g).length >= maxl) excl += groupMass(d, g);
+    const oRG = data.options[o][1] || '', oMax = data.options[o][2];
+    let p;
+    if (oRG && priorRG.filter(x => x === oRG).length >= oMax) p = 0;
+    else if (1 - excl <= 0) p = 0;
+    else p = raw / (1 - excl);
+    lines.push({ raw, excl, p, present: raw > 0, rg: oRG });
+    if (oRG) priorRG.push(oRG);
   }
-  return { tries, meso, steps };
+  return { ok: true, lines, perRoll: lines[0].p * lines[1].p * lines[2].p, complete };
+}
+
+// 등급업 단계 (천장·연속실패 반영) — 계산 보조 H22:J24
+function cubeGradeUp({ method, level, curGrade, fails }) {
+  const gi = g => GRADES.indexOf(g);
+  const way = method === 'black' ? 'normal' : 'addi';
+  const tierKey = method === 'black' ? '메소 일반/블랙' : '메소 에디';
+  const stepsDef = [['레어', '에픽', 'r2e'], ['에픽', '유니크', 'e2u'], ['유니크', '레전드리', 'u2l']];
+  const failArr = [fails.r2e || 0, fails.e2u || 0, fails.u2l || 0];
+  let tries = 0, meso = 0; const rows = [];
+  stepsDef.forEach(([a, b, k], idx) => {
+    if (gi(curGrade) <= gi(a)) {
+      const [p, pity] = CUBE_TIERUP[tierKey][k];
+      const f = gi(curGrade) === gi(a) ? failArr[idx] : 0;
+      const remain = pity - f;
+      const t = remain > 0 ? (1 - Math.pow(1 - p, remain)) / p : 0;
+      const cost1 = cubeMesoCost(way, level, a);
+      tries += t; meso += t * cost1; rows.push({ from: a, to: b, tries: t, meso: t * cost1 });
+    }
+  });
+  return { tries, meso, rows, way };
+}
+
+// 모듈 레벨 캐시 + 로더
+let _cubeData = null;
+const loadCubeData = () => {
+  if (_cubeData) return Promise.resolve(_cubeData);
+  return fetch('cube-options.json').then(r => { if (!r.ok) throw new Error('load'); return r.json(); }).then(j => { _cubeData = j; return j; });
 };
+function useCubeData() {
+  const [data, setData] = useState(_cubeData);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    if (data) return;
+    let alive = true;
+    loadCubeData().then(d => { if (alive) setData(d); }).catch(() => { if (alive) setErr(true); });
+    return () => { alive = false; };
+  }, []);
+  return { data, err };
+}
 
 const emptyEquipSlot = () => ({
   item: '',
@@ -3328,110 +3375,177 @@ function StarforceCalc() {
 }
 
 function PotentialCalc() {
-  const [c, setC] = useState({ kind: 'normal', level: 200, from: '레어', to: '레전드리', fails: 0 });
+  const { data: cube, err: cubeErr } = useCubeData();
+  const [c, setC] = useState({ method: 'black', partId: 1, level: 200, curGrade: '유니크' });
   const set = (k, v) => setC(p => ({ ...p, [k]: v }));
-  const gi = (g) => GRADES.indexOf(g);
-  const err = c.level < 1 || c.level > 300 ? '레벨 오류' : gi(c.from) >= gi(c.to) ? '등급 순서 오류' : '';
-  const r = !err ? cubeTierExpect(c.kind, c.level, c.from, c.to, c.fails) : null;
+  const [fails, setFails] = useState({ r2e: 0, e2u: 0, u2l: 0 });
+  const [picks, setPicks] = useState(['any', 'any', 'any']);
+  const [pickCtx, setPickCtx] = useState(null); // picks가 속한 문맥 키
 
-  const [g, setG] = useState({ way: '메소 일반/블랙', grade: '레전드리', mode: 'prime3', direct: 1, pPrime: 10, pLow: 10, lines: 3, cubeCost: 0 });
-  const setGo = (k, v) => setG(p => ({ ...p, [k]: v }));
-  const [p2, p3] = (CUBE_SAMELINE[g.way] || {})[g.grade] || [0, 0];
-  const f21 = g.pPrime / 100;
-  const f22 = p2 * f21 + (1 - p2) * (g.pLow / 100);
-  const f23 = p3 * f21 + (1 - p3) * (g.pLow / 100);
-  let f24 = 0;
-  if (g.mode === 'prime3') f24 = p2 * p3;
-  else if (g.mode === 'direct') f24 = g.direct / 100;
-  else if (g.lines <= 1) f24 = 1 - (1 - f21) * (1 - f22) * (1 - f23);
-  else if (g.lines === 2) f24 = f21 * f22 + f21 * f23 + f22 * f23 - 2 * f21 * f22 * f23;
-  else f24 = f21 * f22 * f23;
-  const gTries = f24 > 0 ? 1 / f24 : 0;
-  const gCost1 = g.way === '메소 일반/블랙' ? cubeMesoCost('normal', c.level, g.grade)
-    : g.way === '메소 에디' ? cubeMesoCost('addi', c.level, g.grade) : g.cubeCost;
+  // 현재 문맥의 줄별 옵션 목록 (확률 내림차순)
+  const lineOpts = useMemo(() => {
+    if (!cube) return null;
+    const ctx = cube.ctx[String(cubeContextKey(c.method, c.partId, c.level))];
+    if (!ctx) return { missing: true, lines: [] };
+    const lines = ctx.map(di => {
+      if (di < 0) return [];
+      return cube.dists[di]
+        .map(([oi, p]) => ({ idx: oi, text: cube.options[oi][0], prob: p }))
+        .sort((a, b) => b.prob - a.prob);
+    });
+    return { missing: false, lines };
+  }, [cube, c.method, c.partId, c.level]);
+
+  // 문맥이 바뀌면 각 줄을 의미있는 강옵으로 기본 선택 (줄마다 다른 강옵 우선 → 공/보뎀/방무 조합 재현)
+  const PREF_BY_LINE = [
+    ['공격력 +12%', '마력 +12%', 'STR +12%', 'DEX +12%', 'INT +12%', 'LUK +12%', '올스탯 +9%', '크리티컬 데미지 +8%'],
+    ['보스 몬스터 데미지 +40%', '보스 몬스터 데미지 +35%', '공격력 +12%', '마력 +12%', '크리티컬 데미지 +8%', '올스탯 +9%'],
+    ['몬스터 방어율 무시 +40%', '몬스터 방어율 무시 +35%', '크리티컬 데미지 +8%', '공격력 +12%', '마력 +12%', '올스탯 +9%'],
+  ];
+  const pickDefault = (rows, li) => {
+    for (const key of PREF_BY_LINE[li]) { const m = rows.find(r => r.text.includes(key)); if (m) return m.idx; }
+    return rows.length ? rows[0].idx : 'any';
+  };
+  // 옵션 문맥(줄 분포)이 실제로 바뀌면 렌더 중 동기적으로 기본 선택 재설정 (페인트 전 → 깜빡임 없음)
+  // 같은 버킷 내 레벨 편집은 ctxKey가 그대로라 선택 유지
+  const ctxKey = cubeContextKey(c.method, c.partId, c.level);
+  let effPicks = picks;
+  if (lineOpts && !lineOpts.missing && pickCtx !== ctxKey) {
+    effPicks = lineOpts.lines.map((rows, li) => pickDefault(rows, li));
+    setPicks(effPicks);
+    setPickCtx(ctxKey);
+  }
+
+  const partName = cube ? (cube.parts.find(p => p[1] === c.partId) || ['', c.partId])[0] : '';
+  const roll = cube && lineOpts && !lineOpts.missing ? cubeExactRoll(cube, c.method, c.partId, c.level, effPicks) : null;
+  const gup = cubeGradeUp({ method: c.method, level: c.level, curGrade: c.curGrade, fails });
+  const gi = (g) => GRADES.indexOf(g);
+  const upgrading = gi(c.curGrade) < gi('레전드리');
+  const costL = cubeMesoCost(gup.way, c.level, '레전드리');
+  const H4 = roll ? roll.perRoll : 0;
+  const targetTries = H4 > 0 ? (upgrading ? (1 - H4) / H4 : 1 / H4) : 0;
+  const totalTries = gup.tries + targetTries;
+  const totalMeso = gup.meso + targetTries * costL;
+  const q = (v) => H4 <= 0 ? null : H4 >= 1 ? 1 : Math.ceil(Math.log(1 - v) / Math.log(1 - H4));
+  const levelErr = c.level < 1 || c.level > 250;
+
+  const setPick = (li, v) => setPicks(p => { const n = [...p]; n[li] = v === 'any' ? 'any' : Number(v); return n; });
+  const LINE_LABEL = ['1번째 줄', '2번째 줄', '3번째 줄'];
+  const fmtPct = (p) => (p * 100 < 0.01 && p > 0) ? (p * 100).toFixed(6) + '%' : (p * 100).toFixed(4) + '%';
+
   return (
     <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-5">
       <div>
-        <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🎲</span> 잠재 등급업 기대비용</h3>
-        <p className="text-xs text-slate-400 mb-3">메소 재설정(일반/에디) · 천장(보장 회차) 반영</p>
+        <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🎲</span> 잠재 정밀 기대비용</h3>
+        <p className="text-xs text-slate-400 mb-3">KMS 공식 확률 · 부위·레벨별 줄 옵션 직접 선택 · 순차 제한 재정규화 · 천장 반영 · 등급업+목표옵션 통합</p>
+
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <CalcField label="잠재 종류">
-            <select value={c.kind} onChange={(e) => set('kind', e.target.value)} className={SEL_CLS + ' w-full'}>
-              <option value="normal">일반 잠재(메소)</option><option value="addi">에디셔널(메소)</option>
+            <select value={c.method} onChange={(e) => set('method', e.target.value)} className={SEL_CLS + ' w-full'}>
+              <option value="black">일반/블랙 (메소)</option><option value="addi">에디셔널 (메소)</option>
+            </select>
+          </CalcField>
+          <CalcField label="장비 부위">
+            <select value={c.partId} onChange={(e) => set('partId', Number(e.target.value))} className={SEL_CLS + ' w-full'} disabled={!cube}>
+              {cube ? cube.parts.map(([nm, id]) => <option key={id} value={id}>{nm}</option>) : <option value={c.partId}>로딩…</option>}
             </select>
           </CalcField>
           <CalcField label="장비 레벨"><input type="number" value={c.level} onChange={(e) => set('level', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
           <CalcField label="현재 등급">
-            <select value={c.from} onChange={(e) => set('from', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.slice(0, 3).map(x => <option key={x}>{x}</option>)}</select>
+            <select value={c.curGrade} onChange={(e) => set('curGrade', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.map(x => <option key={x}>{x}</option>)}</select>
           </CalcField>
-          <CalcField label="목표 등급">
-            <select value={c.to} onChange={(e) => set('to', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.slice(1).map(x => <option key={x}>{x}</option>)}</select>
-          </CalcField>
-          <CalcField label="현재 연속 실패 수"><input type="number" value={c.fails} onChange={(e) => set('fails', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+          <CalcField label="목표 등급"><div className="bg-maple-bg/60 border border-maple-border rounded px-2 py-1.5 text-sm text-amber-300 font-semibold">레전드리</div></CalcField>
         </div>
-        {err ? (
-          <div className="mt-3 bg-red-500/10 border border-red-500/40 text-red-200 text-xs rounded px-3 py-2">⚠️ {err}</div>
-        ) : (
-          <div className="mt-3 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
-            {r.steps.map(st => (
-              <div key={st.from} className="flex items-center justify-between text-xs py-0.5 text-slate-400">
-                <span>{st.from} → {st.to}</span>
-                <span>기대 {st.tries.toFixed(1)}회 · {fmtMeso(Math.round(st.meso))}</span>
-              </div>
-            ))}
-            <div className="border-t border-maple-border mt-1.5 pt-1.5">
-              <ResultRow label={`총 기대 재설정 (${c.from}→${c.to})`} value={r.tries.toFixed(1) + '회'} />
-              <ResultRow label="총 기대 메소" value={fmtMeso(Math.round(r.meso))} strong />
-            </div>
+
+        {upgrading && (
+          <div className="grid grid-cols-3 gap-3 mt-3">
+            {gi(c.curGrade) <= 0 && <CalcField label="레어→에픽 연속 실패"><input type="number" value={fails.r2e} onChange={(e) => setFails(f => ({ ...f, r2e: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
+            {gi(c.curGrade) <= 1 && <CalcField label="에픽→유니크 연속 실패"><input type="number" value={fails.e2u} onChange={(e) => setFails(f => ({ ...f, e2u: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
+            {gi(c.curGrade) <= 2 && <CalcField label="유니크→레전 연속 실패"><input type="number" value={fails.u2l} onChange={(e) => setFails(f => ({ ...f, u2l: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
           </div>
         )}
       </div>
 
-      <div className="pt-4 border-t border-maple-border">
-        <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🎯</span> 목표 옵션 기대비용 (근사)</h3>
-        <p className="text-xs text-slate-400 mb-3">동일 등급 줄 확률 기반 근사 — 옵션 제한·동일결과 재추첨 미반영</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <CalcField label="재설정 방식">
-            <select value={g.way} onChange={(e) => setGo('way', e.target.value)} className={SEL_CLS + ' w-full'}>
-              {Object.keys(CUBE_SAMELINE).map(w => <option key={w}>{w}</option>)}
-            </select>
-          </CalcField>
-          <CalcField label="등급">
-            <select value={g.grade} onChange={(e) => setGo('grade', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.map(x => <option key={x}>{x}</option>)}</select>
-          </CalcField>
-          <CalcField label="목표 정의">
-            <select value={g.mode} onChange={(e) => setGo('mode', e.target.value)} className={SEL_CLS + ' w-full'}>
-              <option value="prime3">세 줄 모두 같은 등급(프라임)</option>
-              <option value="lines">유효 N줄 이상</option>
-              <option value="direct">직접 1회 성공확률(%)</option>
-            </select>
-          </CalcField>
-          {g.mode === 'lines' && (
-            <CalcField label="필요 유효 줄 수">
-              <select value={g.lines} onChange={(e) => setGo('lines', Number(e.target.value))} className={SEL_CLS + ' w-full'}>
-                <option value={1}>1줄 이상</option><option value={2}>2줄 이상</option><option value={3}>3줄</option>
-              </select>
-            </CalcField>
-          )}
-          {g.mode === 'direct' && (
-            <CalcField label="1회 성공확률 (%)"><input type="number" step="0.001" value={g.direct} onChange={(e) => setGo('direct', Number(e.target.value) || 0)} className={SEL_CLS + ' w-full'} /></CalcField>
-          )}
-          {g.mode === 'lines' && (
-            <>
-              <CalcField label="프라임 풀 목표옵션 확률 (%)"><input type="number" step="0.1" value={g.pPrime} onChange={(e) => setGo('pPrime', Number(e.target.value) || 0)} className={SEL_CLS + ' w-full'} /></CalcField>
-              <CalcField label="하위등급 풀 목표옵션 확률 (%)"><input type="number" step="0.1" value={g.pLow} onChange={(e) => setGo('pLow', Number(e.target.value) || 0)} className={SEL_CLS + ' w-full'} /></CalcField>
-            </>
-          )}
-          {g.way !== '메소 일반/블랙' && g.way !== '메소 에디' && (
-            <CalcField label="큐브 1개 기회비용 (메소)"><MesoInput value={g.cubeCost} onChange={(n) => setGo('cubeCost', n)} /></CalcField>
-          )}
-        </div>
-        <div className="mt-3 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
-          <div className="text-xs text-slate-500 mb-1">2번째 줄 동일등급 {Math.round(p2 * 1000) / 10}% · 3번째 줄 {Math.round(p3 * 1000) / 10}% · 1회 성공확률 {(f24 * 100).toFixed(4)}%</div>
-          <ResultRow label="기대 재설정 횟수" value={(gTries ? gTries.toFixed(1) : '-') + '회'} />
-          <ResultRow label="기대 비용" value={fmtMeso(Math.round(gTries * gCost1))} strong />
-        </div>
-      </div>
+      {cubeErr ? (
+        <div className="bg-red-500/10 border border-red-500/40 text-red-200 text-xs rounded px-3 py-2">⚠️ 옵션 확률 데이터를 불러오지 못했습니다. 네트워크 확인 후 새로고침하세요.</div>
+      ) : !cube ? (
+        <div className="text-slate-400 text-sm py-4 text-center">공식 옵션 확률 데이터 로딩 중…</div>
+      ) : levelErr ? (
+        <div className="bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">⚠️ 장비 레벨은 1~250 범위로 입력하세요. (현재 {c.level || 0})</div>
+      ) : lineOpts.missing ? (
+        <div className="bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">이 부위·레벨 조합의 공식 옵션 문맥이 없습니다. (레벨 1~250, 지원 부위 확인)</div>
+      ) : (
+        <>
+          {/* 목표 옵션 3줄 선택 */}
+          <div className="border-t border-maple-border pt-4">
+            <div className="flex items-center gap-2 mb-2"><span>🎯</span><h4 className="font-semibold text-sm">목표 옵션 (레전드리 3줄)</h4></div>
+            <div className="space-y-2">
+              {[0, 1, 2].map(li => {
+                const rows = lineOpts.lines[li] || [];
+                const cur = effPicks[li];
+                const info = roll && roll.lines[li];
+                return (
+                  <div key={li} className="grid grid-cols-12 gap-2 items-center">
+                    <span className="col-span-3 md:col-span-2 text-xs text-slate-400">{LINE_LABEL[li]}</span>
+                    <select value={cur === 'any' ? 'any' : String(cur)} onChange={(e) => setPick(li, e.target.value)}
+                      className={SEL_CLS + ' col-span-6 md:col-span-7 w-full text-xs'}>
+                      <option value="any">— 아무거나 (무시) —</option>
+                      {rows.map(r => <option key={r.idx} value={r.idx}>{r.text} ({fmtPct(r.prob)})</option>)}
+                    </select>
+                    <span className="col-span-3 text-right text-xs">
+                      {cur === 'any' ? <span className="text-slate-500">100%</span>
+                        : info && info.p > 0 ? <span className="text-emerald-300 font-semibold">{fmtPct(info.p)}</span>
+                        : <span className="text-red-300">제약상 불가</span>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {roll && roll.lines.some(l => l.excl > 0) && (
+              <p className="text-[10px] text-slate-500 mt-1.5">※ 앞줄 제한(쓸만한 스킬·피격 옵션)으로 뒷줄 확률이 공식 재정규화되었습니다.</p>
+            )}
+          </div>
+
+          {/* 결과 */}
+          <div className="bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
+            <div className="text-xs text-slate-500 mb-1">{partName} · Lv.{c.level} · {c.method === 'black' ? '일반/블랙' : '에디셔널'} · {c.curGrade} → 레전드리</div>
+
+            {gup.rows.length > 0 && (
+              <div className="mb-2">
+                {gup.rows.map(st => (
+                  <div key={st.from} className="flex items-center justify-between text-[11px] py-0.5 text-slate-400">
+                    <span>등급업 {st.from} → {st.to}</span>
+                    <span>기대 {st.tries.toFixed(1)}회 · {fmtMeso(Math.round(st.meso))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <ResultRow label="1회 목표 성공확률" value={H4 > 0 ? fmtPct(H4) : '0% (불가)'} />
+            <ResultRow label="목표 옵션 기대 재설정" value={H4 > 0 ? Math.round(1 / H4).toLocaleString() + '회' : '-'} />
+            {gup.rows.length > 0 && <ResultRow label="등급업 기대 메소" value={fmtMeso(Math.round(gup.meso))} />}
+            <div className="border-t border-maple-border mt-1.5 pt-1.5">
+              <ResultRow label="총 기대 유료 재설정 (통합)" value={H4 > 0 ? Math.round(totalTries).toLocaleString() + '회' : '-'} />
+              <ResultRow label="총 기대 메소 (통합)" value={H4 > 0 ? fmtMeso(Math.round(totalMeso)) : '목표 도달 불가'} strong />
+            </div>
+            {upgrading && gup.rows.length > 0 && (
+              <p className="text-[10px] text-slate-500 mt-1">※ 등급업 성공 롤이 레전드리 3줄을 생성하므로 목표옵션 1회를 중복 가산하지 않습니다.</p>
+            )}
+
+            {H4 > 0 && H4 < 1 && (
+              <div className="mt-2 pt-2 border-t border-dashed border-maple-border grid grid-cols-4 gap-1 text-center">
+                {[[0.5, '50%'], [0.9, '90%'], [0.95, '95%'], [0.99, '99%']].map(([v, lbl]) => (
+                  <div key={lbl}>
+                    <div className="text-[10px] text-slate-500">{lbl} 달성</div>
+                    <div className="text-xs font-semibold text-sky-300">{q(v).toLocaleString()}회</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-500">공식 페이지 반올림 표시확률 기반 근사값입니다. 현재 3줄과 완전히 동일한 결과의 내부 재추첨은 반영하지 않습니다. (기준일 2026-07-13)</p>
+        </>
+      )}
     </div>
   );
 }
@@ -3441,7 +3555,7 @@ function EnhanceCalcView() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">⭐ 강화 기대비용</h2>
-        <p className="text-slate-400 mt-1">스타포스·잠재 기대비용 계산기 (KMS 2026 규칙, 확률·천장·흔적 복구 반영)</p>
+        <p className="text-slate-400 mt-1">스타포스·잠재 정밀 기대비용 (KMS 공식 확률·천장·재정규화·흔적 복구 반영)</p>
       </div>
       <StarforceCalc />
       <PotentialCalc />
