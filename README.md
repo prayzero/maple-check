@@ -62,7 +62,7 @@ npx serve .
 - **iOS Safari** : 공유 버튼 → "홈 화면에 추가"
 - **Android Chrome** : 우상단 점 3개 → "앱 설치" / "홈 화면에 추가"
 
-설치하면 아이콘이 생기고 일반 앱처럼 열립니다. 오프라인에서도 동작합니다.
+설치하면 아이콘이 생기고 일반 앱처럼 열립니다. 다만 현재 React·Tailwind·Babel을 CDN에서 불러오므로 **완전한 오프라인 실행은 보장되지 않습니다.** 인터넷이 없는 상태에서 처음 열거나 새로고침하면 화면이 실행되지 않을 수 있습니다.
 
 ---
 
@@ -112,7 +112,7 @@ icons/limbo.png        icons/baldrix.png     icons/jupiter.png
 - React 18 (CDN UMD 빌드, 빌드 도구 불필요)
 - Tailwind CSS 3 (CDN)
 - Babel Standalone (브라우저에서 JSX 트랜스파일)
-- 순수 PWA — manifest + service worker
+- 설치형 PWA — manifest + service worker (외부 CDN 의존으로 완전한 오프라인은 미지원)
 
 별도의 설치/빌드 없이 정적 파일만으로 동작합니다.
 
@@ -121,12 +121,15 @@ icons/limbo.png        icons/baldrix.png     icons/jupiter.png
 ## 🔧 데이터 초기화 / 백업
 
 - **초기화** : 브라우저의 사이트 데이터/저장소 삭제 → 모든 캐릭터·가격 데이터가 지워집니다.
-- **백업** : 개발자 도구 콘솔에서 아래 명령으로 JSON을 내보낼 수 있습니다.
+- **백업** : 사이드바의 **`내보내기`** 버튼을 권장합니다. 개발자 도구 콘솔에서는 아래 명령으로 같은 구조의 JSON을 복사할 수 있습니다.
 
 ```js
 copy(JSON.stringify({
-  characters: JSON.parse(localStorage.getItem('maple_check_characters_v1') || '[]'),
-  bossData:   JSON.parse(localStorage.getItem('maple_check_boss_data_v1') || '[]'),
+  app: 'maple-check',
+  version: 1,
+  exportedAt: new Date().toISOString().slice(0, 10),
+  characters: JSON.parse(localStorage.getItem('maple_check_characters_v2') || '[]'),
+  bossData:   JSON.parse(localStorage.getItem('maple_check_boss_data_v5') || '[]'),
 }, null, 2));
 ```
 

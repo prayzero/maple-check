@@ -1,13 +1,13 @@
 /* 메이플 체크 - 서비스 워커
  * 단순 캐시 전략: 첫 로드 시 핵심 파일 캐시 → 이후 네트워크 우선, 실패 시 캐시 폴백
  */
-const CACHE_NAME = 'maple-check-v5';
+const CACHE_NAME = 'maple-check-v6';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon.png',
-  './cube-options.json'
+  './cube-options-v2.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -40,6 +40,8 @@ self.addEventListener('fetch', (event) => {
         }
         return res;
       })
-      .catch(() => caches.match(req).then((cached) => cached || caches.match('./index.html')))
+      .catch(() => caches.match(req).then((cached) =>
+        cached || (req.mode === 'navigate' ? caches.match('./index.html') : Response.error())
+      ))
   );
 });

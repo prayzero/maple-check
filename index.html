@@ -252,11 +252,32 @@ const snapshotPriceMap = (entry) => {
  * - 기본 목록에서 빠진 보스(일간 전환된 힐라/시그너스/핑크빈 등)는 자동 제거
  * - 새로 추가된 기본 보스는 합류
  * - 기존 보스의 사용자 가격/인원 수정값은 그대로 유지 */
+const isPlainObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+const cloneJson = (value) => JSON.parse(JSON.stringify(value));
+const safeNonNegativeInt = (value, fallback = 0) =>
+  Number.isFinite(Number(value)) && Number(value) >= 0 ? Math.floor(Number(value)) : fallback;
+
 const reconcileBossData = (saved) => {
-  if (!Array.isArray(saved)) return JSON.parse(JSON.stringify(DEFAULT_BOSSES));
-  const savedMap = {};
-  for (const b of saved) savedMap[b.id] = b;
-  return DEFAULT_BOSSES.map(def => savedMap[def.id] || JSON.parse(JSON.stringify(def)));
+  if (!Array.isArray(saved)) return cloneJson(DEFAULT_BOSSES);
+  const savedMap = new Map(
+    saved.filter(b => isPlainObject(b) && typeof b.id === 'string').map(b => [b.id, b])
+  );
+  return DEFAULT_BOSSES.map(def => {
+    const old = savedMap.get(def.id);
+    const difficulties = {};
+    for (const [diff, defaultValue] of Object.entries(def.difficulties)) {
+      const base = typeof defaultValue === 'number'
+        ? { price: defaultValue, max: 6 }
+        : { price: defaultValue.price || 0, max: defaultValue.max || 6 };
+      const raw = old?.difficulties?.[diff];
+      const value = typeof raw === 'number' ? { price: raw, max: base.max } : raw;
+      difficulties[diff] = {
+        price: safeNonNegativeInt(value?.price, base.price),
+        max: Math.min(6, Math.max(1, safeNonNegativeInt(value?.max, base.max))),
+      };
+    }
+    return { ...cloneJson(def), difficulties };
+  });
 };
 
 /* =========================================================
@@ -338,6 +359,15 @@ const getDifficultyEntry = (boss, diff) => {
   // 구버전 호환 (숫자 → 객체)
   if (typeof d === 'number') return { price: d, max: 6 };
   return { price: d.price || 0, max: d.max || 6 };
+};
+
+const clampPartyMembers = (value, max = 6) =>
+  Math.min(Math.max(1, parseInt(value, 10) || 1), Math.min(6, Math.max(1, parseInt(max, 10) || 1)));
+
+const getBossRevenue = (boss, row) => {
+  const { price, max } = getDifficultyEntry(boss, row?.difficulty);
+  const members = clampPartyMembers(row?.partyMembers, max);
+  return { price, max, members, revenue: Math.floor(price / members) };
 };
 
 // 숫자 입력 파싱 (콤마/문자 제거)
@@ -570,6 +600,8 @@ const round100 = (x) => Math.round(x / 100) * 100;
 const sfExpect = (o) => {
   const lvl = o.level;
   const hasRestore = !!SF_RESTORE[lvl];
+  // 흔적 복구표가 없는 레벨에서는 저장된 선택값이 restore여도 12성 복구로 계산한다.
+  const recover = !hasRestore && o.recover === 'restore' ? 'spare12' : o.recover;
   const rows = [];
   let cumP = 0, cumR = 0, cumS = 0, cumT = 0, cumU = 0; // 12성부터의 누적 (재등반용)
   for (let n = 0; n < 30; n++) {
@@ -587,8 +619,8 @@ const sfExpect = (o) => {
     let P;
     if (n < 15) P = M;
     else if (o.guard === 'all1517' && n <= 17) P = O;
-    else if (o.guard === 'none') P = o.recover === 'spare12' ? M : o.recover === 'restore' ? N : Math.min(M, N);
-    else P = o.recover === 'spare12' ? Math.min(M, O) : o.recover === 'restore' ? Math.min(N, O) : Math.min(M, N, O);
+    else if (o.guard === 'none') P = recover === 'spare12' ? M : recover === 'restore' ? N : Math.min(M, N);
+    else P = recover === 'spare12' ? Math.min(M, O) : recover === 'restore' ? Math.min(N, O) : Math.min(M, N, O);
     const Q = n < 15 ? '일반' : P === O ? '파괴방지' : P === N ? '흔적 복구' : '12성 복구';
     const R = n < 15 ? I / succ : Q === '파괴방지' ? J / succ : Q === '흔적 복구' ? (I + boom * L) / succ : (I + boom * cumR) / succ;
     const S = n < 15 ? 0 : Q === '파괴방지' ? 0 : Q === '흔적 복구' ? boom * K / succ : boom * (1 + cumS) / succ;
@@ -633,38 +665,114 @@ const cubeMesoCost = (kind, lvl, grade) => {
   return row ? row.c[grade] || 0 : 0;
 };
 /* =========================================================
- * 정밀 큐브 목표옵션 (KMS 공식 API 확률, 2026-07-13) — cube-options.json 지연 로드
+ * 정밀 큐브 목표옵션 (KMS 공식 API 확률, 2026-07-15) — cube-options-v2.json 지연 로드
  * data = { parts:[[name,id]], options:[[text,rg,maxlines]], dists:[[[optIdx,prob]]], ctx:{numkey:[d1,d2,d3]} }
  * numeric_lookup_key = method(0/1e7) + 레전드리(4e6) + part×1e4 + 대표레벨
  * ========================================================= */
 const CUBE_REP_LEVEL = (L) => L <= 9 ? 0 : L <= 120 ? (L % 10 === 0 ? L : Math.floor(L / 10) * 10 + 1) : L <= 200 ? 120 : 201;
-const cubeContextKey = (method, partId, level) => (method === 'black' ? 0 : 10000000) + 4000000 + partId * 10000 + CUBE_REP_LEVEL(level);
+const CUBE_GRADE_OFFSET = { '레어': 1000000, '에픽': 2000000, '유니크': 3000000, '레전드리': 4000000 };
+const cubeContextKey = (method, grade, partId, level) =>
+  (method === 'black' ? 0 : 10000000) + (CUBE_GRADE_OFFSET[grade] || 0) + partId * 10000 + CUBE_REP_LEVEL(level);
 const CUBE_RGROUPS = [['usable_skill', 1], ['after_hit_invincibility', 1], ['on_hit_damage_ignore', 2], ['on_hit_invincibility', 2]];
+const CUBE_CRITICAL_DAMAGE_RE = /^크리티컬 데미지 \+\d+%$/;
+const CUBE_COOLDOWN_RE = /^스킬 재사용 대기시간 -(\d+)초$/;
+const CUBE_ITEM_DROP_RE = /^아이템 드롭률 \+\d+%$/;
+
+const cubeContext = (data, method, grade, partId, level) => {
+  const ctx = data?.ctx?.[String(cubeContextKey(method, grade, partId, level))];
+  if (!ctx) return null;
+  const dists = ctx.map(di => di >= 0 ? data.dists[di] : null);
+  return dists.every(Boolean) ? dists : null;
+};
+
+const cubeConditionalDist = (data, dist, priorGroups, lineIndex, primeOptions) => {
+  let excludedMass = 0;
+  const blocked = new Set();
+  for (const [group, maximum] of CUBE_RGROUPS) {
+    if ((priorGroups[group] || 0) >= maximum) blocked.add(group);
+  }
+  for (const entry of dist || []) {
+    const group = data.options[entry[0]]?.[1] || '';
+    if (blocked.has(group)) excludedMass += entry[1];
+  }
+  const denominator = 1 - excludedMass;
+  if (denominator <= 0) return { rows: [], excludedMass };
+  const rows = [];
+  for (const entry of dist || []) {
+    const [idx, raw, explicitPrime] = entry;
+    const option = data.options[idx] || ['', '', 0];
+    const group = option[1] || '';
+    if (blocked.has(group)) continue;
+    const text = option[0];
+    const cooldownMatch = text.match(CUBE_COOLDOWN_RE);
+    rows.push({
+      idx,
+      text,
+      raw,
+      p: raw / denominator,
+      group,
+      isPrime: explicitPrime == null ? (lineIndex === 0 || primeOptions.has(idx)) : !!explicitPrime,
+      isCriticalDamage: CUBE_CRITICAL_DAMAGE_RE.test(text),
+      cooldownSeconds: cooldownMatch ? Number(cooldownMatch[1]) : 0,
+    });
+  }
+  return { rows, excludedMass };
+};
+
+function cubeGoalProbability(data, method, grade, partId, level, predicate) {
+  const dists = cubeContext(data, method, grade, partId, level);
+  if (!dists) return { ok: false, reason: 'no-context', perRoll: 0 };
+  const primeOptions = new Set(dists[0].map(entry => entry[0]));
+  let success = 0;
+  const visit = (lineIndex, probability, priorGroups, lines) => {
+    if (lineIndex === 3) {
+      if (predicate(lines)) success += probability;
+      return;
+    }
+    const { rows } = cubeConditionalDist(data, dists[lineIndex], priorGroups, lineIndex, primeOptions);
+    for (const row of rows) {
+      const nextGroups = row.group
+        ? { ...priorGroups, [row.group]: (priorGroups[row.group] || 0) + 1 }
+        : priorGroups;
+      visit(lineIndex + 1, probability * row.p, nextGroups, [...lines, row]);
+    }
+  };
+  visit(0, 1, {}, []);
+  return { ok: true, perRoll: success };
+}
 
 // picks = [pick1,pick2,pick3]; 각 pick = 옵션 전역 인덱스(number) | 'any'(무시) | null(미선택)
-function cubeExactRoll(data, method, partId, level, picks) {
-  const ctx = data && data.ctx[String(cubeContextKey(method, partId, level))];
-  if (!ctx) return { ok: false, reason: 'no-context', lines: [], perRoll: 0 };
-  const dists = ctx.map(di => di >= 0 ? data.dists[di] : null);
-  const rawProb = (d, o) => { if (!d || o == null) return 0; const r = d.find(x => x[0] === o); return r ? r[1] : 0; };
-  const groupMass = (d, rg) => { if (!d || !rg) return 0; let s = 0; for (const [oi, p] of d) if ((data.options[oi][1] || '') === rg) s += p; return s; };
-  const priorRG = []; const lines = []; let complete = true;
+function cubeExactRoll(data, method, grade, partId, level, picks) {
+  const dists = cubeContext(data, method, grade, partId, level);
+  if (!dists) return { ok: false, reason: 'no-context', lines: [], perRoll: 0 };
+  const primeOptions = new Set(dists[0].map(entry => entry[0]));
+  const priorGroups = {}; const lines = []; let complete = true; let deterministicPrefix = true;
   for (let li = 0; li < 3; li++) {
-    const d = dists[li], o = picks[li];
-    if (o === 'any') { lines.push({ any: true, p: 1, present: true }); continue; }
-    if (o == null) { complete = false; lines.push({ p: 0, present: false }); continue; }
-    const raw = rawProb(d, o);
-    let excl = 0;
-    for (const [g, maxl] of CUBE_RGROUPS) if (priorRG.filter(x => x === g).length >= maxl) excl += groupMass(d, g);
-    const oRG = data.options[o][1] || '', oMax = data.options[o][2];
-    let p;
-    if (oRG && priorRG.filter(x => x === oRG).length >= oMax) p = 0;
-    else if (1 - excl <= 0) p = 0;
-    else p = raw / (1 - excl);
-    lines.push({ raw, excl, p, present: raw > 0, rg: oRG });
-    if (oRG) priorRG.push(oRG);
+    const wanted = picks[li];
+    if (wanted === 'any') {
+      lines.push({ any: true, p: 1, present: true, excl: 0 });
+      deterministicPrefix = false;
+      continue;
+    }
+    if (wanted == null) {
+      complete = false;
+      lines.push({ p: 0, present: false, excl: 0 });
+      deterministicPrefix = false;
+      continue;
+    }
+    if (!deterministicPrefix) {
+      lines.push({ p: null, present: true, excl: 0 });
+      continue;
+    }
+    const conditional = cubeConditionalDist(data, dists[li], priorGroups, li, primeOptions);
+    const row = conditional.rows.find(candidate => candidate.idx === wanted);
+    lines.push({ raw: row?.raw || 0, excl: conditional.excludedMass, p: row?.p || 0, present: !!row, rg: row?.group || '' });
+    if (row?.group) priorGroups[row.group] = (priorGroups[row.group] || 0) + 1;
   }
-  return { ok: true, lines, perRoll: lines[0].p * lines[1].p * lines[2].p, complete };
+  if (!complete) return { ok: true, lines, perRoll: 0, complete };
+  const goal = cubeGoalProbability(data, method, grade, partId, level,
+    rolled => rolled.every((row, index) => picks[index] === 'any' || row.idx === picks[index]));
+  return { ok: true, lines, perRoll: goal.perRoll, complete };
 }
 
 // 등급업 단계 (천장·연속실패 반영) — 계산 보조 H22:J24. targetGrade에서 멈춤(기본 레전드리)
@@ -692,7 +800,7 @@ function cubeGradeUp({ method, level, curGrade, targetGrade = '레전드리', fa
 let _cubeData = null;
 const loadCubeData = () => {
   if (_cubeData) return Promise.resolve(_cubeData);
-  return fetch('cube-options.json').then(r => { if (!r.ok) throw new Error('load'); return r.json(); }).then(j => { _cubeData = j; return j; });
+  return fetch('cube-options-v2.json').then(r => { if (!r.ok) throw new Error('load'); return r.json(); }).then(j => { _cubeData = j; return j; });
 };
 function useCubeData() {
   const [data, setData] = useState(_cubeData);
@@ -713,9 +821,9 @@ const CUBE_PREF_BY_LINE = [
   ['몬스터 방어율 무시 +40%', '몬스터 방어율 무시 +35%', '크리티컬 데미지 +8%', '공격력 +12%', '마력 +12%', '올스탯 +9%'],
 ];
 // 현재 문맥의 줄별 옵션 목록 (확률 내림차순). 없으면 null
-const cubeLineRows = (cube, method, partId, level) => {
+const cubeLineRows = (cube, method, grade, partId, level) => {
   if (!cube) return null;
-  const ctx = cube.ctx[String(cubeContextKey(method, partId, level))];
+  const ctx = cube.ctx[String(cubeContextKey(method, grade, partId, level))];
   if (!ctx) return null;
   return ctx.map(di => di < 0 ? [] : cube.dists[di]
     .map(([oi, p]) => ({ idx: oi, text: cube.options[oi][0], prob: p }))
@@ -731,38 +839,80 @@ const SLOT_TO_CUBE_PART = {
   cape: 12, belt: 13, shoulder: 14, face: 15, eye: 16, ear: 17,
   ring1: 18, ring2: 18, ring3: 18, ring4: 18, pendant1: 19, pendant2: 19, heart: 20,
 };
-// 잠재 프리셋 → 목표 유효 줄수(추정)
-const presetLineCount = (t) => {
-  if (!t) return 3;
-  if (/3줄|크크주|3초주|4초주|5초|6초|1초주주/.test(t)) return 3;
-  if (/2줄|크크|아확|올이탈|3줄이탈|2초주주|1초주/.test(t)) return 2;
-  if (/1초/.test(t)) return 1;
-  return 3;
+const CUBE_FOCUS_OPTIONS = ['STR', 'DEX', 'INT', 'LUK', '최대 HP', '공격력', '마력'];
+const cubeGoalNeedsFocus = (target) => !!target && (
+  ['2줄', '3줄', '3줄이탈', '올이탈', '크크주'].includes(target) || /초주/.test(target)
+);
+const createCubeFocusMatcher = (focus, method) => {
+  const escaped = focus.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const percent = new RegExp(`^${escaped} \\+\\d+%$`);
+  if (method !== 'addi') return (text) => percent.test(text);
+  // 에디셔널의 고정 수치와 '캐릭터 기준 N레벨 당' 옵션도 실제 유효 줄로 합산한다.
+  const flat = new RegExp(`^${escaped} \\+\\d+$`);
+  const perLevel = new RegExp(`^캐릭터 기준 \\d+레벨 당 ${escaped} \\+\\d+$`);
+  return (text) => percent.test(text) || flat.test(text) || perLevel.test(text);
 };
-// 슬롯 자동 잠재 비용: 등급업(cur→target) + 목표 N줄(부위별 강옵) 통합 기대 메소
-const cubeAutoPotentialCost = ({ cube, method, partId, level, curGrade, targetGrade, nLines }) => {
+const cubeGoalPredicate = (target, focus, method) => {
+  if (!target) return null;
+  const matchesFocus = createCubeFocusMatcher(focus, method);
+  const seconds = target.match(/^(\d+)초/);
+  const cooldownGoal = seconds ? Number(seconds[1]) : 0;
+  const focusNeed = target.endsWith('주주') ? 2 : target.endsWith('주') ? 1 : 0;
+  return (lines) => {
+    const focused = lines.filter(line => matchesFocus(line.text));
+    const primeFocused = focused.filter(line => line.isPrime);
+    const criticalDamage = lines.filter(line => line.isCriticalDamage ?? CUBE_CRITICAL_DAMAGE_RE.test(line.text)).length;
+    const cooldown = lines.reduce((sum, line) => {
+      if (line.cooldownSeconds != null) return sum + line.cooldownSeconds;
+      const match = line.text.match(CUBE_COOLDOWN_RE);
+      return sum + (match ? Number(match[1]) : 0);
+    }, 0);
+    if (target === '2줄') return focused.length >= 2;
+    if (target === '3줄') return focused.length >= 3;
+    if (target === '3줄이탈') return focused.length >= 3 && primeFocused.length >= 2;
+    if (target === '올이탈') return focused.length >= 3 && primeFocused.length >= 3;
+    if (target === '아획' || target === '아확') return lines.some(line => CUBE_ITEM_DROP_RE.test(line.text));
+    if (target === '크크') return criticalDamage >= 2;
+    if (target === '크크주') return criticalDamage >= 2 && focused.length >= 1;
+    if (seconds) return cooldown >= cooldownGoal && focused.length >= focusNeed;
+    return false;
+  };
+};
+const _cubeGoalCache = new Map();
+
+// 슬롯 자동 잠재 비용: 등급업(cur→target) + 선택한 실제 옵션 목표의 통합 기대 메소
+const cubeAutoPotentialCost = ({ cube, method, partId, level, curGrade, targetGrade, targetPreset, focus }) => {
   const gi = (g) => GRADES.indexOf(g);
-  if (gi(targetGrade) < 0) return { ok: false };
+  if (!Number.isFinite(Number(level)) || Number(level) < 1 || Number(level) > 300) return { ok: false, reason: 'level' };
+  if (gi(targetGrade) < 0 || gi(curGrade) < 0) return { ok: false, reason: 'grade' };
+  if (gi(curGrade) > gi(targetGrade)) return { ok: false, reason: 'downgrade' };
   const gup = cubeGradeUp({ method, level, curGrade, targetGrade, fails: {} });
-  const rows = cubeLineRows(cube, method, partId, level);
   const way = method === 'black' ? 'normal' : 'addi';
   const costL = cubeMesoCost(way, level, targetGrade);
-  let targetMeso = 0, H = 0;
-  if (rows && targetGrade === '레전드리') {
-    const picks = rows.map((r, li) => li < nLines ? cubePickStrong(r, li) : 'any');
-    const roll = cubeExactRoll(cube, method, partId, level, picks);
-    H = roll.perRoll;
-    const upgrading = gi(curGrade) < gi('레전드리');
-    const tries = H > 0 ? (upgrading ? (1 - H) / H : 1 / H) : 0;
-    targetMeso = tries * costL;
+  if (!targetPreset) {
+    return { ok: true, gradeOnly: true, gupMeso: gup.meso, targetMeso: 0, total: gup.meso, H: null, targetTries: 0 };
   }
-  return { ok: true, gupMeso: gup.meso, targetMeso, total: gup.meso + targetMeso, H, nLines };
+  const predicate = cubeGoalPredicate(targetPreset, focus, method);
+  if (!predicate) return { ok: false, reason: 'unsupported' };
+  const cacheKey = [method, targetGrade, partId, CUBE_REP_LEVEL(level), targetPreset, focus].join('|');
+  let goal = _cubeGoalCache.get(cacheKey);
+  if (!goal) {
+    goal = cubeGoalProbability(cube, method, targetGrade, partId, level, predicate);
+    _cubeGoalCache.set(cacheKey, goal);
+  }
+  if (!goal.ok) return { ok: false, reason: goal.reason };
+  const H = goal.perRoll;
+  if (!(H > 0)) return { ok: false, reason: 'impossible', H: 0 };
+  const upgrading = gi(curGrade) < gi(targetGrade);
+  const targetTries = upgrading ? (1 - H) / H : 1 / H;
+  const targetMeso = targetTries * costL;
+  return { ok: true, gupMeso: gup.meso, targetMeso, total: gup.meso + targetMeso, H, targetTries };
 };
 
 const emptyEquipSlot = () => ({
   item: '',
-  star: '', potential: '미설정', potTarget: '',
-  addPotential: '미설정', addPotTarget: '',
+  star: '', potential: '미설정', potTarget: '', potFocus: 'STR',
+  addPotential: '미설정', addPotTarget: '', addPotFocus: 'STR',
   flameDone: false, jakDone: false,
   soul: '',
   cost: 0, priority: 0, done: false, memo: '',
@@ -770,13 +920,26 @@ const emptyEquipSlot = () => ({
 // 구버전/부분 데이터를 안전하게 보정해서 읽기
 const normSlot = (s) => {
   const e = emptyEquipSlot();
-  const o = s || {};
+  const o = isPlainObject(s) ? s : {};
+  const numberOrZero = (value) => Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : 0;
+  const star = o.star === '' || o.star == null ? '' : Math.min(30, Math.floor(numberOrZero(o.star)));
   return {
-    ...e, ...o,
-    potTarget: o.potTarget || '',
-    addPotTarget: o.addPotTarget || '',
+    ...e,
+    item: typeof o.item === 'string' ? o.item : '',
+    star,
+    potential: POTENTIAL_GRADES.includes(o.potential) ? o.potential : '미설정',
+    potTarget: typeof o.potTarget === 'string' ? o.potTarget : '',
+    potFocus: CUBE_FOCUS_OPTIONS.includes(o.potFocus) ? o.potFocus : 'STR',
+    addPotential: POTENTIAL_GRADES.includes(o.addPotential) ? o.addPotential : '미설정',
+    addPotTarget: typeof o.addPotTarget === 'string' ? o.addPotTarget : '',
+    addPotFocus: CUBE_FOCUS_OPTIONS.includes(o.addPotFocus) ? o.addPotFocus : 'STR',
     flameDone: !!o.flameDone,
     jakDone: !!o.jakDone,
+    soul: typeof o.soul === 'string' ? o.soul : '',
+    cost: numberOrZero(o.cost),
+    priority: Math.floor(numberOrZero(o.priority)),
+    done: !!o.done,
+    memo: typeof o.memo === 'string' ? o.memo : '',
   };
 };
 
@@ -812,7 +975,7 @@ const SLOT_CAP = {
 };
 
 /* 잠재 목표 — 옵션 나열 대신 줄수/이탈 표기 프리셋 (부위별) */
-const POT_TARGETS = ['2줄', '3줄', '3줄이탈', '올이탈', '아확'];
+const POT_TARGETS = ['2줄', '3줄', '3줄이탈', '올이탈', '아획'];
 const POT_TARGETS_GLOVE = ['2줄', '크크', '크크주'];
 const POT_TARGETS_HAT = ['2초', '3초', '4초', '5초', '6초', '2줄', '3줄', '3줄이탈', '2초주주', '3초주', '4초주'];
 const ADDPOT_TARGETS = ['2줄', '3줄', '3줄이탈', '올이탈'];
@@ -949,8 +1112,12 @@ const emptyGoals = () => ({
 });
 const normalizeChar = (c) => ({
   ...c,
-  equipment: c.equipment || {},
-  goals: c.goals ? {
+  id: typeof c.id === 'string' && c.id ? c.id : uid(),
+  name: typeof c.name === 'string' && c.name.trim() ? c.name : '이름 없는 캐릭터',
+  durations: isPlainObject(c.durations) ? c.durations : {},
+  bosses: Array.isArray(c.bosses) ? c.bosses : [],
+  equipment: isPlainObject(c.equipment) ? c.equipment : {},
+  goals: isPlainObject(c.goals) ? {
     level: { current: '', target: '', percent: '', ...(c.goals.level || {}) },
     symbols: {
       arcane: { ...emptyGoals().symbols.arcane, ...(c.goals.symbols?.arcane || {}) },
@@ -963,33 +1130,145 @@ const normalizeChar = (c) => ({
     hexa: Array.isArray(c.goals.hexa) ? [0, 1, 2].map(i => !!c.goals.hexa[i]) : [false, false, false],
     setMemo: c.goals.setMemo || '',
   } : emptyGoals(),
-  budget: c.budget || { total: 0 },
-  bossTimes: c.bossTimes || {},
-  hexaSkills: c.hexaSkills ? {
+  budget: isPlainObject(c.budget) ? c.budget : { total: 0 },
+  bossTimes: isPlainObject(c.bossTimes) ? c.bossTimes : {},
+  hexaSkills: isPlainObject(c.hexaSkills) ? {
     slots: { ...emptyHexa().slots, ...(c.hexaSkills.slots || {}) },
     priority: c.hexaSkills.priority || 0,
     done: !!c.hexaSkills.done,
   } : emptyHexa(),
 });
 
+const validateBackupData = (value) => {
+  const fail = (message) => { throw new Error(message); };
+  if (!isPlainObject(value) || value.app !== 'maple-check' || value.version !== 1) {
+    fail('메이플체크에서 내보낸 백업 파일이 아닙니다.');
+  }
+  if (!Array.isArray(value.characters) || !Array.isArray(value.bossData)) {
+    fail('캐릭터 또는 보스 데이터 배열이 없습니다.');
+  }
+  if (value.characters.length > 200 || value.bossData.length > 100) fail('백업 데이터가 허용 범위를 초과했습니다.');
+
+  const knownBossIds = new Set(DEFAULT_BOSSES.map(boss => boss.id));
+  const seenBossIds = new Set();
+  for (const boss of value.bossData) {
+    if (!isPlainObject(boss) || typeof boss.id !== 'string' || !knownBossIds.has(boss.id) || seenBossIds.has(boss.id)) {
+      fail('보스 데이터 구조가 올바르지 않습니다.');
+    }
+    seenBossIds.add(boss.id);
+    if (!isPlainObject(boss.difficulties)) fail(`${boss.id} 난이도 데이터가 올바르지 않습니다.`);
+    for (const entry of Object.values(boss.difficulties)) {
+      const validNumber = typeof entry === 'number' && Number.isFinite(entry) && entry >= 0;
+      const validObject = isPlainObject(entry)
+        && Number.isFinite(Number(entry.price)) && Number(entry.price) >= 0
+        && Number.isFinite(Number(entry.max)) && Number(entry.max) >= 1 && Number(entry.max) <= 6;
+      if (!validNumber && !validObject) fail('결정석 가격 또는 최대 입장 인원이 올바르지 않습니다.');
+    }
+  }
+
+  const nextBossData = reconcileBossData(value.bossData);
+  const seenCharacterIds = new Set();
+  const nextCharacters = value.characters.map((raw, index) => {
+    if (!isPlainObject(raw) || typeof raw.id !== 'string' || !raw.id.trim() || seenCharacterIds.has(raw.id)) {
+      fail(`${index + 1}번째 캐릭터 ID가 올바르지 않습니다.`);
+    }
+    if (typeof raw.name !== 'string' || !raw.name.trim()) fail(`${index + 1}번째 캐릭터 이름이 올바르지 않습니다.`);
+    seenCharacterIds.add(raw.id);
+    const objectFields = ['durations', 'equipment', 'goals', 'budget', 'bossTimes', 'hexaSkills'];
+    for (const field of objectFields) {
+      if (raw[field] != null && !isPlainObject(raw[field])) fail(`${raw.name}의 ${field} 구조가 올바르지 않습니다.`);
+    }
+    if (raw.goals?.level != null && !isPlainObject(raw.goals.level)) fail(`${raw.name}의 레벨 목표가 올바르지 않습니다.`);
+    if (raw.goals?.symbols != null && !isPlainObject(raw.goals.symbols)) fail(`${raw.name}의 심볼 목표가 올바르지 않습니다.`);
+    if (raw.goals?.solErda != null && !isPlainObject(raw.goals.solErda)) fail(`${raw.name}의 솔 에르다 목표가 올바르지 않습니다.`);
+    if (raw.hexaSkills?.slots != null && !isPlainObject(raw.hexaSkills.slots)) fail(`${raw.name}의 HEXA 구조가 올바르지 않습니다.`);
+    if (!Array.isArray(raw.bosses)) fail(`${raw.name}의 보스 선택 목록이 올바르지 않습니다.`);
+    if (raw.bosses.length > 100) fail(`${raw.name}의 보스 선택 목록이 너무 많습니다.`);
+    for (const slot of Object.values(raw.equipment || {})) {
+      if (!isPlainObject(slot)) fail(`${raw.name}의 장비 데이터가 올바르지 않습니다.`);
+      for (const field of ['item', 'potTarget', 'potFocus', 'addPotTarget', 'addPotFocus', 'soul', 'memo']) {
+        if (slot[field] != null && typeof slot[field] !== 'string') fail(`${raw.name}의 장비 ${field} 값이 올바르지 않습니다.`);
+      }
+      for (const field of ['flameDone', 'jakDone', 'done']) {
+        if (slot[field] != null && typeof slot[field] !== 'boolean') fail(`${raw.name}의 장비 ${field} 값이 올바르지 않습니다.`);
+      }
+      for (const field of ['cost', 'priority']) {
+        if (slot[field] != null && (typeof slot[field] !== 'number' || !Number.isFinite(slot[field]) || slot[field] < 0)) {
+          fail(`${raw.name}의 장비 ${field} 값이 올바르지 않습니다.`);
+        }
+      }
+      if (slot.star != null && slot.star !== '' && (typeof slot.star !== 'number' || !Number.isFinite(slot.star) || slot.star < 0 || slot.star > 30)) {
+        fail(`${raw.name}의 장비 스타포스 값이 올바르지 않습니다.`);
+      }
+      for (const field of ['potential', 'addPotential']) {
+        if (slot[field] != null && !POTENTIAL_GRADES.includes(slot[field])) fail(`${raw.name}의 장비 잠재등급이 올바르지 않습니다.`);
+      }
+      for (const field of ['potFocus', 'addPotFocus']) {
+        if (slot[field] != null && !CUBE_FOCUS_OPTIONS.includes(slot[field])) fail(`${raw.name}의 장비 유효옵션 기준이 올바르지 않습니다.`);
+      }
+    }
+    const durations = {};
+    for (const [key, date] of Object.entries(raw.durations || {})) {
+      if (typeof date !== 'string' || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))) fail(`${raw.name}의 만료일이 올바르지 않습니다.`);
+      durations[key] = date;
+    }
+    const characterBossIds = new Set();
+    let weeklyBossCount = 0;
+    const bosses = raw.bosses.map(row => {
+      if (!isPlainObject(row) || typeof row.bossId !== 'string' || typeof row.difficulty !== 'string') {
+        fail(`${raw.name}의 보스 선택 항목이 올바르지 않습니다.`);
+      }
+      const boss = nextBossData.find(candidate => candidate.id === row.bossId);
+      if (!boss || !boss.difficulties[row.difficulty]) fail(`${raw.name}에 알 수 없는 보스 또는 난이도가 있습니다.`);
+      if (characterBossIds.has(row.bossId)) fail(`${raw.name}에 같은 보스가 중복되어 있습니다.`);
+      characterBossIds.add(row.bossId);
+      if (!boss.monthly && ++weeklyBossCount > 12) fail(`${raw.name}의 주간 보스가 12개를 초과했습니다.`);
+      const { max } = getDifficultyEntry(boss, row.difficulty);
+      return {
+        rowId: typeof row.rowId === 'string' && row.rowId ? row.rowId : 'r_' + Math.random().toString(36).slice(2, 8),
+        bossId: row.bossId,
+        difficulty: row.difficulty,
+        partyMembers: clampPartyMembers(row.partyMembers, max),
+      };
+    });
+    return normalizeChar({
+      id: raw.id.slice(0, 100),
+      name: raw.name.trim().slice(0, 100),
+      durations,
+      bosses,
+      equipment: cloneJson(raw.equipment || {}),
+      goals: raw.goals ? cloneJson(raw.goals) : undefined,
+      budget: raw.budget ? cloneJson(raw.budget) : { total: 0 },
+      bossTimes: raw.bossTimes ? cloneJson(raw.bossTimes) : {},
+      hexaSkills: raw.hexaSkills ? cloneJson(raw.hexaSkills) : undefined,
+    });
+  });
+  return { characters: nextCharacters, bossData: nextBossData };
+};
+
 /* =========================================================
  * 만료 알림 (브라우저 Notification + 페이지 배너)
- * - D-1, D-day 항목만 노출
- * - 같은 날짜에는 한 번만 알림 (localStorage로 중복 방지)
+ * - D-1, D-day, 만료 항목 노출
+ * - 캐릭터·항목·만료일 조합마다 브라우저 알림은 한 번만 발송
  * ========================================================= */
+const activeExpiryNotificationKeys = (characters, oldKeys) => {
+  const activeKeys = new Set();
+  for (const character of characters) {
+    for (const [type, date] of Object.entries(character.durations || {})) {
+      if (typeof date === 'string' && date) activeKeys.add(`${character.id}|${type}|${date}`);
+    }
+  }
+  return [...new Set((oldKeys || [])
+    .filter(key => typeof key === 'string')
+    .map(key => key.split('|').slice(0, 3).join('|'))
+    .filter(key => activeKeys.has(key)))];
+};
+
 function useExpiryNotifications(characters) {
   const [permission, setPermission] = useState(() =>
     typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
   );
   const [pending, setPending] = useState([]);
-
-  // 페이지 진입 시 알림 권한 자동 요청 (한 번만)
-  useEffect(() => {
-    if (typeof Notification === 'undefined') return;
-    if (Notification.permission === 'default') {
-      Notification.requestPermission().then(p => setPermission(p)).catch(() => {});
-    }
-  }, []);
 
   // 만료/임박 항목 탐지
   useEffect(() => {
@@ -1012,14 +1291,14 @@ function useExpiryNotifications(characters) {
     }
     setPending(items);
 
-    // 브라우저 알림 발송 (오늘 한 번만)
+    // 브라우저 알림 발송 (같은 만료 항목은 앱을 다시 열어도 한 번만)
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-    const today = todayStr();
-    const shown = loadLS(LS_KEYS.NOTIF_SHOWN, { date: '', keys: [] });
-    if (shown.date !== today) shown.keys = [];
-    const nextKeys = [...shown.keys];
+    const shown = loadLS(LS_KEYS.NOTIF_SHOWN, { keys: [] });
+    const oldKeys = Array.isArray(shown) ? shown : (Array.isArray(shown?.keys) ? shown.keys : []);
+    // 구버전 키의 마지막 D-day 값은 제거해 새 형식으로 이관한다.
+    const nextKeys = activeExpiryNotificationKeys(characters, oldKeys);
     for (const it of items) {
-      const key = `${it.charId}|${it.type}|${it.date}|${it.days}`;
+      const key = `${it.charId}|${it.type}|${it.date}`;
       if (nextKeys.includes(key)) continue;
       const title =
         it.days < 0 ? `[만료됨] ${it.charName} - ${it.typeLabel}` :
@@ -1031,8 +1310,9 @@ function useExpiryNotifications(characters) {
       } catch {}
       nextKeys.push(key);
     }
-    saveLS(LS_KEYS.NOTIF_SHOWN, { date: today, keys: nextKeys });
-  }, [characters]);
+    // 현재 존재하는 만료 항목의 발송 기록은 개수와 무관하게 모두 보존한다.
+    saveLS(LS_KEYS.NOTIF_SHOWN, { keys: nextKeys });
+  }, [characters, permission]);
 
   const askPermission = () => {
     if (typeof Notification === 'undefined') return;
@@ -1046,14 +1326,77 @@ function useExpiryNotifications(characters) {
  * 메인 App
  * ========================================================= */
 function App() {
-  const [characters, setCharacters] = useState(() => loadLS(LS_KEYS.CHARS, []).map(normalizeChar));
+  const [characters, setCharacters] = useState(() => {
+    const saved = loadLS(LS_KEYS.CHARS, []);
+    return Array.isArray(saved) ? saved.filter(isPlainObject).map(normalizeChar) : [];
+  });
   const [bossData, setBossData]     = useState(() => reconcileBossData(loadLS(LS_KEYS.BOSS_DATA, null)));
   const [selected, setSelected]     = useState(() => loadLS(LS_KEYS.SELECTED, 'dashboard'));
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const menuButtonRef = useRef(null);
+  const sidebarWasOpen = useRef(false);
 
   useEffect(() => saveLS(LS_KEYS.CHARS, characters), [characters]);
   useEffect(() => saveLS(LS_KEYS.BOSS_DATA, bossData), [bossData]);
   useEffect(() => saveLS(LS_KEYS.SELECTED, selected), [selected]);
+
+  // 최대 인원 보정과 함께 구버전/손상 데이터의 중복·알 수 없는 보스도 정리한다.
+  useEffect(() => {
+    setCharacters(prev => {
+      let changed = false;
+      const next = prev.map(character => {
+        let characterChanged = !Array.isArray(character.bosses);
+        if (characterChanged) changed = true;
+        const seenBossIds = new Set();
+        let weeklyCount = 0;
+        const bosses = [];
+        for (const row of (Array.isArray(character.bosses) ? character.bosses : [])) {
+          if (!isPlainObject(row)) {
+            characterChanged = true;
+            changed = true;
+            continue;
+          }
+          const boss = bossData.find(candidate => candidate.id === row.bossId);
+          if (!boss || !boss.difficulties[row.difficulty] || seenBossIds.has(row.bossId)) {
+            characterChanged = true;
+            changed = true;
+            continue;
+          }
+          if (!boss.monthly && weeklyCount >= 12) {
+            characterChanged = true;
+            changed = true;
+            continue;
+          }
+          seenBossIds.add(row.bossId);
+          if (!boss.monthly) weeklyCount++;
+          const { max } = getDifficultyEntry(boss, row.difficulty);
+          const members = clampPartyMembers(row.partyMembers, max);
+          if (members !== row.partyMembers) {
+            changed = true;
+            characterChanged = true;
+            bosses.push({ ...row, partyMembers: members });
+          } else {
+            bosses.push(row);
+          }
+        }
+        return characterChanged ? { ...character, bosses } : character;
+      });
+      return changed ? next : prev;
+    });
+  }, [bossData]);
+
+  useEffect(() => {
+    if (sidebarWasOpen.current && !sidebarOpen) {
+      requestAnimationFrame(() => menuButtonRef.current?.focus());
+    }
+    sidebarWasOpen.current = sidebarOpen;
+  }, [sidebarOpen]);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setSidebarOpen(false); };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [sidebarOpen]);
 
   const { pending, permission, askPermission } = useExpiryNotifications(characters);
 
@@ -1065,9 +1408,7 @@ function App() {
       for (const row of (c.bosses || [])) {
         const boss = bossData.find(b => b.id === row.bossId);
         if (!boss) continue;
-        const { price } = getDifficultyEntry(boss, row.difficulty);
-        const members = Math.max(1, row.partyMembers || 1);
-        const rev = Math.floor(price / members);
+        const { revenue: rev } = getBossRevenue(boss, row);
         if (boss.monthly) monthly += rev;
         else weekly += rev;
       }
@@ -1162,20 +1503,26 @@ function App() {
 
   const importDataFile = useCallback((file) => {
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('백업 파일이 너무 큽니다. (최대 5MB)');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const j = JSON.parse(reader.result);
-        if (!j || !Array.isArray(j.characters)) { alert('올바른 메이플체크 백업 파일이 아닙니다.'); return; }
+        // 모든 구조 검증과 정규화를 끝낸 뒤에만 현재 상태를 변경한다.
+        const next = validateBackupData(j);
         if (!confirm(`백업 불러오기: ${j.exportedAt || '날짜 미상'} · 캐릭터 ${j.characters.length}명\n현재 이 브라우저의 데이터를 덮어씁니다. 진행할까요?`)) return;
-        setCharacters(j.characters.map(normalizeChar));
-        if (Array.isArray(j.bossData)) setBossData(reconcileBossData(j.bossData));
+        setCharacters(next.characters);
+        setBossData(next.bossData);
         setSelected('dashboard');
         alert('불러오기 완료!');
-      } catch {
-        alert('파일을 읽을 수 없습니다. (JSON 형식 오류)');
+      } catch (error) {
+        alert(`백업을 불러올 수 없습니다.\n${error?.message || 'JSON 형식 오류'}`);
       }
     };
+    reader.onerror = () => alert('백업 파일을 읽는 중 오류가 발생했습니다.');
     reader.readAsText(file);
   }, []);
 
@@ -1185,6 +1532,7 @@ function App() {
         <div
           className="fixed inset-0 bg-black/60 z-30 md:hidden"
           onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
         />
       )}
 
@@ -1203,9 +1551,12 @@ function App() {
       <main className="flex-1 overflow-y-auto">
         <header className="sticky top-0 z-20 bg-maple-bg/80 backdrop-blur border-b border-maple-border px-4 py-3 flex items-center gap-3 md:hidden">
           <button
+            ref={menuButtonRef}
             onClick={() => setSidebarOpen(true)}
             className="p-2 -ml-2 rounded hover:bg-maple-panel"
             aria-label="메뉴"
+            aria-expanded={sidebarOpen}
+            aria-controls="app-sidebar"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 6h18M3 12h18M3 18h18" />
@@ -1329,6 +1680,38 @@ function ExpiryBanner({ items, permission, onAskPermission, onSelect }) {
  * ========================================================= */
 function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, open, onExport, onImportFile }) {
   const [newName, setNewName] = useState('');
+  const asideRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const aside = asideRef.current;
+    const focusable = () => Array.from(aside?.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    ) || []);
+    const isDesktop = () => window.matchMedia('(min-width: 768px)').matches;
+    const frame = requestAnimationFrame(() => { if (!isDesktop()) focusable()[0]?.focus(); });
+    const trapFocus = (event) => {
+      if (event.key !== 'Tab' || isDesktop()) return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (!aside?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', trapFocus);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', trapFocus);
+    };
+  }, [open]);
 
   const handleAdd = (e) => {
     e?.preventDefault();
@@ -1338,10 +1721,13 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
 
   return (
     <aside
+      ref={asideRef}
+      id="app-sidebar"
+      aria-label="주 메뉴"
       className={`
         fixed md:static z-40 top-0 left-0 h-full w-72 bg-maple-panel border-r border-maple-border
-        flex flex-col transform transition-transform md:translate-x-0
-        ${open ? 'translate-x-0' : '-translate-x-full'}
+        flex flex-col transform transition-[transform,visibility] md:translate-x-0 md:visible
+        ${open ? 'translate-x-0 visible' : '-translate-x-full invisible'}
       `}
     >
       <div className="px-5 pt-6 pb-4 border-b border-maple-border">
@@ -1433,7 +1819,7 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
             <input
               type="file"
               accept=".json,application/json"
-              className="hidden"
+              className="sr-only"
               onChange={(e) => { onImportFile(e.target.files && e.target.files[0]); e.target.value = ''; }}
             />
           </label>
@@ -1449,6 +1835,7 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="새 캐릭터 이름"
+          aria-label="새 캐릭터 이름"
           className="w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent"
         />
         <button
@@ -1499,11 +1886,11 @@ function Dashboard({ characters, charTotals, grandTotal, bossData, onSelect }) {
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">📊 총 통합 정리</h2>
-        <p className="text-slate-400 mt-1">모든 캐릭터의 주간 보스 결정석 수익 합계</p>
+        <p className="text-slate-400 mt-1">모든 캐릭터의 주간 수익과 월간 보스 1회 수익을 합산</p>
       </div>
 
       <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-maple-accent/30 rounded-xl p-6 md:p-8">
-        <div className="text-sm text-slate-300">총 보스 결정석 수익</div>
+        <div className="text-sm text-slate-300">주간 + 월간 1회 보스 결정석 수익</div>
         <div className="text-3xl md:text-5xl font-bold text-maple-accent mt-2 break-all">
           {fmtMeso(grandTotal.total)}
         </div>
@@ -1662,11 +2049,14 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
   };
 
   const setBossMembers = (bossId, difficulty, n) => {
+    const boss = bossData.find(candidate => candidate.id === bossId);
+    const { max } = getDifficultyEntry(boss, difficulty);
+    const members = clampPartyMembers(n, max);
     onUpdate(c => ({
       ...c,
       bosses: (c.bosses || []).map(b =>
         (b.bossId === bossId && b.difficulty === difficulty)
-          ? { ...b, partyMembers: n }
+          ? { ...b, partyMembers: members }
           : b
       )
     }));
@@ -1746,7 +2136,7 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
       {tab === 'boss' && (
         <>
           <div className="bg-gradient-to-br from-amber-500/15 to-orange-500/5 border border-maple-accent/30 rounded-xl p-5">
-            <div className="text-sm text-slate-300">이 캐릭터의 총 보스 수익</div>
+            <div className="text-sm text-slate-300">이 캐릭터의 주간 + 월간 1회 보스 수익</div>
             <div className="text-2xl md:text-4xl font-bold text-maple-accent mt-1 break-all">
               {fmtMeso(totals.total)}
             </div>
@@ -1822,7 +2212,7 @@ function TabBtn({ active, onClick, children }) {
 /* =========================================================
  * 기간제 패널
  * ========================================================= */
-function DurationField({ label, value, onChange }) {
+function DurationField({ id, label, value, onChange }) {
   const d = daysUntil(value);
   const tone = d === null ? 'text-slate-500'
     : d < 0 ? 'text-maple-danger'
@@ -1831,8 +2221,9 @@ function DurationField({ label, value, onChange }) {
     : 'text-maple-good';
   return (
     <div>
-      <label className="text-sm text-slate-300 block mb-1.5">{label}</label>
+      <label htmlFor={id} className="text-sm text-slate-300 block mb-1.5">{label}</label>
       <input
+        id={id}
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -1872,6 +2263,7 @@ function DurationsPanel({ durations, setDuration }) {
         {general.map(({ key, label }) => (
           <DurationField
             key={key}
+            id={`duration-${key}`}
             label={label}
             value={durations[key] || ''}
             onChange={(v) => setDuration(key, v)}
@@ -1887,6 +2279,7 @@ function DurationsPanel({ durations, setDuration }) {
           {labelParts.map(({ key, label }) => (
             <DurationField
               key={key}
+              id={`duration-${key}`}
               label={label}
               value={durations[key] || ''}
               onChange={(v) => setDuration(key, v)}
@@ -2053,9 +2446,7 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
     for (const r of rows) {
       const boss = bossData.find(b => b.id === r.bossId);
       if (!boss) continue;
-      const { price, max } = getDifficultyEntry(boss, r.difficulty);
-      const members = Math.min(Math.max(1, r.partyMembers || 1), max);
-      const rev = Math.floor(price / members);
+      const { revenue: rev } = getBossRevenue(boss, r);
       if (boss.monthly) monthly += rev;
       else weekly += rev;
     }
@@ -2119,8 +2510,9 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
         {sortMode !== 'natural' ? flatEntries.map(({ boss, diff, price, max, monthly }) => {
           const sel = selByBoss[boss.id];
           const active = !!sel && sel.difficulty === diff;
-          const members = active ? Math.min(Math.max(1, sel.partyMembers || 1), max) : 1;
-          const revenueVal = active ? Math.floor(price / members) : 0;
+          const revenueInfo = active ? getBossRevenue(boss, sel) : null;
+          const members = revenueInfo?.members || 1;
+          const revenueVal = revenueInfo?.revenue || 0;
           const bossSelected = !!sel;
           const cannotAdd = !active && !bossSelected && isFull && !monthly;
           const st = diffStyle(diff);
@@ -2143,6 +2535,7 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
               {active && (
                 <select value={members} onChange={(e) => onSetMembers(boss.id, diff, parseInt(e.target.value) || 1)}
                   className="bg-maple-bg border border-maple-border rounded px-2 py-1 text-xs w-16 text-center"
+                  aria-label={`${boss.name} ${diff} 실제 파티원 수`}
                   title={max === 1 ? '솔로 전용 (1인)' : `최대 ${max}인`}>
                   {Array.from({ length: max }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}인</option>)}
                 </select>
@@ -2155,8 +2548,9 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
           const checked = !!sel;
           const selEntry = checked ? getDifficultyEntry(boss, sel.difficulty) : null;
           const max = selEntry ? selEntry.max : 6;
-          const members = checked ? Math.min(Math.max(1, sel.partyMembers || 1), max) : 1;
-          const revenueVal = checked ? Math.floor(selEntry.price / members) : 0;
+          const revenueInfo = checked ? getBossRevenue(boss, sel) : null;
+          const members = revenueInfo?.members || 1;
+          const revenueVal = revenueInfo?.revenue || 0;
           const cannotAdd = !checked && isFull && !monthly; // 한도 초과 시 새 보스 추가 불가
 
           return (
@@ -2167,6 +2561,7 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
                 <span className="flex items-center gap-1 text-[11px] text-slate-400" title="이 캐릭터의 보스 1회 소요시간(분)">
                   <span>소요</span>
                   <input type="text" inputMode="numeric" value={bossTimes[boss.id] || ''} placeholder="-"
+                    aria-label={`${boss.name} 1회 소요시간(분)`}
                     onChange={(e) => onSetTime(boss.id, parseInt(String(e.target.value).replace(/[^0-9]/g, '')) || 0)}
                     className="w-12 bg-maple-bg border border-maple-border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-maple-accent" />
                   <span>분</span>
@@ -2208,6 +2603,7 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
                     value={members}
                     onChange={(e) => onSetMembers(boss.id, sel.difficulty, parseInt(e.target.value) || 1)}
                     className="ml-1 bg-maple-bg border border-maple-border rounded px-2 py-1 text-xs w-16 text-center"
+                    aria-label={`${boss.name} ${sel.difficulty} 실제 파티원 수`}
                     title={max === 1 ? '솔로 전용 (1인)' : `최대 ${max}인`}
                   >
                     {Array.from({ length: max }, (_, i) => i + 1).map(n => (
@@ -2239,7 +2635,7 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
           <div className="font-medium text-violet-200/80">{fmtMinutes(timeSum.monthly)}</div>
         </div>
         <div className="flex items-center justify-between pt-1.5 border-t border-maple-border">
-          <div className="font-semibold">총 수익 합계</div>
+          <div className="font-semibold">주간 + 월간 1회 합계</div>
           <div className="font-bold text-maple-accent text-base md:text-lg">{fmtMeso(revenue.total)}</div>
         </div>
       </div>
@@ -2305,6 +2701,7 @@ function BossDataEditor({ bossData, setBossData }) {
                         type="text"
                         inputMode="numeric"
                         value={entry.price.toLocaleString()}
+                        aria-label={`${boss.name} ${diff} 결정석 가격(메소)`}
                         onChange={(e) => updateField(boss.id, diff, 'price', e.target.value)}
                         className="w-full bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm text-right focus:outline-none focus:border-maple-accent"
                       />
@@ -2313,6 +2710,7 @@ function BossDataEditor({ bossData, setBossData }) {
                       <label className="text-[10px] text-slate-500 block mb-0.5">최대 입장</label>
                       <select
                         value={entry.max}
+                        aria-label={`${boss.name} ${diff} 최대 입장 인원`}
                         onChange={(e) => updateField(boss.id, diff, 'max', e.target.value)}
                         className="w-full bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-maple-accent"
                       >
@@ -2466,13 +2864,14 @@ const fmtMesoShort = (n) => {
   return n.toLocaleString();
 };
 
-function MesoInput({ value, onChange, placeholder, className }) {
+function MesoInput({ value, onChange, placeholder, className, ariaLabel }) {
   return (
     <input
       type="text"
       inputMode="numeric"
       value={value ? Number(value).toLocaleString() : ''}
       placeholder={placeholder || '0'}
+      aria-label={ariaLabel}
       onChange={(e) => onChange(parseNum(e.target.value))}
       className={className || 'w-full bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm text-right focus:outline-none focus:border-maple-accent'}
     />
@@ -2805,7 +3204,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
           <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
             <div className="text-xs text-slate-400">달성까지 (수익 연동)</div>
             <div className="text-sm md:text-base font-bold text-maple-accent mt-0.5">
-              {weeksToGoal ? `약 ${weeksToGoal}주 (${monthsToGoal}개월)` : remaining === 0 ? '🎉 달성!' : '수익 입력 필요'}
+              {totalCost <= 0 ? '비용 입력 필요' : remaining === 0 ? '🎉 달성!' : weeksToGoal ? `약 ${weeksToGoal}주 (${monthsToGoal}개월)` : '수익 입력 필요'}
             </div>
           </div>
           <div className="bg-maple-bg/40 rounded-lg px-4 py-3 col-span-2 sm:col-span-1">
@@ -2813,6 +3212,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
             <MesoInput
               value={budgetTotal}
               onChange={setBudgetTotal}
+              ariaLabel="예산 한도(메소)"
               className="w-full bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-right mt-0.5 focus:outline-none focus:border-maple-accent"
             />
           </div>
@@ -2955,10 +3355,10 @@ function EquipSlotCell({ slot, data, onClick }) {
 
 const INPUT_CLS = 'w-full bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm focus:outline-none focus:border-maple-accent';
 
-function TargetSelect({ targets, value, onChange }) {
+function TargetSelect({ targets, value, onChange, ariaLabel }) {
   const has = !value || targets.includes(value);
   return (
-    <select value={value || ''} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS}>
+    <select aria-label={ariaLabel} value={value || ''} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS}>
       <option value="">목표 미설정</option>
       {targets.map(o => <option key={o} value={o}>{o}</option>)}
       {!has && <option value={value}>{value}</option>}
@@ -2966,35 +3366,50 @@ function TargetSelect({ targets, value, onChange }) {
   );
 }
 
-/* 슬롯 예상 비용 자동계산 — 스타포스(현재→목표성) + 잠재/에디(현재→목표등급 · 목표 줄수) */
-function SlotAutoCost({ slot, d, cap, onFill }) {
-  const { data: cube } = useCubeData();
+/* 슬롯 예상 비용 자동계산 — 스타포스 + 잠재/에디의 실제 목표 옵션 확률 */
+function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
+  const { data: cube, err: cubeError } = useCubeData();
   const partId = SLOT_TO_CUBE_PART[slot.id];
   const [open, setOpen] = useState(false);
   const [level, setLevel] = useState(200);
   const [sfCur, setSfCur] = useState(17);
   const [potCur, setPotCur] = useState('유니크');
-  const [potLines, setPotLines] = useState(presetLineCount(d.potTarget));
   const [addCur, setAddCur] = useState('유니크');
-  const [addLines, setAddLines] = useState(presetLineCount(d.addPotTarget));
+  const potFocus = CUBE_FOCUS_OPTIONS.includes(d.potFocus) ? d.potFocus : 'STR';
+  const addFocus = CUBE_FOCUS_OPTIONS.includes(d.addPotFocus) ? d.addPotFocus : 'STR';
 
   const tgtStar = parseNum(d.star);
+  const levelError = level < 1 || level > 300;
   const maxStar = sfMaxStar(level);
   const sfTo = Math.min(tgtStar, maxStar);
   const sfFrom = Math.min(sfCur, sfTo);
-  const sfCost = (cap.star && sfTo > sfFrom && sfTo > 0)
+  const sfCost = (!levelError && cap.star && sfTo > sfFrom && sfTo > 0)
     ? sfExpect({ level, from: sfFrom, to: sfTo, spare: 0, mvp: 0, pcRoom: false, disc30: false, ev51015: false, boomReduce30: false, restoreDisc20: false, recover: 'spare12', guard: 'auto' }).total : 0;
 
-  const potR = (cap.pot && partId && cube && d.potential !== '미설정')
-    ? cubeAutoPotentialCost({ cube, method: 'black', partId, level, curGrade: potCur, targetGrade: d.potential, nLines: potLines }) : null;
+  const potR = (open && cap.pot && partId && cube && d.potential !== '미설정')
+    ? cubeAutoPotentialCost({ cube, method: 'black', partId, level, curGrade: potCur, targetGrade: d.potential, targetPreset: d.potTarget, focus: potFocus }) : null;
   const potCost = potR && potR.ok ? potR.total : 0;
-  const addR = (cap.addpot && partId && cube && d.addPotential !== '미설정')
-    ? cubeAutoPotentialCost({ cube, method: 'addi', partId, level, curGrade: addCur, targetGrade: d.addPotential, nLines: addLines }) : null;
+  const addR = (open && cap.addpot && partId && cube && d.addPotential !== '미설정')
+    ? cubeAutoPotentialCost({ cube, method: 'addi', partId, level, curGrade: addCur, targetGrade: d.addPotential, targetPreset: d.addPotTarget, focus: addFocus }) : null;
   const addCost = addR && addR.ok ? addR.total : 0;
 
-  const total = Math.round(sfCost + potCost + addCost);
+  const needsCube = !!partId && (
+    (cap.pot && d.potential !== '미설정') ||
+    (cap.addpot && d.addPotential !== '미설정')
+  );
+  const cubePending = needsCube && !cube;
+  const hasCalcError = !!(levelError || cubePending || (potR && !potR.ok) || (addR && !addR.ok));
+  const total = hasCalcError ? 0 : Math.round(sfCost + potCost + addCost);
   const miniSel = 'bg-maple-bg border border-maple-border rounded px-1.5 py-1 text-xs focus:outline-none focus:border-maple-accent';
   const gradesUpTo = POTENTIAL_GRADES.filter(g => g !== '미설정');
+  const errorText = (result) => result?.reason === 'downgrade' ? '현재 등급이 더 높음'
+    : result?.reason === 'level' ? '장비 레벨 오류'
+    : result?.reason === 'no-context' ? '확률 데이터 없음'
+    : result?.reason === 'impossible' ? '해당 목표 불가'
+    : '계산 불가';
+  const probabilityText = (result) => result?.H > 0
+    ? ` · ${(result.H * 100).toLocaleString(undefined, { maximumFractionDigits: 6 })}%`
+    : '';
 
   return (
     <div className="border border-maple-border rounded-lg overflow-hidden">
@@ -3007,7 +3422,8 @@ function SlotAutoCost({ slot, d, cap, onFill }) {
         <div className="p-3 space-y-2.5 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-slate-400 w-16">아이템 레벨</span>
-            <input type="number" value={level} onChange={(e) => setLevel(parseNum(e.target.value))} className={miniSel + ' w-20'} />
+            <input type="number" min="1" max="300" value={level} aria-label={`${slot.name} 자동계산 아이템 레벨`} onChange={(e) => setLevel(parseNum(e.target.value))} className={miniSel + ' w-20'} />
+            {levelError && <span className="text-red-300 text-[10px]">1~300만 입력</span>}
             {!partId && cap.pot && <span className="text-amber-400/80 text-[10px]">이 부위는 잠재 확률표 없음</span>}
           </div>
 
@@ -3015,44 +3431,52 @@ function SlotAutoCost({ slot, d, cap, onFill }) {
             <div className="flex items-center gap-2">
               <span className="text-slate-400 w-16">스타포스</span>
               <span>현재</span>
-              <input type="number" min="0" max="30" value={sfCur} onChange={(e) => setSfCur(Math.min(30, Math.max(0, parseNum(e.target.value))))} className={miniSel + ' w-14'} />
+              <input type="number" min="0" max="30" value={sfCur} aria-label={`${slot.name} 현재 스타포스`} onChange={(e) => setSfCur(Math.min(30, Math.max(0, parseNum(e.target.value))))} className={miniSel + ' w-14'} />
               <span>→ 목표 <b className="text-amber-300">{tgtStar || 0}★</b></span>
               <span className="ml-auto text-emerald-300 font-semibold">{sfCost > 0 ? fmtMeso(Math.round(sfCost)) : '-'}</span>
             </div>
           )}
 
-          {cap.pot && (
+          {cap.pot && d.potential !== '미설정' && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-slate-400 w-16">잠재</span>
-              <select value={potCur} onChange={(e) => setPotCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
-              <span>→ <b className="text-amber-300">{d.potential}</b></span>
-              <select value={potLines} onChange={(e) => setPotLines(Number(e.target.value))} className={miniSel}>
-                <option value={1}>1줄</option><option value={2}>2줄</option><option value={3}>3줄</option>
-              </select>
-              <span className="ml-auto text-emerald-300 font-semibold">{potCost > 0 ? fmtMeso(Math.round(potCost)) : '-'}</span>
+              <select aria-label="현재 잠재등급" value={potCur} onChange={(e) => setPotCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
+              <span>→ <b className="text-amber-300">{d.potential}</b> · {d.potTarget || '등급업만'}</span>
+              {cubeGoalNeedsFocus(d.potTarget) && (
+                <select aria-label="잠재 유효옵션 기준" value={potFocus} onChange={(e) => onChange({ potFocus: e.target.value })} className={miniSel}>
+                  {CUBE_FOCUS_OPTIONS.map(option => <option key={option}>{option}</option>)}
+                </select>
+              )}
+              <span className={`ml-auto font-semibold ${!cube ? (cubeError ? 'text-red-300' : 'text-slate-400') : potR && !potR.ok ? 'text-red-300' : 'text-emerald-300'}`}>
+                {!cube ? (cubeError ? '확률 데이터 로드 실패' : '확률 불러오는 중') : potR && !potR.ok ? errorText(potR) : potCost > 0 ? `${fmtMeso(Math.round(potCost))}${probabilityText(potR)}` : '등급업 불필요'}
+              </span>
             </div>
           )}
 
           {cap.addpot && d.addPotential !== '미설정' && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-slate-400 w-16">에디</span>
-              <select value={addCur} onChange={(e) => setAddCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
-              <span>→ <b className="text-amber-300">{d.addPotential}</b></span>
-              <select value={addLines} onChange={(e) => setAddLines(Number(e.target.value))} className={miniSel}>
-                <option value={1}>1줄</option><option value={2}>2줄</option><option value={3}>3줄</option>
-              </select>
-              <span className="ml-auto text-emerald-300 font-semibold">{addCost > 0 ? fmtMeso(Math.round(addCost)) : '-'}</span>
+              <select aria-label="현재 에디셔널 잠재등급" value={addCur} onChange={(e) => setAddCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
+              <span>→ <b className="text-amber-300">{d.addPotential}</b> · {d.addPotTarget || '등급업만'}</span>
+              {cubeGoalNeedsFocus(d.addPotTarget) && (
+                <select aria-label="에디셔널 유효옵션 기준" value={addFocus} onChange={(e) => onChange({ addPotFocus: e.target.value })} className={miniSel}>
+                  {CUBE_FOCUS_OPTIONS.map(option => <option key={option}>{option}</option>)}
+                </select>
+              )}
+              <span className={`ml-auto font-semibold ${!cube ? (cubeError ? 'text-red-300' : 'text-slate-400') : addR && !addR.ok ? 'text-red-300' : 'text-emerald-300'}`}>
+                {!cube ? (cubeError ? '확률 데이터 로드 실패' : '확률 불러오는 중') : addR && !addR.ok ? errorText(addR) : addCost > 0 ? `${fmtMeso(Math.round(addCost))}${probabilityText(addR)}` : '등급업 불필요'}
+              </span>
             </div>
           )}
 
           <div className="flex items-center justify-between pt-2 border-t border-maple-border">
             <span className="text-slate-300 font-semibold">합계 <span className="text-maple-accent">{fmtMeso(total)}</span></span>
-            <button type="button" onClick={() => onFill(total)} disabled={total <= 0}
+            <button type="button" onClick={() => onFill(total)} disabled={total <= 0 || hasCalcError}
               className={`px-3 py-1.5 rounded text-xs font-semibold ${total > 0 ? 'bg-maple-accent text-slate-900 hover:bg-amber-300' : 'bg-maple-bg text-slate-500 cursor-not-allowed'}`}>
               예상 비용에 채우기
             </button>
           </div>
-          <p className="text-[10px] text-slate-500">스타포스는 12성 복구·스페어 0·최적 파방 기준, 잠재는 목표 줄수만큼 부위별 강옵 3줄 조합 추정입니다.</p>
+          <p className="text-[10px] text-slate-500">스타포스는 12성 복구·스페어 0·최적 파방 기준입니다. 잠재·에디는 선택한 크뎀·쿨감·주스탯 등 실제 옵션 조합 전체의 공식 확률을 합산하며, 에디 유효 줄에는 고정 수치·레벨당 수치도 포함합니다.</p>
         </div>
       )}
     </div>
@@ -3063,13 +3487,64 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
   const d = normSlot(data);
   const cap = SLOT_CAP[slot.id] || { star: true, pot: true, addpot: true, flame: true, soul: false };
   const targets = getPotTargets(slot.id);
+  const dialogRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const closeHandlerRef = useRef(onClose);
+  closeHandlerRef.current = onClose;
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    const dialog = dialogRef.current;
+    const focusable = () => Array.from(dialog?.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) || []).filter(element => element.getAttribute('aria-hidden') !== 'true');
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeHandlerRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) {
+        event.preventDefault();
+        dialog?.focus();
+        return;
+      }
+      const first = items[0], last = items[items.length - 1];
+      if (!dialog?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
-      <div className="bg-maple-panel border border-maple-border rounded-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="slot-editor-title"
+        tabIndex="-1"
+        className="bg-maple-panel border border-maple-border rounded-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-lg">{slot.name} 슬롯</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1">✕</button>
+          <h3 id="slot-editor-title" className="font-bold text-lg">{slot.name} 슬롯</h3>
+          <button ref={closeButtonRef} type="button" aria-label={`${slot.name} 편집창 닫기`} onClick={onClose} className="text-slate-400 hover:text-white p-1">✕</button>
         </div>
 
         <div className="space-y-4">
@@ -3088,6 +3563,7 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             )}
             <input
               type="text" value={d.item} placeholder="직접 입력도 가능"
+              aria-label={`${slot.name} 목표 아이템`}
               onChange={(e) => onChange({ item: e.target.value })}
               className={INPUT_CLS}
             />
@@ -3101,6 +3577,7 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
                 <label className="text-sm text-slate-300 block mb-1.5">목표 스타포스</label>
                 <input
                   type="number" min="0" max="30" value={d.star} placeholder="0"
+                  aria-label={`${slot.name} 목표 스타포스`}
                   onChange={(e) => onChange({ star: Math.min(30, Math.max(0, parseNum(e.target.value))) })}
                   className={INPUT_CLS}
                 />
@@ -3109,7 +3586,7 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             {cap.pot && (
               <div>
                 <label className="text-sm text-slate-300 block mb-1.5">목표 잠재등급</label>
-                <select value={d.potential} onChange={(e) => onChange({ potential: e.target.value })} className={INPUT_CLS}>
+                <select aria-label={`${slot.name} 목표 잠재등급`} value={d.potential} onChange={(e) => onChange({ potential: e.target.value })} className={INPUT_CLS}>
                   {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
@@ -3121,7 +3598,7 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
               <label className="text-sm text-slate-300 block mb-1.5">
                 잠재 목표 {slot.id === 'glove' ? '(장갑: 크크 = 크뎀 2줄)' : '(2줄·3줄·이탈 표기)'}
               </label>
-              <TargetSelect targets={targets} value={d.potTarget} onChange={(v) => onChange({ potTarget: v })} />
+              <TargetSelect ariaLabel={`${slot.name} 잠재 목표`} targets={targets} value={d.potTarget} onChange={(v) => onChange({ potTarget: v })} />
             </div>
           )}
 
@@ -3129,13 +3606,13 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm text-slate-300 block mb-1.5">에디 잠재등급</label>
-                <select value={d.addPotential} onChange={(e) => onChange({ addPotential: e.target.value })} className={INPUT_CLS}>
+                <select aria-label={`${slot.name} 에디셔널 잠재등급`} value={d.addPotential} onChange={(e) => onChange({ addPotential: e.target.value })} className={INPUT_CLS}>
                   {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-sm text-slate-300 block mb-1.5">에디 목표</label>
-                <TargetSelect targets={getAddPotTargets(slot.id)} value={d.addPotTarget} onChange={(v) => onChange({ addPotTarget: v })} />
+                <TargetSelect ariaLabel={`${slot.name} 에디셔널 목표`} targets={getAddPotTargets(slot.id)} value={d.addPotTarget} onChange={(v) => onChange({ addPotTarget: v })} />
               </div>
             </div>
           )}
@@ -3161,23 +3638,25 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             <div>
               <label className="text-sm text-slate-300 block mb-1.5">소울 (무기)</label>
               <input type="text" value={d.soul} placeholder="예: 위대한 데미안의 소울 · 공격력 +x"
+                aria-label={`${slot.name} 소울`}
                 onChange={(e) => onChange({ soul: e.target.value })} className={INPUT_CLS} />
             </div>
           )}
 
           <div className="text-[11px] text-slate-500 -mb-1">── 예산 ──</div>
           {(cap.star || cap.pot || cap.addpot) && (
-            <SlotAutoCost slot={slot} d={d} cap={cap} onFill={(n) => onChange({ cost: n })} />
+            <SlotAutoCost slot={slot} d={d} cap={cap} onFill={(n) => onChange({ cost: n })} onChange={onChange} />
           )}
           <div>
             <label className="text-sm text-slate-300 block mb-1.5">예상 비용 (메소)</label>
-            <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} />
+            <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} ariaLabel={`${slot.name} 예상 비용(메소)`} />
             <p className="text-[11px] text-slate-500 mt-1">※ 우선순위는 예산 우선순위 표에서 ▲▼로 조절합니다.</p>
           </div>
 
           <div>
             <label className="text-sm text-slate-300 block mb-1.5">메모</label>
             <input type="text" value={d.memo} placeholder="예: 보스 잠재 / 추옵 후 강화"
+              aria-label={`${slot.name} 메모`}
               onChange={(e) => onChange({ memo: e.target.value })} className={INPUT_CLS} />
           </div>
 
@@ -3188,8 +3667,8 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
         </div>
 
         <div className="flex items-center justify-between mt-6 pt-4 border-t border-maple-border">
-          <button onClick={onClear} className="text-sm text-maple-danger border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded">슬롯 비우기</button>
-          <button onClick={onClose} className="bg-maple-accent text-slate-900 font-semibold px-4 py-1.5 rounded hover:bg-amber-300">완료</button>
+          <button type="button" onClick={onClear} className="text-sm text-maple-danger border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded">슬롯 비우기</button>
+          <button type="button" onClick={onClose} className="bg-maple-accent text-slate-900 font-semibold px-4 py-1.5 rounded hover:bg-amber-300">완료</button>
         </div>
       </div>
     </div>
@@ -3425,7 +3904,7 @@ function BudgetSummaryView({ characters, charTotals, onSelect }) {
                     <div className="flex justify-between"><span className="text-slate-400">남음</span><span className="text-maple-accent font-bold">{fmtMesoShort(s.remaining)}</span></div>
                     <div className="flex justify-between"><span className="text-slate-400">진행률</span><span className="text-slate-200">{s.pct.toFixed(0)}%</span></div>
                     <div className="pt-1"><ProgressBar value={s.pct} tone="bg-emerald-400" /></div>
-                    <div className="flex justify-between pt-1"><span className="text-slate-400">달성까지</span><span className="text-maple-accent">{weeks ? `약 ${weeks}주` : s.remaining === 0 ? '완료 🎉' : '-'}</span></div>
+                    <div className="flex justify-between pt-1"><span className="text-slate-400">달성까지</span><span className="text-maple-accent">{s.total <= 0 ? '비용 입력 필요' : s.remaining === 0 ? '완료 🎉' : weeks ? `약 ${weeks}주` : '-'}</span></div>
                   </div>
                 </div>
               );
@@ -3465,6 +3944,7 @@ function StarforceCalc() {
   const err = c.level < 1 || c.level > 300 ? '장비 레벨 오류'
     : (c.from < 0 || c.to <= c.from || c.to > maxStar) ? `성급 입력 오류 (이 레벨 최대 ${maxStar}성)` : '';
   const hasRestore = !!SF_RESTORE[c.level];
+  const displayedRecover = !hasRestore && c.recover === 'restore' ? 'spare12' : c.recover;
   const r = !err ? sfExpect(c) : null;
   const num = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
   return (
@@ -3483,7 +3963,7 @@ function StarforceCalc() {
           </select>
         </CalcField>
         <CalcField label="파괴 후 복구 방식">
-          <select value={c.recover} onChange={(e) => set('recover', e.target.value)} className={SEL_CLS + ' w-full'}>
+          <select value={displayedRecover} onChange={(e) => set('recover', e.target.value)} className={SEL_CLS + ' w-full'}>
             <option value="spare12">12성 복구 (스페어)</option>
             <option value="restore" disabled={!hasRestore}>흔적 복구 (성급 유지)</option>
             <option value="auto">자동 (최저비용)</option>
@@ -3534,14 +4014,14 @@ function PotentialCalc() {
   // 현재 문맥의 줄별 옵션 목록 (확률 내림차순)
   const lineOpts = useMemo(() => {
     if (!cube) return null;
-    const rows = cubeLineRows(cube, c.method, c.partId, c.level);
+    const rows = cubeLineRows(cube, c.method, '레전드리', c.partId, c.level);
     return rows ? { missing: false, lines: rows } : { missing: true, lines: [] };
   }, [cube, c.method, c.partId, c.level]);
 
   const pickDefault = (rows, li) => cubePickStrong(rows, li);
   // 옵션 문맥(줄 분포)이 실제로 바뀌면 렌더 중 동기적으로 기본 선택 재설정 (페인트 전 → 깜빡임 없음)
   // 같은 버킷 내 레벨 편집은 ctxKey가 그대로라 선택 유지
-  const ctxKey = cubeContextKey(c.method, c.partId, c.level);
+  const ctxKey = cubeContextKey(c.method, '레전드리', c.partId, c.level);
   let effPicks = picks;
   if (lineOpts && !lineOpts.missing && pickCtx !== ctxKey) {
     effPicks = lineOpts.lines.map((rows, li) => pickDefault(rows, li));
@@ -3550,7 +4030,7 @@ function PotentialCalc() {
   }
 
   const partName = cube ? (cube.parts.find(p => p[1] === c.partId) || ['', c.partId])[0] : '';
-  const roll = cube && lineOpts && !lineOpts.missing ? cubeExactRoll(cube, c.method, c.partId, c.level, effPicks) : null;
+  const roll = cube && lineOpts && !lineOpts.missing ? cubeExactRoll(cube, c.method, '레전드리', c.partId, c.level, effPicks) : null;
   const gup = cubeGradeUp({ method: c.method, level: c.level, curGrade: c.curGrade, fails });
   const gi = (g) => GRADES.indexOf(g);
   const upgrading = gi(c.curGrade) < gi('레전드리');
@@ -3627,6 +4107,7 @@ function PotentialCalc() {
                     </select>
                     <span className="col-span-3 text-right text-xs">
                       {cur === 'any' ? <span className="text-slate-500">100%</span>
+                        : info && info.p == null ? <span className="text-slate-400">전체 경우 합산</span>
                         : info && info.p > 0 ? <span className="text-emerald-300 font-semibold">{fmtPct(info.p)}</span>
                         : <span className="text-red-300">제약상 불가</span>}
                     </span>
