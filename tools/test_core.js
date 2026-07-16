@@ -185,10 +185,30 @@ const notificationKeys = notificationCharacters.map(character => `${character.id
 assert(backupApi.activeExpiryNotificationKeys(notificationCharacters, notificationKeys).length === 501,
   'all active notification identities must be retained so each alarm stays once-only');
 
+const hexaContext = {};
+vm.runInNewContext(
+  sourceBetween('const parseNum =', 'const EQUIP_SLOTS =') +
+    '\nglobalThis.testApi = { HEXA_LEVEL_COST, HEXA_SLOTS, hexaNeed };',
+  hexaContext,
+);
+const expectedOrigin3 = [[7,140],[1,21],[1,26],[1,30],[1,34],[2,38],[2,43],[2,47],[2,51],[8,142],
+  [2,62],[2,69],[3,77],[3,83],[3,91],[3,98],[3,105],[3,112],[3,120],[12,252],
+  [4,128],[4,136],[4,145],[4,152],[4,161],[4,168],[5,177],[5,184],[5,193],[14,357]];
+assert(JSON.stringify(hexaContext.testApi.HEXA_LEVEL_COST.origin3) === JSON.stringify(expectedOrigin3),
+  'sixth-job third skill must match the official 1.2.204 level-by-level cost table');
+const origin3Total = hexaContext.testApi.hexaNeed('origin3', 0, 30);
+assert(origin3Total.erda === 117 && origin3Total.frag === 3442,
+  'sixth-job third skill total must be 117 Sol Erda and 3,442 fragments');
+assert(hexaContext.testApi.HEXA_SLOTS.find(slot => slot.id === 's63').badge === '3,442',
+  'sixth-job third skill badge must show the revised fragment total');
+assert(html.includes('6차 3 = 3,442'),
+  'HEXA planner help text must show the revised fragment total');
+
 console.log(JSON.stringify({
   starforceFallback: Math.round(unsupportedRestore.total),
   gloveCritProbability: glove.H,
   epicTwoLineProbability: epicTwoLine.H,
   uniqueThreeLineProbability: uniqueThreeLine.H,
   clampedThreePersonRevenue: clampedSplit.revenue,
+  origin3Total,
 }));
