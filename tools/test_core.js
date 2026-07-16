@@ -37,10 +37,11 @@ close(unsupportedRestore.total, spareRestore.total, 0.01, 'unsupported trace res
 const cubeContext = {};
 vm.runInNewContext(
   sourceBetween('const GRADES =', 'const emptyEquipSlot =') +
-    '\nglobalThis.testApi = { cubeAutoPotentialCost, cubeGoalPredicate };',
+    '\nglobalThis.testApi = { cubeAutoPotentialCost, cubeGoalPredicate, cubeGradeUp };',
   cubeContext,
 );
 const auto = cubeContext.testApi.cubeAutoPotentialCost;
+const gradeUp = cubeContext.testApi.cubeGradeUp;
 const cost = (method, partId, targetPreset, focus = 'STR', curGrade = '레전드리', targetGrade = '레전드리') =>
   auto({ cube: cubeData, method, partId, level: 200, curGrade, targetGrade, targetPreset, focus });
 
@@ -79,6 +80,24 @@ assert(!normalFocusGoal([
   { text: '캐릭터 기준 9레벨 당 STR +2', isPrime: false },
   { text: 'DEX +14', isPrime: false },
 ]), 'normal potential focus goals must not treat flat stats as percent lines');
+
+const normalU2L = gradeUp({ method: 'black', level: 200, curGrade: '유니크', targetGrade: '레전드리', fails: { u2l: 106 } });
+assert(normalU2L.rows[0].pity === 107, 'normal unique-to-legendary ceiling must be 107 resets');
+assert(normalU2L.rows[0].ceilingMeso === 4092750000, 'Lv.200 normal unique-to-legendary ceiling price');
+close(normalU2L.rows[0].tries, 55.626942353101, 1e-9,
+  'unique-to-legendary expected resets must ignore manual failure progress');
+const addiU2L = gradeUp({ method: 'addi', level: 200, curGrade: '유니크', targetGrade: '레전드리', fails: { u2l: 213 } });
+assert(addiU2L.rows[0].pity === 214, 'additional unique-to-legendary ceiling must be 214 resets');
+assert(addiU2L.rows[0].ceilingMeso === 16007200000, 'Lv.200 additional unique-to-legendary ceiling price');
+close(addiU2L.rows[0].tries, 111.085392754202, 1e-9,
+  'additional unique-to-legendary expected resets must ignore manual failure progress');
+const potentialCalcSource = sourceBetween('function PotentialCalc()', 'function EnhanceCalcView()');
+assert(!potentialCalcSource.includes('유니크→레전 연속 실패'),
+  'unique-to-legendary manual failure input must not be rendered');
+assert(!potentialCalcSource.includes('fails.u2l'),
+  'potential calculator must not store unique-to-legendary manual failure progress');
+assert(potentialCalcSource.includes('유니크→레전드리 천장 가격'),
+  'unique-to-legendary ceiling price must be rendered');
 
 const epicWeaponContext = cubeData.ctx['2010120'];
 const epicPrimeMasses = epicWeaponContext.map(distIndex => cubeData.dists[distIndex]

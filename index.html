@@ -775,13 +775,14 @@ function cubeExactRoll(data, method, grade, partId, level, picks) {
   return { ok: true, lines, perRoll: goal.perRoll, complete };
 }
 
-// 등급업 단계 (천장·연속실패 반영) — 계산 보조 H22:J24. targetGrade에서 멈춤(기본 레전드리)
-function cubeGradeUp({ method, level, curGrade, targetGrade = '레전드리', fails }) {
+// 등급업 단계 (천장·연속실패 반영, 유니크→레전드리는 0회 누적 기준) — targetGrade에서 멈춤
+function cubeGradeUp({ method, level, curGrade, targetGrade = '레전드리', fails = {} }) {
   const gi = g => GRADES.indexOf(g);
   const way = method === 'black' ? 'normal' : 'addi';
   const tierKey = method === 'black' ? '메소 일반/블랙' : '메소 에디';
   const stepsDef = [['레어', '에픽', 'r2e'], ['에픽', '유니크', 'e2u'], ['유니크', '레전드리', 'u2l']];
-  const failArr = [fails.r2e || 0, fails.e2u || 0, fails.u2l || 0];
+  // 유니크→레전드리는 수동 실패 횟수를 받지 않고 0회 누적 기준으로 계산한다.
+  const failArr = [fails.r2e || 0, fails.e2u || 0, 0];
   let tries = 0, meso = 0; const rows = [];
   stepsDef.forEach(([a, b, k], idx) => {
     if (gi(curGrade) <= gi(a) && gi(a) < gi(targetGrade)) {
@@ -790,7 +791,8 @@ function cubeGradeUp({ method, level, curGrade, targetGrade = '레전드리', fa
       const remain = pity - f;
       const t = remain > 0 ? (1 - Math.pow(1 - p, remain)) / p : 0;
       const cost1 = cubeMesoCost(way, level, a);
-      tries += t; meso += t * cost1; rows.push({ from: a, to: b, tries: t, meso: t * cost1 });
+      tries += t; meso += t * cost1;
+      rows.push({ from: a, to: b, tries: t, meso: t * cost1, pity, ceilingMeso: pity * cost1 });
     }
   });
   return { tries, meso, rows, way };
@@ -4007,7 +4009,7 @@ function PotentialCalc() {
   const { data: cube, err: cubeErr } = useCubeData();
   const [c, setC] = useState({ method: 'black', partId: 1, level: 200, curGrade: '유니크' });
   const set = (k, v) => setC(p => ({ ...p, [k]: v }));
-  const [fails, setFails] = useState({ r2e: 0, e2u: 0, u2l: 0 });
+  const [fails, setFails] = useState({ r2e: 0, e2u: 0 });
   const [picks, setPicks] = useState(['any', 'any', 'any']);
   const [pickCtx, setPickCtx] = useState(null); // picks가 속한 문맥 키
 
@@ -4032,6 +4034,7 @@ function PotentialCalc() {
   const partName = cube ? (cube.parts.find(p => p[1] === c.partId) || ['', c.partId])[0] : '';
   const roll = cube && lineOpts && !lineOpts.missing ? cubeExactRoll(cube, c.method, '레전드리', c.partId, c.level, effPicks) : null;
   const gup = cubeGradeUp({ method: c.method, level: c.level, curGrade: c.curGrade, fails });
+  const u2lStep = gup.rows.find(st => st.from === '유니크' && st.to === '레전드리');
   const gi = (g) => GRADES.indexOf(g);
   const upgrading = gi(c.curGrade) < gi('레전드리');
   const costL = cubeMesoCost(gup.way, c.level, '레전드리');
@@ -4070,11 +4073,11 @@ function PotentialCalc() {
           <CalcField label="목표 등급"><div className="bg-maple-bg/60 border border-maple-border rounded px-2 py-1.5 text-sm text-amber-300 font-semibold">레전드리</div></CalcField>
         </div>
 
-        {upgrading && (
+        {upgrading && !levelErr && (
           <div className="grid grid-cols-3 gap-3 mt-3">
             {gi(c.curGrade) <= 0 && <CalcField label="레어→에픽 연속 실패"><input type="number" value={fails.r2e} onChange={(e) => setFails(f => ({ ...f, r2e: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
             {gi(c.curGrade) <= 1 && <CalcField label="에픽→유니크 연속 실패"><input type="number" value={fails.e2u} onChange={(e) => setFails(f => ({ ...f, e2u: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
-            {gi(c.curGrade) <= 2 && <CalcField label="유니크→레전 연속 실패"><input type="number" value={fails.u2l} onChange={(e) => setFails(f => ({ ...f, u2l: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
+            {u2lStep && <CalcField label="유니크→레전드리 천장 가격"><div className="bg-maple-bg/60 border border-maple-border rounded px-2 py-1.5 text-sm text-amber-300 font-semibold">{fmtMeso(u2lStep.ceilingMeso)}</div></CalcField>}
           </div>
         )}
       </div>
