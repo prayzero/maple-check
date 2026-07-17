@@ -19,10 +19,44 @@ function close(actual, expected, tolerance, label) {
   assert(Math.abs(actual - expected) <= tolerance, `${label}: ${actual} != ${expected}`);
 }
 
+const mesoContext = {};
+vm.runInNewContext(
+  sourceBetween('const fmtMeso =', '// 분 →') +
+    '\nglobalThis.testApi = { fmtMeso };',
+  mesoContext,
+);
+assert(mesoContext.testApi.fmtMeso(1000000000000) === '1조 메소',
+  'one trillion mesos must use the 조 unit');
+assert(mesoContext.testApi.fmtMeso(24117428720000) === '24조 1,174억 2,872만 메소',
+  'large meso values must split into 조, 억, and 만 units');
+assert(mesoContext.testApi.fmtMeso(999999999999) === '9,999억 9,999만 메소',
+  'values below one trillion must retain the existing 억 display');
+
+const shortMesoContext = {};
+vm.runInNewContext(
+  sourceBetween('const fmtMesoShort =', 'function MesoInput') +
+    '\nglobalThis.testApi = { fmtMesoShort };',
+  shortMesoContext,
+);
+assert(shortMesoContext.testApi.fmtMesoShort(24117428720000) === '24.1조',
+  'short budget values over one trillion must use the 조 unit');
+
+const presetContext = {};
+vm.runInNewContext(
+  sourceBetween('const SF_EVENT_PRESETS =', 'function StarforceCalc()') +
+    '\nglobalThis.testApi = { SF_EVENT_PRESETS, SF_EVENT_KEYS };',
+  presetContext,
+);
+const presetById = Object.fromEntries(presetContext.testApi.SF_EVENT_PRESETS.map(preset => [preset.id, preset.flags]));
+assert(JSON.stringify(presetById.shining2026) === JSON.stringify({ disc30: true, boomReduce30: true, restoreDisc20: true }),
+  'current 2026 Shining Star Force preset must apply discount, destruction reduction, and trace restoration discount');
+assert(!presetContext.testApi.SF_EVENT_KEYS.includes('pcRoom'),
+  'event presets must preserve the PC room benefit');
+
 const sfContext = {};
 vm.runInNewContext(
   sourceBetween('const SF_TABLE =', 'const GRADES =') +
-    '\nglobalThis.testApi = { sfExpect };',
+    '\nglobalThis.testApi = { sfExpect, sfRecoveryComparison, sfSafeguardComparison };',
   sfContext,
 );
 const sfBase = {
@@ -33,6 +67,41 @@ const unsupportedRestore = sfContext.testApi.sfExpect({ ...sfBase, recover: 'res
 const spareRestore = sfContext.testApi.sfExpect({ ...sfBase, recover: 'spare12' });
 assert(Number.isFinite(unsupportedRestore.total), 'unsupported trace restore must stay finite');
 close(unsupportedRestore.total, spareRestore.total, 0.01, 'unsupported trace restore fallback');
+const unsupportedComparison = sfContext.testApi.sfRecoveryComparison({ ...sfBase, recover: 'auto' });
+assert(unsupportedComparison.some(row => row.id === 'auto'),
+  'unsupported trace levels must still show the selected automatic recovery row');
+close(unsupportedComparison.find(row => row.id === 'auto').result.total, spareRestore.total, 0.01,
+  'automatic recovery at an unsupported trace level must use 12-star recovery');
+
+const sf200 = {
+  level: 200, from: 12, to: 22, spare: 0, mvp: 0, pcRoom: false, disc30: false,
+  ev51015: false, boomReduce30: false, restoreDisc20: false, recover: 'auto', guard: 'auto',
+};
+const recoveryRows = sfContext.testApi.sfRecoveryComparison(sf200);
+const recoverById = Object.fromEntries(recoveryRows.map(row => [row.id, row]));
+assert(recoverById.auto.result.total <= recoverById.spare12.result.total,
+  'automatic recovery must not cost more than fixed 12-star recovery');
+assert(recoverById.auto.result.total <= recoverById.restore.result.total,
+  'automatic recovery must not cost more than fixed trace recovery');
+close(recoverById.spare12.result.total, 32294240000, 100000, 'Lv.200 12-to-22 fixed 12-star recovery');
+close(recoverById.restore.result.total, 31710140000, 100000, 'Lv.200 12-to-22 fixed trace recovery');
+close(recoverById.auto.result.total, 30306150000, 100000, 'Lv.200 12-to-22 automatic recovery');
+
+const safeguardRows = sfContext.testApi.sfSafeguardComparison(sf200);
+close(safeguardRows[0].threshold, 6507770000, 100000, '15-star safeguard spare break-even');
+close(safeguardRows[1].threshold, 7125140000, 100000, '16-star safeguard spare break-even');
+close(safeguardRows[2].threshold, 2362890000, 100000, '17-star safeguard spare break-even');
+assert(!sfContext.testApi.sfSafeguardComparison({ ...sf200, spare: safeguardRows[0].threshold - 10000 })[0].recommendGuard,
+  'safeguard must stay off immediately below the break-even spare price');
+assert(sfContext.testApi.sfSafeguardComparison({ ...sf200, spare: safeguardRows[0].threshold + 10000 })[0].recommendGuard,
+  'safeguard must turn on immediately above the break-even spare price');
+assert(sfContext.testApi.sfSafeguardComparison({ ...sf200, ev51015: true })[0].eventSafe,
+  '15-to-16 safeguard must be unnecessary during the 100-percent success event');
+
+const highStarTrace = sfContext.testApi.sfExpect({
+  ...sf200, from: 22, to: 24, spare: 1000000000, recover: 'restore', guard: 'none',
+});
+close(highStarTrace.total, 134968100000, 100000, '23-star trace restoration must include the climb back from 22 stars');
 
 const cubeContext = {};
 vm.runInNewContext(

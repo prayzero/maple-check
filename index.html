@@ -305,13 +305,15 @@ const saveLS = (key, value) => {
  * ========================================================= */
 const fmtMeso = (n) => {
   if (!n || n === 0) return '0 메소';
-  const eok = Math.floor(n / 100000000);
+  const jo = Math.floor(n / 1000000000000);
+  const eok = Math.floor((n % 1000000000000) / 100000000);
   const man = Math.floor((n % 100000000) / 10000);
   const won = n % 10000;
   const parts = [];
+  if (jo) parts.push(`${jo.toLocaleString()}조`);
   if (eok) parts.push(`${eok.toLocaleString()}억`);
   if (man) parts.push(`${man.toLocaleString()}만`);
-  if (!eok && !man && won) parts.push(won.toLocaleString());
+  if (!jo && !eok && !man && won) parts.push(won.toLocaleString());
   return (parts.join(' ') || '0') + ' 메소';
 };
 
@@ -592,7 +594,7 @@ const round100 = (x) => Math.round(x / 100) * 100;
 
 /* 스타포스 기대비용 (엑셀 계산기 로직 1:1 포팅)
  * - 12성 복구: 파괴 시 12성으로 복귀 → 12~(n-1)성 재등반 비용/시도(선택 전략 기준)가 재귀 포함
- * - 흔적 복구: 파괴 성 유지, 온전 복구 메소 + 동일장비 K개 소모
+ * - 흔적 복구: 22성까지 파괴 성 유지(23성 이상 파괴 시 22성), 온전 복구 메소 + 동일장비 K개 소모
  * - 파괴방지: 15~17성, 기본 클릭비 200% 추가
  * opt: { level, from, to, spare, mvp(0/0.03/0.05/0.1), pcRoom, disc30,
  *        ev51015, boomReduce30, restoreDisc20, recover('spare12'|'restore'|'auto'),
@@ -604,6 +606,7 @@ const sfExpect = (o) => {
   const recover = !hasRestore && o.recover === 'restore' ? 'spare12' : o.recover;
   const rows = [];
   let cumP = 0, cumR = 0, cumS = 0, cumT = 0, cumU = 0; // 12성부터의 누적 (재등반용)
+  let cum22P = 0, cum22R = 0, cum22S = 0, cum22T = 0, cum22U = 0; // 23성 이상 파괴 후 22성부터 재등반
   for (let n = 0; n < 30; n++) {
     const [base, cond, denom] = SF_TABLE[n];
     const succ = (o.ev51015 && (n === 5 || n === 10 || n === 15)) ? 1 : Math.min(1, base * 1.05);
@@ -613,29 +616,99 @@ const sfExpect = (o) => {
     const J = I + H * 2;
     const K = n < 15 ? 0 : n <= 18 ? 1 : n <= 20 ? 2 : n === 21 ? 3 : 4;
     const L = n < 15 ? 0 : (hasRestore ? (SF_RESTORE[lvl][Math.min(n, 22)] || 0) * (o.restoreDisc20 ? 0.8 : 1) : 0);
+    const traceClimbP = n > 22 ? cum22P : 0;
+    const traceClimbR = n > 22 ? cum22R : 0;
+    const traceClimbS = n > 22 ? cum22S : 0;
+    const traceClimbT = n > 22 ? cum22T : 0;
+    const traceClimbU = n > 22 ? cum22U : 0;
     const M = n < 15 ? I / succ : (I + boom * (o.spare + cumP)) / succ;
-    const N = (n < 15 || !hasRestore) ? Infinity : (I + boom * (L + K * o.spare)) / succ;
-    const O = (n >= 15 && n <= 17) ? J / succ : Infinity;
+    const N = (n < 15 || !hasRestore) ? Infinity : (I + boom * (L + K * o.spare + traceClimbP)) / succ;
+    // 성공률 100% 이벤트 중에는 파괴 확률이 없으므로 파괴방지 비용을 더하지 않는다.
+    const O = (n >= 15 && n <= 17 && boom > 0) ? J / succ : Infinity;
+    const noGuard = n < 15 ? M : recover === 'spare12' ? M : recover === 'restore' ? N : Math.min(M, N);
     let P;
     if (n < 15) P = M;
-    else if (o.guard === 'all1517' && n <= 17) P = O;
-    else if (o.guard === 'none') P = recover === 'spare12' ? M : recover === 'restore' ? N : Math.min(M, N);
-    else P = recover === 'spare12' ? Math.min(M, O) : recover === 'restore' ? Math.min(N, O) : Math.min(M, N, O);
+    else if (o.guard === 'all1517' && Number.isFinite(O)) P = O;
+    else if (o.guard === 'none') P = noGuard;
+    else P = Math.min(noGuard, O);
     const Q = n < 15 ? '일반' : P === O ? '파괴방지' : P === N ? '흔적 복구' : '12성 복구';
-    const R = n < 15 ? I / succ : Q === '파괴방지' ? J / succ : Q === '흔적 복구' ? (I + boom * L) / succ : (I + boom * cumR) / succ;
-    const S = n < 15 ? 0 : Q === '파괴방지' ? 0 : Q === '흔적 복구' ? boom * K / succ : boom * (1 + cumS) / succ;
-    const T = n < 15 ? 1 / succ : Q === '파괴방지' ? 1 / succ : Q === '흔적 복구' ? 1 / succ : (1 + boom * cumT) / succ;
-    const U = (n < 15 || Q === '파괴방지') ? 0 : Q === '흔적 복구' ? boom / succ : boom * (1 + cumU) / succ;
+    const R = n < 15 ? I / succ : Q === '파괴방지' ? J / succ : Q === '흔적 복구' ? (I + boom * (L + traceClimbR)) / succ : (I + boom * cumR) / succ;
+    const S = n < 15 ? 0 : Q === '파괴방지' ? 0 : Q === '흔적 복구' ? boom * (K + traceClimbS) / succ : boom * (1 + cumS) / succ;
+    const T = n < 15 ? 1 / succ : Q === '파괴방지' ? 1 / succ : Q === '흔적 복구' ? (1 + boom * traceClimbT) / succ : (1 + boom * cumT) / succ;
+    const U = (n < 15 || Q === '파괴방지') ? 0 : Q === '흔적 복구' ? boom * (1 + traceClimbU) / succ : boom * (1 + cumU) / succ;
     if (n >= 12) { cumP += P; cumR += R; cumS += S; cumT += T; cumU += U; }
-    rows.push({ star: n, strategy: Q, P, R, S, T, U });
+    if (n >= 22) { cum22P += P; cum22R += R; cum22S += S; cum22T += T; cum22U += U; }
+    rows.push({ star: n, strategy: Q, P, R, S, T, U, success: succ, boomChance: boom, noGuardCost: noGuard, guardCost: O });
   }
   const res = { total: 0, meso: 0, equips: 0, tries: 0, booms: 0, rows: [] };
   for (let n = o.from; n < o.to; n++) {
     const r = rows[n];
     res.total += r.P; res.meso += r.R; res.equips += r.S; res.tries += r.T; res.booms += r.U;
-    res.rows.push({ star: n, strategy: r.strategy, cost: r.P });
+    res.rows.push({
+      star: n,
+      strategy: r.strategy,
+      cost: r.P,
+      noGuardCost: r.noGuardCost,
+      guardCost: r.guardCost,
+      boomChance: r.boomChance,
+    });
   }
   return res;
+};
+
+// 현재 장비·할인·이벤트 조건에서 복구 방식별 전체 기대비용을 비교한다.
+const sfRecoveryComparison = (o) => {
+  const modes = [
+    { id: 'spare12', label: '12성 복구' },
+    ...(SF_RESTORE[o.level] ? [{ id: 'restore', label: '흔적 복구' }] : []),
+    { id: 'auto', label: SF_RESTORE[o.level] ? '성급별 자동 최저' : '자동 (12성 복구 기준)' },
+  ];
+  const rows = modes.map(mode => ({ ...mode, result: sfExpect({ ...o, recover: mode.id }) }));
+  const best = Math.min(...rows.map(row => row.result.total));
+  return rows.map(row => ({ ...row, difference: row.result.total - best, best: Math.abs(row.result.total - best) < 0.5 }));
+};
+
+// 15→16, 16→17, 17→18성 각각의 파괴방지 비용과 스페어 손익분기 가격을 계산한다.
+// 앞선 성급은 자동 최저 전략으로 계산하므로 재등반 비용 변화도 손익분기에 포함된다.
+const sfSafeguardComparison = (o) => {
+  const maxStar = sfMaxStar(o.level);
+  return [15, 16, 17].filter(star => star < maxStar).map(star => {
+    const rowAt = (spare) => sfExpect({ ...o, recover: 'auto', spare, from: star, to: star + 1, guard: 'auto' }).rows[0];
+    const current = rowAt(o.spare);
+    if (!Number.isFinite(current.guardCost)) {
+      return { star, eventSafe: true, noGuardCost: current.noGuardCost, guardCost: null, difference: 0, threshold: null, recommendGuard: false };
+    }
+
+    const deltaAt = (spare) => {
+      const row = rowAt(spare);
+      return row.noGuardCost - row.guardCost;
+    };
+    let threshold = 0;
+    if (deltaAt(0) < 0) {
+      let low = 0;
+      let high = 100000000;
+      while (high < 1000000000000000000 && deltaAt(high) < 0) high *= 2;
+      if (deltaAt(high) < 0) threshold = Infinity;
+      else {
+        for (let i = 0; i < 60; i++) {
+          const mid = (low + high) / 2;
+          if (deltaAt(mid) >= 0) high = mid;
+          else low = mid;
+        }
+        threshold = high;
+      }
+    }
+    const signedDifference = current.noGuardCost - current.guardCost;
+    return {
+      star,
+      eventSafe: false,
+      noGuardCost: current.noGuardCost,
+      guardCost: current.guardCost,
+      difference: Math.abs(signedDifference),
+      threshold,
+      recommendGuard: signedDifference >= 0,
+    };
+  });
 };
 
 /* =========================================================
@@ -2858,6 +2931,10 @@ function BossHistoryView() {
  * ========================================================= */
 const fmtMesoShort = (n) => {
   if (!n) return '';
+  if (n >= 1000000000000) {
+    const v = n / 1000000000000;
+    return (Number.isInteger(v) ? v : v.toFixed(1).replace(/\.0$/, '')) + '조';
+  }
   if (n >= 100000000) {
     const v = n / 100000000;
     return (Number.isInteger(v) ? v : v.toFixed(1).replace(/\.0$/, '')) + '억';
@@ -3939,15 +4016,33 @@ function ResultRow({ label, value, strong }) {
   );
 }
 
+const SF_EVENT_PRESETS = [
+  { id: 'normal', label: '이벤트 없음', flags: {} },
+  { id: 'shining2026', label: '샤타포스 (현행)', flags: { disc30: true, boomReduce30: true, restoreDisc20: true } },
+  { id: 'discount', label: '30% 할인', flags: { disc30: true } },
+  { id: 'guaranteed', label: '5·10·15 효과 (과거)', flags: { ev51015: true } },
+  { id: 'boom', label: '파괴율 30%↓', flags: { boomReduce30: true } },
+  { id: 'restore', label: '흔적복구 20%↓', flags: { restoreDisc20: true } },
+];
+const SF_EVENT_KEYS = ['disc30', 'ev51015', 'boomReduce30', 'restoreDisc20'];
+
 function StarforceCalc() {
   const [c, setC] = useState({ level: 200, from: 12, to: 22, spare: 0, mvp: 0, pcRoom: false, disc30: false, ev51015: false, boomReduce30: false, restoreDisc20: false, recover: 'spare12', guard: 'auto' });
   const set = (k, v) => setC(p => ({ ...p, [k]: v }));
+  const applyEventPreset = (flags) => setC(p => ({
+    ...p,
+    ...Object.fromEntries(SF_EVENT_KEYS.map(key => [key, false])),
+    ...flags,
+  }));
+  const presetActive = (flags) => SF_EVENT_KEYS.every(key => c[key] === !!flags[key]);
   const maxStar = sfMaxStar(c.level);
   const err = c.level < 1 || c.level > 300 ? '장비 레벨 오류'
     : (c.from < 0 || c.to <= c.from || c.to > maxStar) ? `성급 입력 오류 (이 레벨 최대 ${maxStar}성)` : '';
   const hasRestore = !!SF_RESTORE[c.level];
   const displayedRecover = !hasRestore && c.recover === 'restore' ? 'spare12' : c.recover;
   const r = !err ? sfExpect(c) : null;
+  const recoveryRows = useMemo(() => err ? [] : sfRecoveryComparison(c), [c, err]);
+  const safeguardRows = useMemo(() => err ? [] : sfSafeguardComparison(c), [c, err]);
   const num = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
   return (
     <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
@@ -3958,7 +4053,7 @@ function StarforceCalc() {
         <CalcField label="장비 레벨"><input type="number" value={c.level} onChange={(e) => set('level', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
         <CalcField label="시작 성"><input type="number" value={c.from} onChange={(e) => set('from', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
         <CalcField label="목표 성"><input type="number" value={c.to} onChange={(e) => set('to', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
-        <CalcField label="동일 장비(스페어) 1개 가격"><MesoInput value={c.spare} onChange={(n) => set('spare', n)} /></CalcField>
+        <CalcField label="동일 장비(스페어) 1개 가격"><MesoInput value={c.spare} onChange={(n) => set('spare', n)} ariaLabel="동일 장비 스페어 한 개 가격" /></CalcField>
         <CalcField label="MVP 등급">
           <select value={c.mvp} onChange={(e) => set('mvp', Number(e.target.value))} className={SEL_CLS + ' w-full'}>
             <option value={0}>없음</option><option value={0.03}>실버 (3%)</option><option value={0.05}>골드 (5%)</option><option value={0.1}>다이아/레드 (10%)</option>
@@ -3967,7 +4062,7 @@ function StarforceCalc() {
         <CalcField label="파괴 후 복구 방식">
           <select value={displayedRecover} onChange={(e) => set('recover', e.target.value)} className={SEL_CLS + ' w-full'}>
             <option value="spare12">12성 복구 (스페어)</option>
-            <option value="restore" disabled={!hasRestore}>흔적 복구 (성급 유지)</option>
+            <option value="restore" disabled={!hasRestore}>흔적 복구 (최대 22성 유지)</option>
             <option value="auto">자동 (최저비용)</option>
           </select>
         </CalcField>
@@ -3978,15 +4073,38 @@ function StarforceCalc() {
             <option value="auto">최적 자동</option>
           </select>
         </CalcField>
-        <div className="flex flex-col justify-end gap-1 text-[11px]">
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.pcRoom} onChange={(e) => set('pcRoom', e.target.checked)} className="accent-amber-400" /> PC방 5%</label>
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.disc30} onChange={(e) => set('disc30', e.target.checked)} className="accent-amber-400" /> 강화비용 30% 할인</label>
-        </div>
-        <div className="flex flex-col justify-start gap-1 text-[11px] col-span-2 md:col-span-4 md:flex-row md:gap-5">
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.ev51015} onChange={(e) => set('ev51015', e.target.checked)} className="accent-amber-400" /> 5/10/15성 100% 이벤트</label>
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.boomReduce30} onChange={(e) => set('boomReduce30', e.target.checked)} className="accent-amber-400" /> 21성 이하 파괴율 30% 감소</label>
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={c.restoreDisc20} onChange={(e) => set('restoreDisc20', e.target.checked)} className="accent-amber-400" /> 흔적 복구 메소 20% 할인</label>
-        </div>
+        <fieldset className="col-span-2 md:col-span-4">
+          <legend className="text-[11px] text-slate-400 mb-1">이벤트 빠른 설정</legend>
+          <div className="flex flex-wrap gap-1.5">
+            {SF_EVENT_PRESETS.map(preset => {
+              const active = presetActive(preset.flags);
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => applyEventPreset(preset.flags)}
+                  className={`rounded-md border px-2.5 py-1 text-[11px] transition ${active
+                    ? 'border-amber-400 bg-amber-400/15 text-amber-200'
+                    : 'border-maple-border bg-maple-bg/70 text-slate-300 hover:border-slate-500'}`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-[10px] text-slate-500">현행 샤타포스 = 30% 할인 + 21성 이하 파괴율 30% 감소 + 흔적복구 20% 할인 · 과거 5·10·15는 현행 강화 규칙에 해당 효과만 적용</p>
+        </fieldset>
+        <fieldset className="col-span-2 md:col-span-4">
+          <legend className="sr-only">스타포스 할인 및 이벤트 직접 선택</legend>
+          <div className="flex flex-wrap md:flex-nowrap items-center gap-x-5 gap-y-1 text-[11px]">
+            <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.pcRoom} onChange={(e) => set('pcRoom', e.target.checked)} className="accent-amber-400" /> PC방 5%</label>
+            <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.disc30} onChange={(e) => set('disc30', e.target.checked)} className="accent-amber-400" /> 강화비용 30% 할인</label>
+            <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.ev51015} onChange={(e) => set('ev51015', e.target.checked)} className="accent-amber-400" /> 5/10/15성 100% (과거 효과)</label>
+            <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.boomReduce30} onChange={(e) => set('boomReduce30', e.target.checked)} className="accent-amber-400" /> 21성 이하 파괴율 30% 감소</label>
+            <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.restoreDisc20} onChange={(e) => set('restoreDisc20', e.target.checked)} className="accent-amber-400" /> 흔적 복구 메소 20% 할인</label>
+          </div>
+        </fieldset>
       </div>
 
       {err ? (
@@ -3999,6 +4117,78 @@ function StarforceCalc() {
           <ResultRow label="기대 스페어 소모" value={num(r.equips) + '개'} />
           <ResultRow label="기대 시도 횟수" value={num(r.tries) + '회'} />
           <ResultRow label="기대 파괴 횟수" value={num(r.booms) + '회'} />
+        </div>
+      )}
+
+      {!err && (
+        <div className="mt-4 grid gap-4">
+          <section className="bg-maple-bg/35 border border-maple-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-maple-border">
+              <h4 className="text-sm font-semibold">파괴 복구 방식 가성비</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">현재 목표 성급·파괴방지·할인·이벤트 조건 기준입니다.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] text-xs">
+                <thead className="bg-slate-900/35 text-slate-400">
+                  <tr><th className="text-left px-3 py-2">복구 방식</th><th className="text-right px-3 py-2">총 기대가치</th><th className="text-right px-3 py-2">순수 메소</th><th className="text-right px-3 py-2">기대 스페어</th><th className="text-right px-3 py-2">최저 대비</th></tr>
+                </thead>
+                <tbody className="divide-y divide-maple-border/70">
+                  {recoveryRows.map(row => (
+                    <tr key={row.id} className={displayedRecover === row.id ? 'bg-amber-400/5' : ''}>
+                      <td className="px-3 py-2.5 font-medium text-slate-200">
+                        {row.label}
+                        {displayedRecover === row.id && <span className="ml-1.5 text-[10px] text-sky-300">현재 선택</span>}
+                        {row.best && <span className="ml-1.5 rounded bg-emerald-400/15 px-1.5 py-0.5 text-[10px] text-emerald-300">가성비</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-semibold text-amber-300">{fmtMeso(Math.round(row.result.total))}</td>
+                      <td className="px-3 py-2.5 text-right text-emerald-300">{fmtMeso(Math.round(row.result.meso))}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-300">{num(row.result.equips)}개</td>
+                      <td className="px-3 py-2.5 text-right text-slate-300">{row.best ? '최저' : `+${fmtMeso(Math.round(row.difference))}`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!hasRestore && <p className="px-4 py-2.5 border-t border-maple-border text-[11px] text-slate-500">흔적 복구 비교는 복구 비용표가 있는 140·160·200·250제 장비에서 지원합니다.</p>}
+          </section>
+
+          <section className="bg-maple-bg/35 border border-maple-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-maple-border">
+              <h4 className="text-sm font-semibold">파괴방지 성급별 손익 비교</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">복구 방식도 성급별 자동 최저·현재 이벤트 기준입니다. 손익분기는 스페어가 해당 가격 이상일 때 파괴방지가 유리해지는 지점입니다.</p>
+            </div>
+            {safeguardRows.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[820px] text-xs">
+                  <thead className="bg-slate-900/35 text-slate-400">
+                    <tr><th className="text-left px-3 py-2">강화 구간</th><th className="text-right px-3 py-2">파괴방지 미사용</th><th className="text-right px-3 py-2">파괴방지 사용</th><th className="text-left px-3 py-2">현재 가성비</th><th className="text-right px-3 py-2">기대비용 차이</th><th className="text-right px-3 py-2">스페어 손익분기</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-maple-border/70">
+                    {safeguardRows.map(row => {
+                      const roundedThreshold = Number.isFinite(row.threshold) ? Math.ceil(row.threshold / 10000) * 10000 : row.threshold;
+                      const tied = !row.eventSafe && row.difference < 0.5;
+                      return (
+                        <tr key={row.star}>
+                          <td className="px-3 py-2.5 font-semibold text-slate-200">{row.star} → {row.star + 1}성</td>
+                          <td className="px-3 py-2.5 text-right text-slate-300">{fmtMeso(Math.round(row.noGuardCost))}</td>
+                          <td className="px-3 py-2.5 text-right text-slate-300">{row.eventSafe ? '불필요' : fmtMeso(Math.round(row.guardCost))}</td>
+                          <td className="px-3 py-2.5">
+                            <span className={`font-semibold ${row.eventSafe || !row.recommendGuard ? 'text-emerald-300' : 'text-amber-300'}`}>
+                              {row.eventSafe ? '100% 성공 이벤트' : tied ? '동일' : row.recommendGuard ? '파괴방지' : '미사용'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-slate-300">{row.eventSafe || tied ? '-' : `${fmtMeso(Math.round(row.difference))} 절약`}</td>
+                          <td className="px-3 py-2.5 text-right font-medium text-sky-300">{row.eventSafe ? '해당 없음' : Number.isFinite(roundedThreshold) ? `약 ${fmtMeso(roundedThreshold)} 이상` : '손익분기 없음'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="px-4 py-4 text-xs text-slate-500">이 장비는 15~17성 파괴방지 구간을 지원하지 않습니다.</p>
+            )}
+          </section>
         </div>
       )}
     </div>
