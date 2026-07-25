@@ -848,6 +848,59 @@ function cubeExactRoll(data, method, grade, partId, level, picks) {
   return { ok: true, lines, perRoll: goal.perRoll, complete };
 }
 
+const CUBE_TARGET_MODES = [
+  ['ordered', '줄 위치 고정'],
+  ['exact-unordered', '정확 옵션 · 순서 무관'],
+  ['category-unordered', '유효옵션 · 수치 무관'],
+];
+const CUBE_CATEGORY_OPTIONS = [
+  ['attack_pct', '공격력 %', text => /^공격력 \+\d+%$/.test(text)],
+  ['magic_pct', '마력 %', text => /^마력 \+\d+%$/.test(text)],
+  ['attack_magic_pct', '공격력 또는 마력 %', text => /^(공격력|마력) \+\d+%$/.test(text)],
+  ['boss_pct', '보스 몬스터 데미지', text => /^보스 몬스터 데미지 \+\d+%$/.test(text)],
+  ['ied_pct', '몬스터 방어율 무시', text => /^몬스터 방어율 무시 \+\d+%$/.test(text)],
+  ['str_pct', 'STR %', text => /^STR \+\d+%$/.test(text)],
+  ['dex_pct', 'DEX %', text => /^DEX \+\d+%$/.test(text)],
+  ['int_pct', 'INT %', text => /^INT \+\d+%$/.test(text)],
+  ['luk_pct', 'LUK %', text => /^LUK \+\d+%$/.test(text)],
+  ['hp_pct', '최대 HP %', text => /^최대 HP \+\d+%$/.test(text)],
+  ['allstat_pct', '올스탯 %', text => /^올스탯 \+\d+%$/.test(text)],
+  ['critical_damage', '크리티컬 데미지', text => /^크리티컬 데미지 \+\d+%$/.test(text)],
+  ['cooldown', '스킬 재사용 대기시간 감소', text => CUBE_COOLDOWN_RE.test(text)],
+  ['item_drop', '아이템 드롭률', text => /^아이템 드롭률 \+\d+%$/.test(text)],
+  ['meso_drop', '메소 획득량', text => /^메소 획득량 \+\d+%$/.test(text)],
+];
+const CUBE_CATEGORY_BY_ID = Object.fromEntries(
+  CUBE_CATEGORY_OPTIONS.map(([id, label, test]) => [id, { id, label, test }])
+);
+
+// 선택한 목표마다 서로 다른 한 줄을 사용한다. 같은 목표가 두 번이면 실제 두 줄이 필요하다.
+const cubeUnorderedMatch = (lines, targets, matcher) => {
+  const wanted = targets.filter(target => target !== 'any' && target != null);
+  const used = Array(lines.length).fill(false);
+  const visit = (targetIndex) => {
+    if (targetIndex >= wanted.length) return true;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      if (used[lineIndex] || !matcher(wanted[targetIndex], lines[lineIndex])) continue;
+      used[lineIndex] = true;
+      if (visit(targetIndex + 1)) return true;
+      used[lineIndex] = false;
+    }
+    return false;
+  };
+  return visit(0);
+};
+
+const cubeUnorderedProbability = (data, method, grade, partId, level, targets, matcher) =>
+  cubeGoalProbability(
+    data,
+    method,
+    grade,
+    partId,
+    level,
+    lines => cubeUnorderedMatch(lines, targets, matcher),
+  );
+
 // 등급업 단계 (천장·연속실패 반영, 유니크→레전드리는 0회 누적 기준) — targetGrade에서 멈춤
 function cubeGradeUp({ method, level, curGrade, targetGrade = '레전드리', fails = {} }) {
   const gi = g => GRADES.indexOf(g);
@@ -900,9 +953,31 @@ const cubeLineRows = (cube, method, grade, partId, level) => {
   if (!cube) return null;
   const ctx = cube.ctx[String(cubeContextKey(method, grade, partId, level))];
   if (!ctx) return null;
-  return ctx.map(di => di < 0 ? [] : cube.dists[di]
-    .map(([oi, p]) => ({ idx: oi, text: cube.options[oi][0], prob: p }))
+  const primeOptions = new Set((ctx[0] >= 0 ? cube.dists[ctx[0]] : []).map(entry => entry[0]));
+  return ctx.map((di, lineIndex) => di < 0 ? [] : cube.dists[di]
+    .map(([oi, p, explicitPrime]) => ({
+      idx: oi,
+      text: cube.options[oi][0],
+      prob: p,
+      isPrime: explicitPrime == null ? lineIndex === 0 || primeOptions.has(oi) : !!explicitPrime,
+    }))
     .sort((a, b) => b.prob - a.prob));
+};
+const cubeMergedChoiceRows = (lineRows) => {
+  const byText = new Map();
+  for (const rows of lineRows || []) {
+    for (const row of rows || []) {
+      const current = byText.get(row.text);
+      if (!current ||
+          (row.isPrime && !current.isPrime) ||
+          (row.isPrime === current.isPrime && row.prob > current.prob)) {
+        byText.set(row.text, row);
+      }
+    }
+  }
+  return [...byText.values()].sort((a, b) =>
+    Number(b.isPrime) - Number(a.isPrime) || b.prob - a.prob || a.text.localeCompare(b.text)
+  );
 };
 const cubePickStrong = (rows, li) => {
   for (const key of CUBE_PREF_BY_LINE[li]) { const m = rows.find(r => r.text.includes(key)); if (m) return m.idx; }
@@ -1414,6 +1489,9 @@ function App() {
   useEffect(() => saveLS(LS_KEYS.CHARS, characters), [characters]);
   useEffect(() => saveLS(LS_KEYS.BOSS_DATA, bossData), [bossData]);
   useEffect(() => saveLS(LS_KEYS.SELECTED, selected), [selected]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [selected]);
 
   // 최대 인원 보정과 함께 구버전/손상 데이터의 중복·알 수 없는 보스도 정리한다.
   useEffect(() => {
@@ -1674,6 +1752,9 @@ function App() {
           {selected === 'enhance_calc' && (
             <EnhanceCalcView />
           )}
+          {selected === 'sunday_maple' && (
+            <SundayMapleView />
+          )}
           {selected === 'budget_summary' && (
             <BudgetSummaryView characters={characters} charTotals={charTotals} onSelect={setSelected} />
           )}
@@ -1872,6 +1953,12 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           onClick={() => onSelect('enhance_calc')}
           label="⭐ 강화 기대비용"
           subtitle="스타포스·잠재 계산기"
+        />
+        <NavItem
+          active={selected === 'sunday_maple'}
+          onClick={() => onSelect('sunday_maple')}
+          label="📅 선데이 메이플"
+          subtitle="역대 기록·다음 혜택 예측"
         />
 
         <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-500">
@@ -4201,7 +4288,9 @@ function PotentialCalc() {
   const set = (k, v) => setC(p => ({ ...p, [k]: v }));
   const [fails, setFails] = useState({ r2e: 0, e2u: 0 });
   const [picks, setPicks] = useState(['any', 'any', 'any']);
-  const [pickCtx, setPickCtx] = useState(null); // picks가 속한 문맥 키
+  const [targetMode, setTargetMode] = useState('exact-unordered');
+  const [categoryPicks, setCategoryPicks] = useState(['attack_pct', 'boss_pct', 'ied_pct']);
+  const pickCtxRef = useRef(null); // picks가 속한 문맥 키
 
   // 현재 문맥의 줄별 옵션 목록 (확률 내림차순)
   const lineOpts = useMemo(() => {
@@ -4211,18 +4300,59 @@ function PotentialCalc() {
   }, [cube, c.method, c.partId, c.level]);
 
   const pickDefault = (rows, li) => cubePickStrong(rows, li);
-  // 옵션 문맥(줄 분포)이 실제로 바뀌면 렌더 중 동기적으로 기본 선택 재설정 (페인트 전 → 깜빡임 없음)
-  // 같은 버킷 내 레벨 편집은 ctxKey가 그대로라 선택 유지
+  // 옵션 문맥(줄 분포)이 실제로 바뀌면 새 문맥의 기본 선택을 즉시 계산하고 상태도 동기화한다.
+  // 같은 버킷 내 레벨 편집은 ctxKey가 그대로라 선택을 유지한다.
   const ctxKey = cubeContextKey(c.method, '레전드리', c.partId, c.level);
-  let effPicks = picks;
-  if (lineOpts && !lineOpts.missing && pickCtx !== ctxKey) {
-    effPicks = lineOpts.lines.map((rows, li) => pickDefault(rows, li));
+  const contextChanged = !!(lineOpts && !lineOpts.missing && pickCtxRef.current !== ctxKey);
+  const effPicks = contextChanged
+    ? lineOpts.lines.map((rows, li) => pickDefault(rows, li))
+    : picks;
+  useEffect(() => {
+    if (!contextChanged) return;
+    pickCtxRef.current = ctxKey;
     setPicks(effPicks);
-    setPickCtx(ctxKey);
-  }
+  }, [contextChanged, ctxKey, effPicks]);
 
   const partName = cube ? (cube.parts.find(p => p[1] === c.partId) || ['', c.partId])[0] : '';
-  const roll = cube && lineOpts && !lineOpts.missing ? cubeExactRoll(cube, c.method, '레전드리', c.partId, c.level, effPicks) : null;
+  const mergedOptionRows = useMemo(
+    () => cubeMergedChoiceRows(lineOpts && !lineOpts.missing ? lineOpts.lines : []),
+    [lineOpts],
+  );
+  const orderedPicks = useMemo(() => effPicks.map((pick, lineIndex) => {
+    if (pick === 'any' || !cube || !lineOpts || lineOpts.missing) return pick;
+    const rows = lineOpts.lines[lineIndex] || [];
+    if (rows.some(row => row.idx === pick)) return pick;
+    const wantedText = cube.options[pick]?.[0];
+    return rows.find(row => row.text === wantedText)?.idx ?? pick;
+  }), [cube, lineOpts, effPicks]);
+  const roll = useMemo(() => {
+    if (!cube || !lineOpts || lineOpts.missing) return null;
+    if (targetMode === 'ordered') {
+      return cubeExactRoll(cube, c.method, '레전드리', c.partId, c.level, orderedPicks);
+    }
+    if (targetMode === 'exact-unordered') {
+      const goal = cubeUnorderedProbability(
+        cube,
+        c.method,
+        '레전드리',
+        c.partId,
+        c.level,
+        effPicks,
+        (target, row) => cube.options[target]?.[0] === row.text,
+      );
+      return { ...goal, lines: [], complete: true };
+    }
+    const goal = cubeUnorderedProbability(
+      cube,
+      c.method,
+      '레전드리',
+      c.partId,
+      c.level,
+      categoryPicks,
+      (target, row) => !!CUBE_CATEGORY_BY_ID[target]?.test(row.text),
+    );
+    return { ...goal, lines: [], complete: true };
+  }, [cube, lineOpts, c.method, c.partId, c.level, targetMode, orderedPicks, effPicks, categoryPicks]);
   const gup = cubeGradeUp({ method: c.method, level: c.level, curGrade: c.curGrade, fails });
   const u2lStep = gup.rows.find(st => st.from === '유니크' && st.to === '레전드리');
   const gi = (g) => GRADES.indexOf(g);
@@ -4233,10 +4363,13 @@ function PotentialCalc() {
   const totalTries = gup.tries + targetTries;
   const totalMeso = gup.meso + targetTries * costL;
   const q = (v) => H4 <= 0 ? null : H4 >= 1 ? 1 : Math.ceil(Math.log(1 - v) / Math.log(1 - H4));
-  const levelErr = c.level < 1 || c.level > 250;
+  const levelErr = c.level < 1 || c.level > 300;
 
   const setPick = (li, v) => setPicks(p => { const n = [...p]; n[li] = v === 'any' ? 'any' : Number(v); return n; });
+  const setCategoryPick = (li, v) => setCategoryPicks(p => { const n = [...p]; n[li] = v; return n; });
   const LINE_LABEL = ['1번째 줄', '2번째 줄', '3번째 줄'];
+  const TARGET_LABEL = ['목표 A', '목표 B', '목표 C'];
+  const modeLabel = CUBE_TARGET_MODES.find(([id]) => id === targetMode)?.[1] || '';
   const fmtPct = (p) => (p * 100 < 0.01 && p > 0) ? (p * 100).toFixed(6) + '%' : (p * 100).toFixed(4) + '%';
 
   return (
@@ -4277,29 +4410,64 @@ function PotentialCalc() {
       ) : !cube ? (
         <div className="text-slate-400 text-sm py-4 text-center">공식 옵션 확률 데이터 로딩 중…</div>
       ) : levelErr ? (
-        <div className="bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">⚠️ 장비 레벨은 1~250 범위로 입력하세요. (현재 {c.level || 0})</div>
+        <div className="bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">⚠️ 장비 레벨은 1~300 범위로 입력하세요. (현재 {c.level || 0})</div>
       ) : lineOpts.missing ? (
-        <div className="bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">이 부위·레벨 조합의 공식 옵션 문맥이 없습니다. (레벨 1~250, 지원 부위 확인)</div>
+        <div className="bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">이 부위·레벨 조합의 공식 옵션 문맥이 없습니다. (레벨 1~300, 지원 부위 확인)</div>
       ) : (
         <>
           {/* 목표 옵션 3줄 선택 */}
           <div className="border-t border-maple-border pt-4">
-            <div className="flex items-center gap-2 mb-2"><span>🎯</span><h4 className="font-semibold text-sm">목표 옵션 (레전드리 3줄)</h4></div>
+            <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+              <div className="flex items-center gap-2"><span>🎯</span><h4 className="font-semibold text-sm">목표 옵션 (레전드리 3줄)</h4></div>
+              <div className="flex gap-1 bg-maple-bg/60 border border-maple-border rounded-lg p-1" role="group" aria-label="잠재 목표 계산 방식">
+                {CUBE_TARGET_MODES.map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setTargetMode(id)}
+                    className={`text-[11px] px-2.5 py-1.5 rounded-md transition ${targetMode === id ? 'bg-maple-accent text-white font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+                    aria-pressed={targetMode === id}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="space-y-2">
               {[0, 1, 2].map(li => {
-                const rows = lineOpts.lines[li] || [];
-                const cur = effPicks[li];
-                const info = roll && roll.lines[li];
+                const ordered = targetMode === 'ordered';
+                const category = targetMode === 'category-unordered';
+                const rows = ordered ? (lineOpts.lines[li] || []) : mergedOptionRows;
+                const cur = category ? categoryPicks[li] : ordered ? orderedPicks[li] : effPicks[li];
+                const unavailable = ordered && cur !== 'any' && !rows.some(row => row.idx === cur);
+                const displayedOption = !ordered && !category && cur !== 'any'
+                  ? (mergedOptionRows.find(row => row.text === cube.options[cur]?.[0])?.idx ?? cur)
+                  : unavailable ? '__unavailable__' : cur;
+                const info = ordered && roll && roll.lines[li];
                 return (
                   <div key={li} className="grid grid-cols-12 gap-2 items-center">
-                    <span className="col-span-3 md:col-span-2 text-xs text-slate-400">{LINE_LABEL[li]}</span>
-                    <select value={cur === 'any' ? 'any' : String(cur)} onChange={(e) => setPick(li, e.target.value)}
-                      className={SEL_CLS + ' col-span-6 md:col-span-7 w-full text-xs'}>
-                      <option value="any">— 아무거나 (무시) —</option>
-                      {rows.map(r => <option key={r.idx} value={r.idx}>{r.text} ({fmtPct(r.prob)})</option>)}
-                    </select>
+                    <span className="col-span-3 md:col-span-2 text-xs text-slate-400">{ordered ? LINE_LABEL[li] : TARGET_LABEL[li]}</span>
+                    {category ? (
+                      <select value={cur} onChange={(e) => setCategoryPick(li, e.target.value)}
+                        className={SEL_CLS + ' col-span-6 md:col-span-7 w-full text-xs'}>
+                        <option value="any">— 아무거나 (무시) —</option>
+                        {CUBE_CATEGORY_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label} · 수치 무관</option>)}
+                      </select>
+                    ) : (
+                      <select value={displayedOption === 'any' ? 'any' : String(displayedOption)} onChange={(e) => setPick(li, e.target.value)}
+                        className={SEL_CLS + ' col-span-6 md:col-span-7 w-full text-xs'}>
+                        <option value="any">— 아무거나 (무시) —</option>
+                        {unavailable && <option value="__unavailable__" disabled>{cube.options[cur]?.[0] || '선택 옵션'} · 이 줄에 등장하지 않음</option>}
+                        {rows.map(r => (
+                          <option key={`${r.idx}-${r.text}`} value={r.idx}>
+                            {r.text}{ordered ? ` (${fmtPct(r.prob)})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <span className="col-span-3 text-right text-xs">
                       {cur === 'any' ? <span className="text-slate-500">100%</span>
+                        : !ordered ? <span className="text-sky-300">전체 순열 합산</span>
                         : info && info.p == null ? <span className="text-slate-400">전체 경우 합산</span>
                         : info && info.p > 0 ? <span className="text-emerald-300 font-semibold">{fmtPct(info.p)}</span>
                         : <span className="text-red-300">제약상 불가</span>}
@@ -4308,14 +4476,21 @@ function PotentialCalc() {
                 );
               })}
             </div>
-            {roll && roll.lines.some(l => l.excl > 0) && (
+            <p className="text-[10px] text-slate-500 mt-2">
+              {targetMode === 'ordered'
+                ? '선택한 옵션이 지정한 줄 위치에 정확히 등장할 확률입니다.'
+                : targetMode === 'exact-unordered'
+                  ? '같은 문구의 정확한 옵션 3개가 어느 줄에든 등장하는 모든 순열을 합산합니다.'
+                  : '선택한 종류의 옵션이 수치와 줄 위치에 관계없이 각각 한 줄씩 등장하는 경우를 합산합니다.'}
+            </p>
+            {targetMode === 'ordered' && roll && roll.lines.some(l => l.excl > 0) && (
               <p className="text-[10px] text-slate-500 mt-1.5">※ 앞줄 제한(쓸만한 스킬·피격 옵션)으로 뒷줄 확률이 공식 재정규화되었습니다.</p>
             )}
           </div>
 
           {/* 결과 */}
           <div className="bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
-            <div className="text-xs text-slate-500 mb-1">{partName} · Lv.{c.level} · {c.method === 'black' ? '일반/블랙' : '에디셔널'} · {c.curGrade} → 레전드리</div>
+            <div className="text-xs text-slate-500 mb-1">{partName} · Lv.{c.level} · {c.method === 'black' ? '일반/블랙' : '에디셔널'} · {c.curGrade} → 레전드리 · {modeLabel}</div>
 
             {gup.rows.length > 0 && (
               <div className="mb-2">
@@ -4350,9 +4525,558 @@ function PotentialCalc() {
               </div>
             )}
           </div>
-          <p className="text-[10px] text-slate-500">공식 페이지 반올림 표시확률 기반 근사값입니다. 현재 3줄과 완전히 동일한 결과의 내부 재추첨은 반영하지 않습니다. (기준일 2026-07-13)</p>
+          <p className="text-[10px] text-slate-500">공식 페이지 반올림 표시확률 기반 근사값입니다. 유효옵션 모드는 % 옵션을 기준으로 하며, 현재 3줄과 완전히 동일한 결과의 내부 재추첨은 반영하지 않습니다. (확률표 재확인 2026-07-25)</p>
         </>
       )}
+    </div>
+  );
+}
+
+/* =========================================================
+ * 선데이 메이플 기록 · 통계 예측
+ * - 기록이 확인된 주만 분모에 포함한다.
+ * - 한 날짜에 여러 혜택이 함께 등장하는 다중 라벨 확률이다.
+ * ========================================================= */
+const SUNDAY_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const SUNDAY_CONTINUOUS_START = '2023-02-19';
+const SUNDAY_ACTIVE_BENEFITS = [
+  '샤이닝 스타포스',
+  '미라클 타임',
+  '스타포스 30% 할인',
+  '스타포스 파괴감소',
+  '스타포스 1+1',
+  '주문의 흔적 반값',
+  '어빌리티 반값',
+  '소울 확률',
+  '룬/콤보킬',
+  '몬스터파크',
+  '몬컬',
+  '엘몹',
+  '솔에르다 2배',
+  '솔에르다 타임',
+  '트레저 헌터',
+  '헥사 스텟',
+  '선물 지급',
+];
+const SUNDAY_BENEFIT_INFO = {
+  '샤이닝 스타포스': ['✨', '강화'],
+  '미라클 타임': ['🟣', '잠재'],
+  '스타포스 30% 할인': ['⭐', '강화'],
+  '스타포스 파괴감소': ['🛡️', '강화'],
+  '스타포스 1+1': ['➕', '강화'],
+  '주문의 흔적 반값': ['📜', '강화'],
+  '어빌리티 반값': ['🎯', '성장'],
+  '소울 확률': ['👻', '성장'],
+  '룬/콤보킬': ['ᚱ', '사냥'],
+  '몬스터파크': ['🎢', '사냥'],
+  '몬컬': ['📚', '수집'],
+  '엘몹': ['👹', '사냥'],
+  '솔에르다 2배': ['💠', '6차'],
+  '솔에르다 타임': ['⏳', '6차'],
+  '트레저 헌터': ['🧭', '사냥'],
+  '헥사 스텟': ['⬡', '6차'],
+  '선물 지급': ['🎁', '보상'],
+};
+let _sundayHistoryData = null;
+const loadSundayHistoryData = () => {
+  if (_sundayHistoryData) return Promise.resolve(_sundayHistoryData);
+  return fetch('sunday-history.json')
+    .then(response => {
+      if (!response.ok) throw new Error('load');
+      return response.json();
+    })
+    .then(data => {
+      _sundayHistoryData = data;
+      return data;
+    });
+};
+function useSundayHistoryData() {
+  const [data, setData] = useState(_sundayHistoryData);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    if (data) return;
+    let alive = true;
+    loadSundayHistoryData()
+      .then(next => { if (alive) setData(next); })
+      .catch(() => { if (alive) setErr(true); });
+    return () => { alive = false; };
+  }, []);
+  return { data, err };
+}
+
+const sundayDateMs = (dateText) => {
+  const [year, month, day] = dateText.split('-').map(Number);
+  return Date.UTC(year, month - 1, day);
+};
+const sundayAddDays = (dateText, days) =>
+  new Date(sundayDateMs(dateText) + days * 86400000).toISOString().slice(0, 10);
+const sundayWeeksBetween = (later, earlier) =>
+  Math.max(0, Math.round((sundayDateMs(later) - sundayDateMs(earlier)) / SUNDAY_WEEK_MS));
+const sundayTodayKst = () => new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const sundayNextCalendarDate = (dateText) => {
+  const current = new Date(sundayDateMs(dateText));
+  const add = ((7 - current.getUTCDay()) % 7) || 7;
+  return sundayAddDays(dateText, add);
+};
+const sundayCurrentOrNextCalendarDate = (dateText) => {
+  const current = new Date(sundayDateMs(dateText));
+  const add = (7 - current.getUTCDay()) % 7;
+  return sundayAddDays(dateText, add);
+};
+const sundayWeekOfYear = (dateText) => {
+  const [year] = dateText.split('-').map(Number);
+  return Math.floor((sundayDateMs(dateText) - Date.UTC(year, 0, 1)) / SUNDAY_WEEK_MS) + 1;
+};
+const sundayMedian = (values) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+const sundayGapBucket = (gap) =>
+  gap <= 2 ? 0 : gap <= 4 ? 1 : gap <= 8 ? 2 : gap <= 13 ? 3 : gap <= 26 ? 4 : 5;
+const sundayMix = (prior, strength, successes, total) =>
+  (strength * prior + successes) / (strength + total);
+const _sundayPreparedCache = new WeakMap();
+const sundayPrepareHistory = (records) => {
+  const source = Array.isArray(records) ? records : [];
+  if (_sundayPreparedCache.has(source)) return _sundayPreparedCache.get(source);
+  const rows = source
+    .filter(record => record.kind === 'sunday')
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(record => ({
+      date: record.date,
+      dateMs: sundayDateMs(record.date),
+      week: sundayWeekOfYear(record.date),
+      season: Math.floor((Number(record.date.slice(5, 7)) - 1) / 3),
+      benefits: new Set(record.benefits || []),
+    }));
+  const prepared = { rows };
+  _sundayPreparedCache.set(source, prepared);
+  return prepared;
+};
+
+function sundayForecastBenefit(records, benefit, targetDate, halfLife = 78) {
+  const prepared = sundayPrepareHistory(records);
+  const hitRows = [];
+  let weekCount = 0, recentCount = 0, recentWeeks = 0;
+  let lastObservedDateMs = null;
+  let recentWeight = 0, recentHits = 0, recentWeightSquare = 0;
+  let calendarWeight = 0, calendarHits = 0;
+  const targetMs = sundayDateMs(targetDate);
+  const targetWeek = sundayWeekOfYear(targetDate);
+  const targetMonth = Number(targetDate.slice(5, 7));
+  const targetSeason = Math.floor((targetMonth - 1) / 3);
+  for (const record of prepared.rows) {
+    if (record.date >= targetDate) break;
+    weekCount += 1;
+    lastObservedDateMs = record.dateMs;
+    const age = Math.max(0, Math.round((targetMs - record.dateMs) / SUNDAY_WEEK_MS));
+    const weight = Math.pow(2, -age / halfLife);
+    const hit = record.benefits.has(benefit) ? 1 : 0;
+    if (hit) hitRows.push(record);
+    if (age <= 52) {
+      recentWeeks += 1;
+      recentCount += hit;
+    }
+    recentWeight += weight;
+    recentWeightSquare += weight * weight;
+    recentHits += weight * hit;
+
+    const directDistance = Math.abs(targetWeek - record.week);
+    const weekDistance = Math.min(directDistance, 52 - Math.min(52, directDistance));
+    const weekKernel = Math.exp(-0.5 * Math.pow(weekDistance / 3, 2));
+    const seasonSimilarity = record.season === targetSeason ? 1 : 0.15;
+    const similarity = 0.5 * seasonSimilarity + 0.5 * weekKernel;
+    const calendar = weight * similarity;
+    calendarWeight += calendar;
+    calendarHits += calendar * hit;
+  }
+  const pFrequency = (hitRows.length + 0.5) / (weekCount + 1);
+  const pRecent = sundayMix(pFrequency, 4, recentHits, recentWeight);
+  const pCalendar = sundayMix(pRecent, 12, calendarHits, calendarWeight);
+
+  const continuousHits = hitRows.filter(record => record.date >= SUNDAY_CONTINUOUS_START);
+  const gapValues = [];
+  const exposure = Array(6).fill(0);
+  const success = Array(6).fill(0);
+  for (let index = 1; index < continuousHits.length; index++) {
+    const gap = Math.max(0, Math.round(
+      (continuousHits[index].dateMs - continuousHits[index - 1].dateMs) / SUNDAY_WEEK_MS
+    ));
+    if (!(gap > 0)) continue;
+    gapValues.push(gap);
+    for (let atRisk = 1; atRisk <= gap; atRisk++) {
+      const bucket = sundayGapBucket(atRisk);
+      exposure[bucket] += 1;
+      if (atRisk === gap) success[bucket] += 1;
+    }
+  }
+  const lastDate = hitRows.length ? hitRows[hitRows.length - 1].date : null;
+  const currentGap = hitRows.length
+    ? Math.max(0, Math.round((targetMs - hitRows[hitRows.length - 1].dateMs) / SUNDAY_WEEK_MS))
+    : null;
+  // 마지막 등장 뒤 이미 지나간 무등장 주는 right-censored exposure로 포함하되,
+  // 아직 결과를 모르는 목표 주 자체는 실패 표본으로 넣지 않는다.
+  const observedGap = hitRows.length && lastObservedDateMs != null
+    ? Math.max(0, Math.round((lastObservedDateMs - hitRows[hitRows.length - 1].dateMs) / SUNDAY_WEEK_MS))
+    : 0;
+  if (lastDate && lastDate >= SUNDAY_CONTINUOUS_START) {
+    for (let atRisk = 1; atRisk <= observedGap; atRisk++) {
+      exposure[sundayGapBucket(atRisk)] += 1;
+    }
+  }
+  const bucket = sundayGapBucket(currentGap == null ? 999 : Math.max(1, currentGap));
+  const pGap = hitRows.length >= 4
+    ? sundayMix(pRecent, 12, success[bucket], exposure[bucket])
+    : pRecent;
+  const probability = Math.max(0.001, Math.min(0.95,
+    0.15 * pFrequency + 0.50 * pRecent + 0.20 * pCalendar + 0.15 * pGap
+  ));
+  const effectiveSample = recentWeightSquare > 0
+    ? (recentWeight * recentWeight) / recentWeightSquare
+    : 0;
+  const confidence = hitRows.length >= 8 && effectiveSample >= 30 ? '보통' : '낮음';
+
+  return {
+    benefit,
+    probability,
+    pFrequency,
+    pRecent,
+    pCalendar,
+    pGap,
+    count: hitRows.length,
+    weeks: weekCount,
+    recentCount,
+    recentWeeks,
+    lastDate,
+    currentGap,
+    observedGap,
+    medianGap: sundayMedian(gapValues),
+    confidence,
+  };
+}
+
+function sundayBacktest(records, cutoffDate) {
+  const rows = (records || [])
+    .filter(record => record.kind === 'sunday' && record.date <= cutoffDate)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const targets = rows.slice(-52);
+  let evaluated = 0, top3Hits = 0, baselineTop3Hits = 0;
+  let top3LabelHits = 0, baselineTop3LabelHits = 0, actualLabelCount = 0;
+  let brierTotal = 0, baselineBrierTotal = 0, brierCount = 0;
+  for (const target of targets) {
+    const actual = new Set(target.benefits || []);
+    const knownCandidates = new Set();
+    for (const record of rows) {
+      if (record.date >= target.date) break;
+      for (const benefit of record.benefits || []) knownCandidates.add(benefit);
+    }
+    if (!actual.size || !knownCandidates.size) continue;
+    const ranked = [...knownCandidates]
+      .map(benefit => sundayForecastBenefit(rows, benefit, target.date))
+      .sort((a, b) => b.probability - a.probability);
+    const top3 = ranked.slice(0, 3);
+    const baselineTop3 = [...ranked].sort((a, b) => b.pFrequency - a.pFrequency).slice(0, 3);
+    const hitCount = top3.filter(item => actual.has(item.benefit)).length;
+    const baselineHitCount = baselineTop3.filter(item => actual.has(item.benefit)).length;
+    if (hitCount) top3Hits += 1;
+    if (baselineHitCount) baselineTop3Hits += 1;
+    top3LabelHits += hitCount;
+    baselineTop3LabelHits += baselineHitCount;
+    actualLabelCount += actual.size;
+    for (const item of ranked) {
+      const outcome = actual.has(item.benefit) ? 1 : 0;
+      brierTotal += Math.pow(item.probability - outcome, 2);
+      baselineBrierTotal += Math.pow(item.pFrequency - outcome, 2);
+      brierCount += 1;
+    }
+    for (const unseenActual of actual) {
+      if (knownCandidates.has(unseenActual)) continue;
+      brierTotal += 1;
+      baselineBrierTotal += 1;
+      brierCount += 1;
+    }
+    evaluated += 1;
+  }
+  return {
+    weeks: evaluated,
+    top3Rate: evaluated ? top3Hits / evaluated : 0,
+    baselineTop3Rate: evaluated ? baselineTop3Hits / evaluated : 0,
+    precisionAt3: evaluated ? top3LabelHits / (evaluated * 3) : 0,
+    recallAt3: actualLabelCount ? top3LabelHits / actualLabelCount : 0,
+    baselineRecallAt3: actualLabelCount ? baselineTop3LabelHits / actualLabelCount : 0,
+    averageBenefits: evaluated ? actualLabelCount / evaluated : 0,
+    brier: brierCount ? brierTotal / brierCount : 0,
+    baselineBrier: brierCount ? baselineBrierTotal / brierCount : 0,
+  };
+}
+
+const sundayFormatDate = (dateText) => {
+  const [year, month, day] = dateText.split('-');
+  return `${year}.${month}.${day}`;
+};
+const sundayFmtProbability = (value) =>
+  `${(value * 100).toFixed(value < 0.1 ? 1 : 0)}%`;
+
+function SundayMapleView() {
+  const { data, err } = useSundayHistoryData();
+  const today = sundayTodayKst();
+  const [forecastOffset, setForecastOffset] = useState(0);
+  const [historyYear, setHistoryYear] = useState('all');
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyLimit, setHistoryLimit] = useState(30);
+
+  useEffect(() => setHistoryLimit(30), [historyYear, historyQuery]);
+
+  if (err) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-red-500/10 border border-red-500/40 text-red-200 rounded-xl p-5">
+          선데이 메이플 기록을 불러오지 못했습니다. 새로고침 후 다시 확인해 주세요.
+        </div>
+      </div>
+    );
+  }
+  if (!data) {
+    return <div className="max-w-6xl mx-auto py-16 text-center text-slate-400">역대 선데이 메이플 기록을 불러오는 중…</div>;
+  }
+
+  const sundayRecords = data.records.filter(record => record.kind === 'sunday');
+  const nextCalendarSunday = sundayCurrentOrNextCalendarDate(today);
+  const knownUpcoming = sundayRecords
+    .filter(record => record.date >= nextCalendarSunday && record.officialVerified && record.officialUrl)
+    .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+  const forecastStart = knownUpcoming
+    ? sundayAddDays(knownUpcoming.date, 7)
+    : nextCalendarSunday;
+  const forecastDates = Array.from({ length: 8 }, (_, index) => sundayAddDays(forecastStart, index * 7));
+  const forecastDate = forecastDates[forecastOffset] || forecastDates[0];
+  const forecasts = SUNDAY_ACTIVE_BENEFITS
+    .map(benefit => sundayForecastBenefit(data.records, benefit, forecastDate))
+    .sort((a, b) => b.probability - a.probability);
+  const backtest = data.backtest || null;
+  const frequencyRows = (data.benefits || [])
+    .map(benefit => ({
+      ...sundayForecastBenefit(data.records, benefit, forecastStart),
+      active: SUNDAY_ACTIVE_BENEFITS.includes(benefit),
+    }))
+    .sort((a, b) => Number(b.active) - Number(a.active) || b.count - a.count || a.benefit.localeCompare(b.benefit));
+  const years = [...new Set(data.records.map(record => record.date.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
+  const query = historyQuery.trim().toLowerCase();
+  const filteredHistory = data.records.filter(record => {
+    if (historyYear !== 'all' && !record.date.startsWith(historyYear)) return false;
+    if (!query) return true;
+    return `${record.mainEvent} ${(record.benefits || []).join(' ')}`.toLowerCase().includes(query);
+  });
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div>
+        <h2 className="text-2xl md:text-3xl font-bold">📅 선데이 메이플 기록·예측</h2>
+        <p className="text-slate-400 mt-1">2017년 이후 공개 기록에서 확인된 주요 혜택으로 빈도·최근성·계절성·등장 간격을 계산해 다음 혜택을 추정합니다.</p>
+      </div>
+
+      {knownUpcoming && (
+        <section className="bg-gradient-to-br from-emerald-500/15 to-sky-500/10 border border-emerald-400/40 rounded-xl p-4 md:p-5">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs font-bold text-emerald-300 uppercase tracking-wider">공식 확정 요약 · 이번 선데이</div>
+              <h3 className="text-xl font-bold mt-1">{sundayFormatDate(knownUpcoming.date)} {knownUpcoming.officialTitle || knownUpcoming.mainEvent}</h3>
+            </div>
+            {knownUpcoming.officialUrl && (
+              <a href={knownUpcoming.officialUrl} target="_blank" rel="noreferrer"
+                className="text-xs border border-emerald-400/40 bg-emerald-400/10 hover:bg-emerald-400/20 rounded px-3 py-2 text-emerald-200">
+                넥슨 공식 공지 ↗
+              </a>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {knownUpcoming.benefits.map(benefit => (
+              <span key={benefit} className="text-sm bg-maple-bg/70 border border-maple-border rounded-full px-3 py-1.5">
+                {SUNDAY_BENEFIT_INFO[benefit]?.[0] || '•'} {benefit}
+              </span>
+            ))}
+          </div>
+          {knownUpcoming.officialDetails && (
+            <ul className="mt-3 grid md:grid-cols-2 gap-x-5 gap-y-1 text-xs text-emerald-100/80 list-disc pl-5">
+              {knownUpcoming.officialDetails.map(detail => <li key={detail}>{detail}</li>)}
+            </ul>
+          )}
+        </section>
+      )}
+
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="text-xs text-sky-300 font-bold uppercase tracking-wider">과거 패턴 기반 통계 예측</div>
+            <h3 className="text-xl font-bold mt-1">{sundayFormatDate(forecastDate)} 후보</h3>
+            <p className="text-xs text-slate-500 mt-1">각 혜택의 개별 출현 추정치입니다. 혜택끼리 통계적으로 독립이라는 뜻은 아니며 합계도 100%가 아닙니다.</p>
+          </div>
+          <div className="text-right">
+            {backtest ? (
+              <>
+                <div className="text-[10px] text-slate-500">최근 {backtest.weeks}개 시점별 재현 검증</div>
+                <div className="text-sm font-semibold text-amber-300">TOP 3 혜택 재현율 {(backtest.recallAt3 * 100).toFixed(0)}%</div>
+                <div className="text-[9px] text-slate-500">Brier {backtest.brier.toFixed(3)} · 단순 빈도 {backtest.baselineBrier.toFixed(3)}</div>
+              </>
+            ) : (
+              <div className="text-[10px] text-slate-500">백그라운드 재현 검증 계산 중…</div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="예측할 선데이 날짜">
+          {forecastDates.map((date, index) => (
+            <button key={date} type="button" onClick={() => setForecastOffset(index)}
+              className={`shrink-0 rounded-lg border px-3 py-2 text-xs ${forecastOffset === index ? 'border-sky-400 bg-sky-400/15 text-sky-200 font-semibold' : 'border-maple-border bg-maple-bg/60 text-slate-400 hover:text-slate-200'}`}>
+              {sundayFormatDate(date)}
+              {index === 0 && <span className="ml-1 text-[9px]">다음</span>}
+            </button>
+          ))}
+        </div>
+        {forecastOffset > 0 && (
+          <p className="text-[10px] text-amber-300/80">※ 현재 스냅샷에서 목표 날짜만 앞당긴 시점별 추정입니다. 중간 주 결과를 시뮬레이션하지 않아 먼 날짜일수록 참고도가 낮고, 새 기록이 추가되면 값이 달라집니다.</p>
+        )}
+
+        <div className="grid md:grid-cols-2 gap-3">
+          {forecasts.slice(0, 6).map((item, index) => (
+            <div key={item.benefit} className="bg-maple-bg/55 border border-maple-border rounded-lg p-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <span className="w-7 h-7 rounded-full bg-sky-500/15 text-sky-300 flex items-center justify-center text-xs font-bold">{index + 1}</span>
+                  <div>
+                    <div className="font-semibold">{SUNDAY_BENEFIT_INFO[item.benefit]?.[0] || '•'} {item.benefit}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">
+                      전체 {item.count}/{item.weeks}회 · 최근 52주 {item.recentCount}/{item.recentWeeks}회
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-black text-sky-300">{sundayFmtProbability(item.probability)}</div>
+                  <div className="text-[9px] text-slate-500">신뢰도 {item.confidence}</div>
+                </div>
+              </div>
+              <div className="mt-2 pt-2 border-t border-maple-border/70 flex justify-between text-[10px] text-slate-500">
+                <span>마지막 {item.lastDate ? sundayFormatDate(item.lastDate) : '-'}</span>
+                <span>{item.currentGap == null ? '-' : `${item.currentGap}주 경과`} · 중앙 간격 {item.medianGap == null ? '-' : `${item.medianGap}주`}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <details className="bg-maple-bg/40 border border-maple-border rounded-lg px-3 py-2">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-300">예측 확률 계산 방식</summary>
+          <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+            전체 확인 빈도 15% + 최근성 가중 빈도 50% + 같은 계절·연중 주차 20% + 과거 재등장 간격 15%를 결합합니다.
+            최근성 반감기는 78주이며, 희소한 혜택은 전체 빈도로 완화합니다. 백테스트는 각 과거 시점 전에 이미 등장했던 혜택만 후보로 삼습니다.
+            현행 후보는 최근 공지와 현재 시스템을 기준으로 수동 분류했습니다. 넥슨의 운영 계획을 알 수 없고 완전한 공식 전수 데이터도 아니므로,
+            보정된 공식 확률이 아닌 참고용 통계 추정치입니다.
+          </p>
+        </details>
+      </section>
+
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h3 className="font-bold text-lg">혜택별 역대 빈도</h3>
+            <p className="text-xs text-slate-500">누락된 달력 주는 미등장으로 세지 않고, 기록이 확인된 일요일만 분모에 포함했습니다.</p>
+          </div>
+          <span className="text-xs text-slate-400">현재 후보 {SUNDAY_ACTIVE_BENEFITS.length}종 · 전체 기록 명칭 {data.meta.benefitCount}종</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[720px]">
+            <thead>
+              <tr className="text-left text-slate-500 border-b border-maple-border">
+                <th className="py-2 pr-3">혜택</th>
+                <th className="py-2 px-3 text-right">등장</th>
+                <th className="py-2 px-3 text-right">확인 주간 빈도</th>
+                <th className="py-2 px-3 text-right">최근 52주</th>
+                <th className="py-2 pl-3 text-right">마지막 등장</th>
+              </tr>
+            </thead>
+            <tbody>
+              {frequencyRows.map(item => (
+                <tr key={item.benefit} className={`border-b border-maple-border/60 ${item.active ? '' : 'opacity-55'}`}>
+                  <td className="py-2.5 pr-3">
+                    <span className="font-medium">{SUNDAY_BENEFIT_INFO[item.benefit]?.[0] || '•'} {item.benefit}</span>
+                    <span className={`ml-2 text-[9px] rounded px-1.5 py-0.5 ${item.active ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-700/50 text-slate-400'}`}>
+                      {item.active ? '현행 후보' : '과거/특수'}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-right">{item.count}회</td>
+                  <td className="py-2.5 px-3 text-right text-sky-300">{((item.count / Math.max(1, item.weeks)) * 100).toFixed(1)}%</td>
+                  <td className="py-2.5 px-3 text-right">{item.recentCount}/{item.recentWeeks}</td>
+                  <td className="py-2.5 pl-3 text-right text-slate-400">{item.lastDate ? sundayFormatDate(item.lastDate) : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-4">
+          <div>
+            <h3 className="font-bold text-lg">역대 기록 {data.meta.recordCount}건</h3>
+            <p className="text-xs text-slate-500">
+              {sundayFormatDate(data.meta.coverageStart)} ~ {sundayFormatDate(data.meta.coverageEnd)} · 일요일 {data.meta.sundayCount}건 + 특별 진행일 {data.meta.specialDayCount}건
+              {data.meta.missingSundayCount > 0 && ` · 달력 ${data.meta.calendarSundayCount}주 중 ${data.meta.missingSundayCount}주는 수집 범위 밖·미확인`}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <select value={historyYear} onChange={(event) => setHistoryYear(event.target.value)} className={SEL_CLS + ' text-xs'}>
+              <option value="all">전체 연도</option>
+              {years.map(year => <option key={year} value={year}>{year}년</option>)}
+            </select>
+            <input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)}
+              placeholder="혜택 검색" aria-label="선데이 혜택 검색" className={SEL_CLS + ' text-xs w-36'} />
+          </div>
+        </div>
+        <div className="space-y-2">
+          {filteredHistory.slice(0, historyLimit).map(record => (
+            <article key={record.date} className="bg-maple-bg/45 border border-maple-border rounded-lg px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <time className="font-bold text-sky-300">{sundayFormatDate(record.date)}</time>
+                    {record.kind !== 'sunday' && <span className="text-[9px] bg-amber-500/10 text-amber-300 rounded px-1.5 py-0.5">특별 진행일</span>}
+                    {record.officialUrl && <span className="text-[9px] bg-emerald-500/10 text-emerald-300 rounded px-1.5 py-0.5">공식 링크 확인</span>}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">{record.mainEvent}</div>
+                </div>
+                {record.officialUrl && (
+                  <a href={record.officialUrl} target="_blank" rel="noreferrer" className="text-[10px] text-emerald-300 hover:underline">공지 ↗</a>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {record.benefits.map(benefit => (
+                  <span key={benefit} className="text-[11px] bg-maple-panel border border-maple-border rounded-full px-2 py-1">{benefit}</span>
+                ))}
+              </div>
+            </article>
+          ))}
+          {!filteredHistory.length && <div className="text-center text-sm text-slate-500 py-8">조건에 맞는 기록이 없습니다.</div>}
+        </div>
+        {historyLimit < filteredHistory.length && (
+          <button type="button" onClick={() => setHistoryLimit(limit => limit + 30)}
+            className="w-full mt-3 border border-maple-border hover:border-maple-accent/60 bg-maple-bg/50 rounded-lg py-2 text-xs text-slate-300">
+            30건 더 보기 · 남은 {filteredHistory.length - historyLimit}건
+          </button>
+        )}
+      </section>
+
+      <section className="text-[11px] text-slate-500 leading-relaxed">
+        <p>데이터는 넥슨 공식 이벤트 공지를 바탕으로 날짜별 요약된 공개 커뮤니티 기록을 로컬 스냅샷으로 보관합니다. 기간제 이벤트 재화·코인샵처럼 정리 원문의 수집 범위에서 제외된 혜택과 확인되지 않은 주가 있어 공식 전수 기록은 아니며, 이런 주는 모델 학습에서 제외했습니다.</p>
+        <div className="flex gap-x-4 gap-y-1 flex-wrap mt-2">
+          <a href={data.meta.officialArchive} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">넥슨 이벤트 아카이브 ↗</a>
+          {data.meta.officialFirst && <a href={data.meta.officialFirst} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">최초 공식 안내 ↗</a>}
+          {data.meta.sourceLegacyPost && <a href={data.meta.sourceLegacyPost} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">초기 역대 기록 ↗</a>}
+          <a href={data.meta.sourcePost} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">역대 정리 원문 ↗</a>
+          <a href={data.meta.sourcePage} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">공개 달력 ↗</a>
+          <span>스냅샷 {data.meta.retrieved}</span>
+        </div>
+      </section>
     </div>
   );
 }
@@ -4373,8 +5097,34 @@ function EnhanceCalcView() {
 /* =========================================================
  * 마운트
  * ========================================================= */
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error('Maple Check render error', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <main className="min-h-full bg-maple-bg p-6 text-slate-200">
+          <div className="max-w-2xl mx-auto rounded-xl border border-red-500/40 bg-red-500/10 p-5">
+            <h1 className="text-lg font-bold text-red-200">화면을 표시하지 못했습니다.</h1>
+            <p className="mt-2 text-sm text-slate-400">새로고침 후에도 계속되면 아래 오류를 함께 알려 주세요.</p>
+            <pre className="mt-3 overflow-auto whitespace-pre-wrap text-xs text-red-200">{String(this.state.error?.stack || this.state.error)}</pre>
+          </div>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+root.render(<AppErrorBoundary><App /></AppErrorBoundary>);
 
 /* =========================================================
  * 서비스워커 등록

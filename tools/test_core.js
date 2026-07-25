@@ -3,6 +3,7 @@ const vm = require('vm');
 
 const html = fs.readFileSync('index.html', 'utf8');
 const cubeData = JSON.parse(fs.readFileSync('cube-options-v2.json', 'utf8'));
+const sundayData = JSON.parse(fs.readFileSync('sunday-history.json', 'utf8'));
 
 function sourceBetween(start, end) {
   const from = html.indexOf(start);
@@ -106,7 +107,7 @@ close(highStarTrace.total, 134968100000, 100000, '23-star trace restoration must
 const cubeContext = {};
 vm.runInNewContext(
   sourceBetween('const GRADES =', 'const emptyEquipSlot =') +
-    '\nglobalThis.testApi = { cubeAutoPotentialCost, cubeGoalPredicate, cubeGradeUp };',
+    '\nglobalThis.testApi = { cubeAutoPotentialCost, cubeGoalPredicate, cubeGradeUp, cubeExactRoll, cubeLineRows, cubeUnorderedMatch, cubeUnorderedProbability, CUBE_CATEGORY_BY_ID };',
   cubeContext,
 );
 const auto = cubeContext.testApi.cubeAutoPotentialCost;
@@ -150,6 +151,68 @@ assert(!normalFocusGoal([
   { text: 'DEX +14', isPrime: false },
 ]), 'normal potential focus goals must not treat flat stats as percent lines');
 
+const cubeApi = cubeContext.testApi;
+const weaponRows = cubeApi.cubeLineRows(cubeData, 'black', '레전드리', 1, 200);
+const weaponPicks = [
+  weaponRows[0].find(row => row.text === '공격력 +12%').idx,
+  weaponRows[1].find(row => row.text === '보스 몬스터 데미지 +40%').idx,
+  weaponRows[2].find(row => row.text === '몬스터 방어율 무시 +40%').idx,
+];
+const orderedWeapon = cubeApi.cubeExactRoll(cubeData, 'black', '레전드리', 1, 200, weaponPicks);
+close(orderedWeapon.perRoll, 0.00000116071444152, 1e-15,
+  'ordered attack, boss, and defense-ignore weapon probability');
+const exactUnorderedWeapon = cubeApi.cubeUnorderedProbability(
+  cubeData, 'black', '레전드리', 1, 200, weaponPicks,
+  (target, row) => cubeData.options[target][0] === row.text,
+);
+close(exactUnorderedWeapon.perRoll, 0.00000696428664912, 1e-15,
+  'exact attack, boss, and defense-ignore probability across all line orders');
+const categoryWeapon = cubeApi.cubeUnorderedProbability(
+  cubeData, 'black', '레전드리', 1, 200, ['attack_pct', 'boss_pct', 'ied_pct'],
+  (target, row) => cubeApi.CUBE_CATEGORY_BY_ID[target].test(row.text),
+);
+close(categoryWeapon.perRoll, 0.003047229663952639, 1e-15,
+  'any-value attack, boss, and defense-ignore probability across all line orders');
+const flexibleWeapon = cubeApi.cubeUnorderedProbability(
+  cubeData, 'black', '레전드리', 1, 200, ['attack_magic_pct', 'boss_pct', 'ied_pct'],
+  (target, row) => cubeApi.CUBE_CATEGORY_BY_ID[target].test(row.text),
+);
+close(flexibleWeapon.perRoll, 0.006094459327905273, 1e-15,
+  'attack-or-magic, boss, and defense-ignore probability across all line orders');
+assert(!cubeApi.cubeUnorderedMatch(
+  [{ text: '공격력 +12%' }, { text: '보스 몬스터 데미지 +40%' }],
+  ['attack', 'attack'],
+  (target, row) => target === 'attack' && row.text.startsWith('공격력'),
+), 'unordered matching must assign distinct rolled lines to duplicate targets');
+assert(cubeApi.CUBE_CATEGORY_BY_ID.cooldown.test('스킬 재사용 대기시간 -2초'),
+  'cooldown category must match the actual option text in the probability snapshot');
+const allAnyWeapon = cubeApi.cubeUnorderedProbability(
+  cubeData, 'black', '레전드리', 1, 200, ['any', 'any', 'any'], () => false,
+);
+close(allAnyWeapon.perRoll, 1, 1e-5,
+  'three ignored unordered targets must include the complete rounded probability space');
+const hatRows = cubeApi.cubeLineRows(cubeData, 'black', '레전드리', 6, 120);
+const usableSkillTargets = [...new Map(
+  hatRows.flat().filter(row => row.text.includes('쓸만한')).map(row => [row.text, row.idx])
+).values()].slice(0, 2);
+assert(usableSkillTargets.length === 2, 'hat context must expose two distinct usable-skill targets for restriction testing');
+const impossibleUsableSkills = cubeApi.cubeUnorderedProbability(
+  cubeData, 'black', '레전드리', 6, 120, [...usableSkillTargets, 'any'],
+  (target, row) => cubeData.options[target][0] === row.text,
+);
+close(impossibleUsableSkills.perRoll, 0, 1e-15,
+  'two distinct usable-skill lines must be impossible under the sequential restriction');
+assert(cubeApi.cubeUnorderedMatch(
+  [{ text: '공격력 +12%' }, { text: '마력 +12%' }, { text: '보스 몬스터 데미지 +40%' }],
+  ['attack_magic_pct', 'attack_pct', 'boss_pct'],
+  (target, row) => cubeApi.CUBE_CATEGORY_BY_ID[target].test(row.text),
+), 'overlapping categories must backtrack to distinct compatible lines');
+assert(!cubeApi.cubeUnorderedMatch(
+  [{ text: '공격력 +12%' }, { text: 'STR +12%' }, { text: '보스 몬스터 데미지 +40%' }],
+  ['attack_magic_pct', 'attack_pct', 'boss_pct'],
+  (target, row) => cubeApi.CUBE_CATEGORY_BY_ID[target].test(row.text),
+), 'overlapping categories must not reuse one rolled line for two targets');
+
 const normalU2L = gradeUp({ method: 'black', level: 200, curGrade: '유니크', targetGrade: '레전드리', fails: { u2l: 106 } });
 assert(normalU2L.rows[0].pity === 107, 'normal unique-to-legendary ceiling must be 107 resets');
 assert(normalU2L.rows[0].ceilingMeso === 4092750000, 'Lv.200 normal unique-to-legendary ceiling price');
@@ -167,6 +230,14 @@ assert(!potentialCalcSource.includes('fails.u2l'),
   'potential calculator must not store unique-to-legendary manual failure progress');
 assert(potentialCalcSource.includes('유니크→레전드리 천장 가격'),
   'unique-to-legendary ceiling price must be rendered');
+assert(potentialCalcSource.includes("targetMode === 'category-unordered'"),
+  'potential calculator must render the any-value unordered target mode');
+assert(html.includes("selected === 'sunday_maple'") && html.includes('역대 기록·다음 혜택 예측'),
+  'Sunday Maple must be routed from a dedicated sidebar menu');
+assert(!html.includes('useEffect(() => window.scrollTo'),
+  'menu scroll effect must not implicitly return a non-function cleanup value');
+assert(html.includes('class AppErrorBoundary extends React.Component'),
+  'top-level render failures must show a recoverable diagnostic instead of a blank app');
 
 const epicWeaponContext = cubeData.ctx['2010120'];
 const epicPrimeMasses = epicWeaponContext.map(distIndex => cubeData.dists[distIndex]
@@ -273,6 +344,73 @@ assert(hexaContext.testApi.HEXA_SLOTS.find(slot => slot.id === 's63').badge === 
 assert(html.includes('6차 3 = 3,442'),
   'HEXA planner help text must show the revised fragment total');
 
+const sundayContext = {};
+vm.runInNewContext(
+  sourceBetween('const SUNDAY_WEEK_MS =', 'function SundayMapleView()') +
+    '\nglobalThis.testApi = { SUNDAY_ACTIVE_BENEFITS, sundayAddDays, sundayNextCalendarDate, sundayCurrentOrNextCalendarDate, sundayForecastBenefit, sundayBacktest };',
+  sundayContext,
+);
+const sundayApi = sundayContext.testApi;
+assert(sundayData.meta.recordCount === 466 && sundayData.records.length === 466,
+  'Sunday history snapshot record count must match its metadata');
+assert(sundayData.meta.coverageStart === '2017-03-12' && sundayData.meta.coverageEnd === '2026-07-26',
+  'Sunday history snapshot must cover the first known event through the latest official event');
+assert(sundayData.meta.sundayCount === 460 && sundayData.meta.specialDayCount === 6,
+  'corrected Sunday and special-day counts must be retained');
+assert(sundayData.meta.calendarSundayCount === 490 && sundayData.meta.missingSundayCount === 30,
+  'snapshot metadata must disclose calendar-week coverage gaps');
+assert(sundayData.meta.continuousStart === '2023-02-19',
+  'gap modeling must disclose the validated continuous weekly window');
+assert(new Set(sundayData.records.map(record => record.date)).size === sundayData.records.length,
+  'Sunday history dates must be unique');
+assert(sundayData.records.every(record =>
+  record.kind !== 'sunday' || new Date(`${record.date}T00:00:00Z`).getUTCDay() === 0),
+  'every record classified as Sunday must fall on a Sunday');
+assert(sundayData.records.find(record => record.date === '2024-03-31')?.kind === 'sunday',
+  'the community 2024-04-01 typo must be corrected to official Sunday 2024-03-31');
+assert(!sundayData.benefits.includes('트레져 헌터') && sundayData.benefits.includes('트레저 헌터'),
+  'Treasure Hunter must use the official Korean spelling');
+assert(sundayData.meta.benefitCount === 35 &&
+  sundayData.records.find(record => record.date === '2017-03-12')?.benefits.includes('리부트 드롭률 2배'),
+  'the first official Sunday must retain its documented Reboot drop-rate benefit');
+const confirmedSunday = sundayData.records.find(record => record.date === '2026-07-26');
+assert(confirmedSunday?.officialVerified && confirmedSunday.officialTitle === '스페셜 썬데이 메이플' &&
+  confirmedSunday.officialDetails?.length === 5,
+  'latest confirmed Sunday must retain its stable official source and detailed benefit summary');
+assert(sundayApi.sundayNextCalendarDate('2026-07-25') === '2026-07-26',
+  'next calendar Sunday must be calculated in ISO date form');
+assert(sundayApi.sundayCurrentOrNextCalendarDate('2026-07-26') === '2026-07-26',
+  'an in-progress Sunday must remain the current official event date');
+assert(sundayApi.sundayAddDays(sundayData.meta.coverageEnd, 7) === '2026-08-02',
+  'forecasting must begin one week after an already confirmed upcoming Sunday');
+const augustForecast = sundayApi.SUNDAY_ACTIVE_BENEFITS
+  .map(benefit => sundayApi.sundayForecastBenefit(sundayData.records, benefit, '2026-08-02'))
+  .sort((a, b) => b.probability - a.probability);
+assert(augustForecast.every(item => item.probability >= 0 && item.probability <= 1),
+  'every Sunday benefit probability must stay within zero and one');
+assert(Math.abs(augustForecast.reduce((sum, item) => sum + item.probability, 0) - 1) > 0.01,
+  'multi-label Sunday probabilities must not be normalized to a single-choice total');
+const nearAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-08-02');
+const farAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-09-20');
+assert(nearAbilityForecast.observedGap === 2 && farAbilityForecast.observedGap === 2,
+  'future date buttons must censor gap exposure at the latest observed record, not at the target date');
+const sundayBacktestStartedAt = Date.now();
+const sundayBacktestResult = sundayApi.sundayBacktest(sundayData.records, '2026-07-25');
+const sundayBacktestMs = Date.now() - sundayBacktestStartedAt;
+assert(sundayBacktestResult.weeks > 0 &&
+  sundayBacktestResult.top3Rate >= 0 && sundayBacktestResult.top3Rate <= 1 &&
+  sundayBacktestResult.recallAt3 >= 0 && sundayBacktestResult.recallAt3 <= 1 &&
+  sundayBacktestResult.brier >= 0 && sundayBacktestResult.brier <= 1 &&
+  sundayBacktestResult.baselineBrier >= 0 && sundayBacktestResult.baselineBrier <= 1,
+  'Sunday walk-forward backtest metrics must be finite and bounded');
+assert(sundayData.backtest.cutoffDate === '2026-07-25' &&
+  sundayData.backtest.weeks === sundayBacktestResult.weeks,
+  'build-time Sunday backtest metadata must use the current snapshot cutoff');
+close(sundayData.backtest.recallAt3, sundayBacktestResult.recallAt3, 1e-12,
+  'build-time and browser-model Top-3 recall');
+close(sundayData.backtest.brier, sundayBacktestResult.brier, 1e-12,
+  'build-time and browser-model Brier score');
+
 console.log(JSON.stringify({
   starforceFallback: Math.round(unsupportedRestore.total),
   gloveCritProbability: glove.H,
@@ -280,4 +418,7 @@ console.log(JSON.stringify({
   uniqueThreeLineProbability: uniqueThreeLine.H,
   clampedThreePersonRevenue: clampedSplit.revenue,
   origin3Total,
+  sundayTopForecast: augustForecast.slice(0, 3).map(item => [item.benefit, item.probability]),
+  sundayBacktest: sundayBacktestResult,
+  sundayBacktestMs,
 }));
