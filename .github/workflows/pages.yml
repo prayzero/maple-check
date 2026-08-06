@@ -33,6 +33,7 @@ jobs:
           test -f sw.js
           python -m json.tool manifest.json > /dev/null
           python -m json.tool cube-options-v2.json > /dev/null
+          python -m json.tool sunday-history.json > /dev/null
 
   package:
     name: Package Pages artifact
