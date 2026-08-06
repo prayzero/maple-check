@@ -4577,6 +4577,10 @@ const SUNDAY_BENEFIT_INFO = {
   '헥사 스텟': ['⬡', '6차'],
   '선물 지급': ['🎁', '보상'],
 };
+const SUNDAY_RARE_EVENT_LABELS = {
+  '샤이닝 스타포스': '샤타포스 (샤이닝 스타포스)',
+  '미라클 타임': '미라클 타임',
+};
 let _sundayHistoryData = null;
 const loadSundayHistoryData = () => {
   if (_sundayHistoryData) return Promise.resolve(_sundayHistoryData);
@@ -4633,6 +4637,38 @@ const sundayMedian = (values) => {
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 };
+const sundayWeightedQuantile = (values, weights, quantile) => {
+  if (!values.length || values.length !== weights.length) return null;
+  const rows = values
+    .map((value, index) => ({ value, weight: Math.max(0, weights[index] || 0) }))
+    .sort((a, b) => a.value - b.value);
+  const total = rows.reduce((sum, row) => sum + row.weight, 0);
+  if (!(total > 0)) return rows[Math.floor((rows.length - 1) * quantile)].value;
+  const threshold = Math.max(0, Math.min(1, quantile)) * total;
+  let cumulative = 0;
+  for (const row of rows) {
+    cumulative += row.weight;
+    if (cumulative >= threshold) return row.value;
+  }
+  return rows[rows.length - 1].value;
+};
+const sundayRankForecasts = (items, scoreKey = 'probability') =>
+  [...items].sort((a, b) => {
+    const scoreDiff = (b[scoreKey] || 0) - (a[scoreKey] || 0);
+    if (Math.abs(scoreDiff) > 1e-15) return scoreDiff;
+    if (a.benefit < b.benefit) return -1;
+    if (a.benefit > b.benefit) return 1;
+    return 0;
+  });
+function sundayForecastStartDate(records, today) {
+  const calendarStart = sundayCurrentOrNextCalendarDate(today);
+  const latestSunday = (records || [])
+    .filter(record => record.kind === 'sunday')
+    .reduce((latest, record) => !latest || record.date > latest ? record.date : latest, null);
+  if (!latestSunday) return calendarStart;
+  const afterLatestRecord = sundayAddDays(latestSunday, 7);
+  return afterLatestRecord > calendarStart ? afterLatestRecord : calendarStart;
+}
 const sundayGapBucket = (gap) =>
   gap <= 2 ? 0 : gap <= 4 ? 1 : gap <= 8 ? 2 : gap <= 13 ? 3 : gap <= 26 ? 4 : 5;
 const sundayMix = (prior, strength, successes, total) =>
@@ -4757,12 +4793,141 @@ function sundayForecastBenefit(records, benefit, targetDate, halfLife = 78) {
   };
 }
 
+function sundayPredictRareEvent(records, benefit, forecastStart, horizonWeeks = 104) {
+  const sundayRows = (records || [])
+    .filter(record => record.kind === 'sunday')
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const observedThrough = sundayRows.length ? sundayRows[sundayRows.length - 1].date : null;
+  if (!observedThrough) return null;
+
+  // 샤이닝·미라클이라는 정확한 기록명만 사용한다. 일반 스타포스/큐브 행사는 합치지 않는다.
+  const hitDates = [...new Set(
+    (records || [])
+      .filter(record => record.date <= observedThrough && (record.benefits || []).includes(benefit))
+      .map(record => sundayCurrentOrNextCalendarDate(record.date))
+  )].sort();
+  if (hitDates.length < 3) return null;
+
+  const gaps = [];
+  const gapWeights = [];
+  for (let index = 1; index < hitDates.length; index++) {
+    const gap = sundayWeeksBetween(hitDates[index], hitDates[index - 1]);
+    if (!(gap > 0)) continue;
+    gaps.push(gap);
+    const age = sundayWeeksBetween(observedThrough, hitDates[index]);
+    gapWeights.push(Math.pow(2, -age / 78));
+  }
+  if (!gaps.length) return null;
+
+  const weightTotal = gapWeights.reduce((sum, weight) => sum + weight, 0);
+  const weightSquareTotal = gapWeights.reduce((sum, weight) => sum + weight * weight, 0);
+  const weightedMeanGap = gaps.reduce((sum, gap, index) => sum + gap * gapWeights[index], 0) /
+    Math.max(Number.EPSILON, weightTotal);
+  const q25 = sundayWeightedQuantile(gaps, gapWeights, 0.25);
+  const q75 = sundayWeightedQuantile(gaps, gapWeights, 0.75);
+  const bandwidth = Math.max(1.25, Math.min(3, 0.35 * Math.max(1, q75 - q25)));
+  const lastDate = hitDates[hitDates.length - 1];
+  const elapsedWeeks = sundayWeeksBetween(observedThrough, lastDate);
+  const candidates = Array.from({ length: horizonWeeks }, (_, index) => {
+    const date = sundayAddDays(forecastStart, index * 7);
+    return { date, gap: sundayWeeksBetween(date, lastDate) };
+  }).filter(candidate => candidate.gap > elapsedWeeks);
+  if (!candidates.length) return null;
+
+  const kdeValues = candidates.map(candidate => gaps.reduce((sum, gap, index) => {
+    const distance = (candidate.gap - gap) / bandwidth;
+    return sum + gapWeights[index] * Math.exp(-0.5 * distance * distance);
+  }, 0));
+  const geometricP = Math.max(0.001, Math.min(0.95, 1 / Math.max(1, weightedMeanGap)));
+  const geometricValues = candidates.map(candidate =>
+    geometricP * Math.pow(1 - geometricP, Math.max(0, candidate.gap - 1))
+  );
+  const kdeTotal = kdeValues.reduce((sum, value) => sum + value, 0);
+  const geometricTotal = geometricValues.reduce((sum, value) => sum + value, 0);
+  const gapScores = candidates.map((candidate, index) =>
+    0.9 * kdeValues[index] / Math.max(Number.EPSILON, kdeTotal) +
+    0.1 * geometricValues[index] / Math.max(Number.EPSILON, geometricTotal)
+  );
+
+  // 연중 주차는 약한 보정만 적용해 최근 등장 간격 신호를 덮지 않도록 한다.
+  const seasonWeights = hitDates.map(date =>
+    Math.pow(2, -sundayWeeksBetween(observedThrough, date) / 156)
+  );
+  const seasonWeightTotal = seasonWeights.reduce((sum, weight) => sum + weight, 0);
+  const seasonScores = candidates.map(candidate => {
+    const targetWeek = sundayWeekOfYear(candidate.date);
+    return hitDates.reduce((sum, date, index) => {
+      const directDistance = Math.abs(targetWeek - sundayWeekOfYear(date)) % 52;
+      const weekDistance = Math.min(directDistance, 52 - directDistance);
+      return sum + seasonWeights[index] * Math.exp(-0.5 * Math.pow(weekDistance / 4, 2));
+    }, 0) / Math.max(Number.EPSILON, seasonWeightTotal);
+  });
+  const averageSeasonScore = seasonScores.reduce((sum, value) => sum + value, 0) /
+    Math.max(1, seasonScores.length);
+  const rawScores = gapScores.map((score, index) => {
+    const relativeSeason = Math.max(0.6, Math.min(
+      1.6,
+      seasonScores[index] / Math.max(Number.EPSILON, averageSeasonScore)
+    ));
+    return score * (0.8 + 0.2 * relativeSeason);
+  });
+  const rawTotal = rawScores.reduce((sum, value) => sum + value, 0);
+  const probabilities = rawScores.map(value => value / Math.max(Number.EPSILON, rawTotal));
+  let modeIndex = 0;
+  for (let index = 1; index < probabilities.length; index++) {
+    if (probabilities[index] > probabilities[modeIndex]) modeIndex = index;
+  }
+
+  const targetMass = 0.70;
+  let bestRange = { start: 0, end: probabilities.length - 1, mass: 1 };
+  for (let start = 0; start <= modeIndex; start++) {
+    let mass = 0;
+    for (let end = start; end < probabilities.length; end++) {
+      mass += probabilities[end];
+      if (end < modeIndex || mass < targetMass) continue;
+      const width = end - start;
+      const bestWidth = bestRange.end - bestRange.start;
+      if (width < bestWidth || (width === bestWidth && mass > bestRange.mass)) {
+        bestRange = { start, end, mass };
+      }
+      break;
+    }
+  }
+  const effectiveGaps = weightSquareTotal > 0
+    ? (weightTotal * weightTotal) / weightSquareTotal
+    : 0;
+  const rangeWeeks = bestRange.end - bestRange.start + 1;
+  const pointProbability = probabilities[modeIndex];
+
+  return {
+    benefit,
+    predictedDate: candidates[modeIndex].date,
+    pointProbability,
+    rangeStart: candidates[bestRange.start].date,
+    rangeEnd: candidates[bestRange.end].date,
+    rangeMass: bestRange.mass,
+    confidence: effectiveGaps >= 6 && rangeWeeks <= 8 && pointProbability >= 0.1 ? '보통' : '낮음',
+    historyCount: hitDates.length,
+    completedGaps: gaps.length,
+    lastDate,
+    observedThrough,
+    elapsedWeeks,
+    weightedMedianGap: sundayWeightedQuantile(gaps, gapWeights, 0.5),
+    weightedMeanGap,
+    candidateProbabilities: candidates.map((candidate, index) => ({
+      date: candidate.date,
+      probability: probabilities[index],
+    })),
+  };
+}
+
 function sundayBacktest(records, cutoffDate) {
   const rows = (records || [])
     .filter(record => record.kind === 'sunday' && record.date <= cutoffDate)
     .sort((a, b) => a.date.localeCompare(b.date));
   const targets = rows.slice(-52);
-  let evaluated = 0, top3Hits = 0, baselineTop3Hits = 0;
+  let evaluated = 0, top1Hits = 0, baselineTop1Hits = 0;
+  let top3Hits = 0, baselineTop3Hits = 0;
   let top3LabelHits = 0, baselineTop3LabelHits = 0, actualLabelCount = 0;
   let brierTotal = 0, baselineBrierTotal = 0, brierCount = 0;
   for (const target of targets) {
@@ -4773,15 +4938,16 @@ function sundayBacktest(records, cutoffDate) {
       for (const benefit of record.benefits || []) knownCandidates.add(benefit);
     }
     if (!actual.size || !knownCandidates.size) continue;
-    const ranked = [...knownCandidates]
-      .map(benefit => sundayForecastBenefit(rows, benefit, target.date))
-      .sort((a, b) => b.probability - a.probability);
+    const ranked = sundayRankForecasts([...knownCandidates]
+      .map(benefit => sundayForecastBenefit(rows, benefit, target.date)));
     const top3 = ranked.slice(0, 3);
-    const baselineTop3 = [...ranked].sort((a, b) => b.pFrequency - a.pFrequency).slice(0, 3);
+    const baselineTop3 = sundayRankForecasts(ranked, 'pFrequency').slice(0, 3);
     const hitCount = top3.filter(item => actual.has(item.benefit)).length;
     const baselineHitCount = baselineTop3.filter(item => actual.has(item.benefit)).length;
     if (hitCount) top3Hits += 1;
     if (baselineHitCount) baselineTop3Hits += 1;
+    if (top3[0] && actual.has(top3[0].benefit)) top1Hits += 1;
+    if (baselineTop3[0] && actual.has(baselineTop3[0].benefit)) baselineTop1Hits += 1;
     top3LabelHits += hitCount;
     baselineTop3LabelHits += baselineHitCount;
     actualLabelCount += actual.size;
@@ -4801,6 +4967,8 @@ function sundayBacktest(records, cutoffDate) {
   }
   return {
     weeks: evaluated,
+    top1Rate: evaluated ? top1Hits / evaluated : 0,
+    baselineTop1Rate: evaluated ? baselineTop1Hits / evaluated : 0,
     top3Rate: evaluated ? top3Hits / evaluated : 0,
     baselineTop3Rate: evaluated ? baselineTop3Hits / evaluated : 0,
     precisionAt3: evaluated ? top3LabelHits / (evaluated * 3) : 0,
@@ -4828,6 +4996,13 @@ function SundayMapleView() {
   const [historyLimit, setHistoryLimit] = useState(30);
 
   useEffect(() => setHistoryLimit(30), [historyYear, historyQuery]);
+  const rareEventForecasts = useMemo(() => {
+    if (!data) return [];
+    const start = sundayForecastStartDate(data.records, today);
+    return ['샤이닝 스타포스', '미라클 타임']
+      .map(benefit => sundayPredictRareEvent(data.records, benefit, start))
+      .filter(Boolean);
+  }, [data, today]);
 
   if (err) {
     return (
@@ -4847,14 +5022,13 @@ function SundayMapleView() {
   const knownUpcoming = sundayRecords
     .filter(record => record.date >= nextCalendarSunday && record.officialVerified && record.officialUrl)
     .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
-  const forecastStart = knownUpcoming
-    ? sundayAddDays(knownUpcoming.date, 7)
-    : nextCalendarSunday;
+  const forecastStart = sundayForecastStartDate(data.records, today);
   const forecastDates = Array.from({ length: 8 }, (_, index) => sundayAddDays(forecastStart, index * 7));
   const forecastDate = forecastDates[forecastOffset] || forecastDates[0];
-  const forecasts = SUNDAY_ACTIVE_BENEFITS
-    .map(benefit => sundayForecastBenefit(data.records, benefit, forecastDate))
-    .sort((a, b) => b.probability - a.probability);
+  const forecasts = sundayRankForecasts(SUNDAY_ACTIVE_BENEFITS
+    .map(benefit => sundayForecastBenefit(data.records, benefit, forecastDate)));
+  const finalPick = forecasts[0] || null;
+  const runnerUp = forecasts[1] || null;
   const backtest = data.backtest || null;
   const frequencyRows = (data.benefits || [])
     .map(benefit => ({
@@ -4917,8 +5091,8 @@ function SundayMapleView() {
             {backtest ? (
               <>
                 <div className="text-[10px] text-slate-500">최근 {backtest.weeks}개 시점별 재현 검증</div>
-                <div className="text-sm font-semibold text-amber-300">TOP 3 혜택 재현율 {(backtest.recallAt3 * 100).toFixed(0)}%</div>
-                <div className="text-[9px] text-slate-500">Brier {backtest.brier.toFixed(3)} · 단순 빈도 {backtest.baselineBrier.toFixed(3)}</div>
+                <div className="text-sm font-semibold text-amber-300">최종 1개 적중률 {(backtest.top1Rate * 100).toFixed(0)}%</div>
+                <div className="text-[9px] text-slate-500">TOP 3 혜택 재현율 {(backtest.recallAt3 * 100).toFixed(0)}% · Brier {backtest.brier.toFixed(3)}</div>
               </>
             ) : (
               <div className="text-[10px] text-slate-500">백그라운드 재현 검증 계산 중…</div>
@@ -4937,6 +5111,30 @@ function SundayMapleView() {
         </div>
         {forecastOffset > 0 && (
           <p className="text-[10px] text-amber-300/80">※ 현재 스냅샷에서 목표 날짜만 앞당긴 시점별 추정입니다. 중간 주 결과를 시뮬레이션하지 않아 먼 날짜일수록 참고도가 낮고, 새 기록이 추가되면 값이 달라집니다.</p>
+        )}
+
+        {finalPick && (
+          <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-sky-500/10 border border-amber-400/45 rounded-xl p-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <div className="text-[10px] font-black tracking-[0.2em] text-amber-300">최종 1개 선택</div>
+                <div className="text-sm text-slate-400 mt-1">{sundayFormatDate(forecastDate)} 최종 결론</div>
+                <div className="text-xl md:text-2xl font-black mt-1">
+                  {SUNDAY_BENEFIT_INFO[finalPick.benefit]?.[0] || '•'} {finalPick.benefit}
+                </div>
+              </div>
+              <div className="text-left md:text-right">
+                <div className="text-3xl font-black text-amber-300">{sundayFmtProbability(finalPick.probability)}</div>
+                <div className="text-[10px] text-slate-500">모델 개별 출현 추정치</div>
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-amber-400/20 text-xs text-slate-400 flex gap-x-5 gap-y-1 flex-wrap">
+              {runnerUp && <span>2위 {runnerUp.benefit}보다 {((finalPick.probability - runnerUp.probability) * 100).toFixed(1)}%p 높음</span>}
+              <span>마지막 등장 {finalPick.lastDate ? sundayFormatDate(finalPick.lastDate) : '-'}</span>
+              <span>최근 52주 {finalPick.recentCount}/{finalPick.recentWeeks}회</span>
+            </div>
+            <p className="text-[10px] text-amber-200/70 mt-2">공식 확정이 아니라, 여러 후보 중 통계상 딱 하나만 고른 결과입니다.</p>
+          </div>
         )}
 
         <div className="grid md:grid-cols-2 gap-3">
@@ -4974,6 +5172,53 @@ function SundayMapleView() {
             보정된 공식 확률이 아닌 참고용 통계 추정치입니다.
           </p>
         </details>
+      </section>
+
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <div className="text-xs text-fuchsia-300 font-bold uppercase tracking-wider">희소 이벤트 날짜 예측</div>
+            <h3 className="font-bold text-xl mt-1">샤타·미라클 다음 예상일</h3>
+            <p className="text-xs text-slate-500 mt-1">과거 완료 간격에 최근 기록을 더 크게 반영하고, 연중 시기는 약하게 보정했습니다.</p>
+          </div>
+          <span className="text-[10px] text-slate-500 border border-maple-border rounded-full px-2.5 py-1">향후 104주 후보 비교</span>
+        </div>
+        <div className="grid md:grid-cols-2 gap-3">
+          {rareEventForecasts.map(item => (
+            <article key={item.benefit} className="bg-gradient-to-br from-fuchsia-500/10 to-maple-bg/60 border border-fuchsia-400/25 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-bold">{SUNDAY_BENEFIT_INFO[item.benefit]?.[0]} {SUNDAY_RARE_EVENT_LABELS[item.benefit]}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">역대 {item.historyCount}회 · 완료 간격 {item.completedGaps}개</div>
+                </div>
+                <span className={`text-[10px] font-bold rounded-full px-2 py-1 ${item.confidence === '보통' ? 'bg-sky-500/15 text-sky-300' : 'bg-slate-700/60 text-slate-400'}`}>
+                  신뢰도 {item.confidence}
+                </span>
+              </div>
+              <div className="mt-4">
+                <div className="text-[10px] text-fuchsia-300 font-bold">가장 유력한 다음 날짜</div>
+                <div className="text-2xl md:text-3xl font-black mt-0.5">{sundayFormatDate(item.predictedDate)}</div>
+                <div className="text-xs text-slate-400 mt-1">
+                  70% 예상 범위 {sundayFormatDate(item.rangeStart)} ~ {sundayFormatDate(item.rangeEnd)}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+                <div className="bg-maple-bg/60 border border-maple-border rounded-lg p-2.5">
+                  <div className="text-slate-500 text-[10px]">날짜 모델 집중도</div>
+                  <div className="font-bold text-fuchsia-300">{sundayFmtProbability(item.pointProbability)}</div>
+                </div>
+                <div className="bg-maple-bg/60 border border-maple-border rounded-lg p-2.5">
+                  <div className="text-slate-500 text-[10px]">최근 등장 / 경과</div>
+                  <div className="font-bold">{sundayFormatDate(item.lastDate)} · {item.elapsedWeeks}주</div>
+                </div>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-2">최근성 가중 중앙 간격 {item.weightedMedianGap}주 · 예상 범위 질량 {(item.rangeMass * 100).toFixed(0)}%</div>
+            </article>
+          ))}
+        </div>
+        <p className="text-[10px] text-slate-500 mt-3 leading-relaxed">
+          날짜 모델 집중도는 ‘향후 후보 날짜 중 이 날짜가 차지한 비중’이며 실제 공식 개최 확률이 아닙니다. 샤타·미라클은 표본이 적고 운영 일정이 바뀔 수 있어 정확한 하루보다 70% 예상 범위를 함께 봐 주세요.
+        </p>
       </section>
 
       <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">

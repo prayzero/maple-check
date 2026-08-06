@@ -26,7 +26,7 @@ OFFICIAL_ARCHIVE = (
     "?search=%EC%8D%AC%EB%8D%B0%EC%9D%B4"
 )
 OFFICIAL_FIRST = "https://archive.maplestory.nexon.com/News/Update/478?p=27"
-OFFICIAL_LATEST = "https://maplestory.nexon.com/News/Event/1365"
+OFFICIAL_LATEST = "https://maplestory.nexon.com/News/Event/1367"
 FIRST_EVENT = dt.date(2017, 3, 12)
 CONTINUOUS_START = dt.date(2023, 2, 19)
 OFFICIAL_CONFIRMATIONS = {
@@ -37,7 +37,7 @@ OFFICIAL_CONFIRMATIONS = {
         "extraBenefits": ["리부트 드롭률 2배"],
     },
     "2026-07-26": {
-        "officialUrl": OFFICIAL_LATEST,
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1365",
         "officialVerified": True,
         "officialTitle": "스페셜 썬데이 메이플",
         "officialDetails": [
@@ -47,6 +47,17 @@ OFFICIAL_CONFIRMATIONS = {
             "몬스터파크 추가 경험치 +250% (총 400%, 익스트림 제외)",
             "사냥으로 획득하는 솔 에르다 2배",
         ],
+    },
+    "2026-08-02": {
+        "officialUrl": OFFICIAL_LATEST,
+        "officialVerified": True,
+        "officialTitle": "스페셜 썬데이 메이플",
+        "officialDetails": [
+            "잠재능력·에디셔널 잠재능력 재설정 시 등급 상승 확률 2배",
+            "어빌리티 재설정 비용 50% 할인",
+        ],
+        "extraBenefits": ["미라클 타임", "어빌리티 반값"],
+        "benefitsComplete": True,
     },
 }
 DATE_CORRECTIONS = {
@@ -209,7 +220,8 @@ def build_backtest(records: list[dict], cutoff: dt.date) -> dict:
         if record["date"] <= cutoff
     ]
     targets = prepared[-52:]
-    evaluated = top3_hits = baseline_top3_hits = 0
+    evaluated = top1_hits = baseline_top1_hits = 0
+    top3_hits = baseline_top3_hits = 0
     top3_label_hits = baseline_top3_label_hits = actual_label_count = 0
     brier_total = baseline_brier_total = 0.0
     brier_count = 0
@@ -232,17 +244,20 @@ def build_backtest(records: list[dict], cutoff: dt.date) -> dict:
             }
             for benefit in known_candidates
         ]
-        ranked.sort(key=lambda item: item["probability"], reverse=True)
+        ranked.sort(key=lambda item: (-item["probability"], item["benefit"]))
         top3 = ranked[:3]
         baseline_top3 = sorted(
             ranked,
-            key=lambda item: item["pFrequency"],
-            reverse=True,
+            key=lambda item: (-item["pFrequency"], item["benefit"]),
         )[:3]
         hit_count = sum(item["benefit"] in actual for item in top3)
         baseline_hit_count = sum(item["benefit"] in actual for item in baseline_top3)
         top3_hits += int(hit_count > 0)
         baseline_top3_hits += int(baseline_hit_count > 0)
+        top1_hits += int(bool(top3) and top3[0]["benefit"] in actual)
+        baseline_top1_hits += int(
+            bool(baseline_top3) and baseline_top3[0]["benefit"] in actual
+        )
         top3_label_hits += hit_count
         baseline_top3_label_hits += baseline_hit_count
         actual_label_count += len(actual)
@@ -263,6 +278,8 @@ def build_backtest(records: list[dict], cutoff: dt.date) -> dict:
     return {
         "cutoffDate": cutoff.isoformat(),
         "weeks": evaluated,
+        "top1Rate": top1_hits / evaluated if evaluated else 0,
+        "baselineTop1Rate": baseline_top1_hits / evaluated if evaluated else 0,
         "top3Rate": top3_hits / evaluated if evaluated else 0,
         "baselineTop3Rate": baseline_top3_hits / evaluated if evaluated else 0,
         "precisionAt3": top3_label_hits / (evaluated * 3) if evaluated else 0,

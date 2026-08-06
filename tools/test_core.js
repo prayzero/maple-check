@@ -347,17 +347,25 @@ assert(html.includes('6차 3 = 3,442'),
 const sundayContext = {};
 vm.runInNewContext(
   sourceBetween('const SUNDAY_WEEK_MS =', 'function SundayMapleView()') +
-    '\nglobalThis.testApi = { SUNDAY_ACTIVE_BENEFITS, sundayAddDays, sundayNextCalendarDate, sundayCurrentOrNextCalendarDate, sundayForecastBenefit, sundayBacktest };',
+    '\nglobalThis.testApi = { SUNDAY_ACTIVE_BENEFITS, sundayAddDays, sundayNextCalendarDate, sundayCurrentOrNextCalendarDate, sundayForecastStartDate, sundayRankForecasts, sundayForecastBenefit, sundayPredictRareEvent, sundayBacktest };',
   sundayContext,
 );
 const sundayApi = sundayContext.testApi;
-assert(sundayData.meta.recordCount === 466 && sundayData.records.length === 466,
-  'Sunday history snapshot record count must match its metadata');
-assert(sundayData.meta.coverageStart === '2017-03-12' && sundayData.meta.coverageEnd === '2026-07-26',
-  'Sunday history snapshot must cover the first known event through the latest official event');
-assert(sundayData.meta.sundayCount === 460 && sundayData.meta.specialDayCount === 6,
-  'corrected Sunday and special-day counts must be retained');
-assert(sundayData.meta.calendarSundayCount === 490 && sundayData.meta.missingSundayCount === 30,
+const sundayCount = sundayData.records.filter(record => record.kind === 'sunday').length;
+const specialDayCount = sundayData.records.length - sundayCount;
+const calendarSundayCount = Math.round(
+  (Date.parse(`${sundayData.meta.coverageEnd}T00:00:00Z`) - Date.parse(`${sundayData.meta.coverageStart}T00:00:00Z`)) /
+  (7 * 24 * 60 * 60 * 1000)
+) + 1;
+const benefitCount = new Set(sundayData.records.flatMap(record => record.benefits || [])).size;
+assert(sundayData.meta.recordCount === sundayData.records.length && sundayData.records.length >= 467,
+  'Sunday history snapshot record count must match its metadata and include the latest addition');
+assert(sundayData.meta.coverageStart === '2017-03-12' && sundayData.meta.coverageEnd === '2026-08-02',
+  'Sunday history snapshot must cover the first event through the latest official event');
+assert(sundayData.meta.sundayCount === sundayCount && sundayData.meta.specialDayCount === specialDayCount,
+  'Sunday and special-day metadata must be derived from the stored records');
+assert(sundayData.meta.calendarSundayCount === calendarSundayCount &&
+  sundayData.meta.missingSundayCount === calendarSundayCount - sundayCount,
   'snapshot metadata must disclose calendar-week coverage gaps');
 assert(sundayData.meta.continuousStart === '2023-02-19',
   'gap modeling must disclose the validated continuous weekly window');
@@ -370,46 +378,79 @@ assert(sundayData.records.find(record => record.date === '2024-03-31')?.kind ===
   'the community 2024-04-01 typo must be corrected to official Sunday 2024-03-31');
 assert(!sundayData.benefits.includes('트레져 헌터') && sundayData.benefits.includes('트레저 헌터'),
   'Treasure Hunter must use the official Korean spelling');
-assert(sundayData.meta.benefitCount === 35 &&
+assert(sundayData.meta.benefitCount === benefitCount &&
   sundayData.records.find(record => record.date === '2017-03-12')?.benefits.includes('리부트 드롭률 2배'),
   'the first official Sunday must retain its documented Reboot drop-rate benefit');
-const confirmedSunday = sundayData.records.find(record => record.date === '2026-07-26');
+const confirmedSunday = sundayData.records.find(record => record.date === '2026-08-02');
 assert(confirmedSunday?.officialVerified && confirmedSunday.officialTitle === '스페셜 썬데이 메이플' &&
-  confirmedSunday.officialDetails?.length === 5,
+  confirmedSunday.officialDetails?.length === 2 && confirmedSunday.benefitsComplete &&
+  confirmedSunday.benefits.includes('미라클 타임') && confirmedSunday.benefits.includes('어빌리티 반값'),
   'latest confirmed Sunday must retain its stable official source and detailed benefit summary');
 assert(sundayApi.sundayNextCalendarDate('2026-07-25') === '2026-07-26',
   'next calendar Sunday must be calculated in ISO date form');
 assert(sundayApi.sundayCurrentOrNextCalendarDate('2026-07-26') === '2026-07-26',
   'an in-progress Sunday must remain the current official event date');
-assert(sundayApi.sundayAddDays(sundayData.meta.coverageEnd, 7) === '2026-08-02',
-  'forecasting must begin one week after an already confirmed upcoming Sunday');
+assert(sundayApi.sundayForecastStartDate(sundayData.records, '2026-08-06') === '2026-08-09',
+  'forecasting must begin one week after the latest recorded Sunday');
+assert(sundayApi.sundayForecastStartDate([
+  { date: '2026-08-09', kind: 'sunday', benefits: [] },
+], '2026-08-06') === '2026-08-16',
+  'an already stored Sunday must not be forecast again even without official metadata');
+assert(sundayApi.sundayForecastStartDate([
+  { date: '2026-08-15', kind: 'special-day', benefits: [] },
+], '2026-08-06') === '2026-08-09',
+  'a special-day record must not move the next calendar-Sunday forecast');
+assert(sundayApi.sundayRankForecasts([
+  { benefit: '나', probability: 0.5 },
+  { benefit: '가', probability: 0.5 },
+])[0].benefit === '가', 'equal forecast scores must use a deterministic benefit-name tie break');
 const augustForecast = sundayApi.SUNDAY_ACTIVE_BENEFITS
-  .map(benefit => sundayApi.sundayForecastBenefit(sundayData.records, benefit, '2026-08-02'))
-  .sort((a, b) => b.probability - a.probability);
+  .map(benefit => sundayApi.sundayForecastBenefit(sundayData.records, benefit, '2026-08-09'));
+const rankedAugustForecast = sundayApi.sundayRankForecasts(augustForecast);
 assert(augustForecast.every(item => item.probability >= 0 && item.probability <= 1),
   'every Sunday benefit probability must stay within zero and one');
 assert(Math.abs(augustForecast.reduce((sum, item) => sum + item.probability, 0) - 1) > 0.01,
   'multi-label Sunday probabilities must not be normalized to a single-choice total');
-const nearAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-08-02');
+assert(rankedAugustForecast[0]?.benefit === '몬스터파크',
+  'the displayed final one-pick must be the highest-ranked current forecast');
+const nearAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-08-09');
 const farAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-09-20');
-assert(nearAbilityForecast.observedGap === 2 && farAbilityForecast.observedGap === 2,
+assert(nearAbilityForecast.observedGap === farAbilityForecast.observedGap,
   'future date buttons must censor gap exposure at the latest observed record, not at the target date');
+const rareEventForecasts = ['샤이닝 스타포스', '미라클 타임']
+  .map(benefit => sundayApi.sundayPredictRareEvent(sundayData.records, benefit, '2026-08-09'));
+for (const forecast of rareEventForecasts) {
+  assert(forecast && forecast.predictedDate >= '2026-08-09' &&
+    new Date(`${forecast.predictedDate}T00:00:00Z`).getUTCDay() === 0,
+  'rare-event point forecasts must be future Sundays');
+  assert(forecast.rangeStart <= forecast.predictedDate && forecast.predictedDate <= forecast.rangeEnd &&
+    forecast.rangeMass >= 0.70,
+  'rare-event ranges must contain the point forecast and at least 70% model mass');
+  close(forecast.candidateProbabilities.reduce((sum, item) => sum + item.probability, 0), 1, 1e-12,
+    `${forecast.benefit} conditional date probability total`);
+}
+assert(rareEventForecasts[0].historyCount >= 21 && rareEventForecasts[1].historyCount >= 18,
+  'rare-event models must include all currently recorded Shining and Miracle occurrences');
 const sundayBacktestStartedAt = Date.now();
-const sundayBacktestResult = sundayApi.sundayBacktest(sundayData.records, '2026-07-25');
+const sundayBacktestResult = sundayApi.sundayBacktest(sundayData.records, sundayData.backtest.cutoffDate);
 const sundayBacktestMs = Date.now() - sundayBacktestStartedAt;
 assert(sundayBacktestResult.weeks > 0 &&
+  sundayBacktestResult.top1Rate >= 0 && sundayBacktestResult.top1Rate <= 1 &&
   sundayBacktestResult.top3Rate >= 0 && sundayBacktestResult.top3Rate <= 1 &&
   sundayBacktestResult.recallAt3 >= 0 && sundayBacktestResult.recallAt3 <= 1 &&
   sundayBacktestResult.brier >= 0 && sundayBacktestResult.brier <= 1 &&
   sundayBacktestResult.baselineBrier >= 0 && sundayBacktestResult.baselineBrier <= 1,
   'Sunday walk-forward backtest metrics must be finite and bounded');
-assert(sundayData.backtest.cutoffDate === '2026-07-25' &&
-  sundayData.backtest.weeks === sundayBacktestResult.weeks,
+assert(sundayData.backtest.weeks === sundayBacktestResult.weeks,
   'build-time Sunday backtest metadata must use the current snapshot cutoff');
+close(sundayData.backtest.top1Rate, sundayBacktestResult.top1Rate, 1e-12,
+  'build-time and browser-model Top-1 hit rate');
 close(sundayData.backtest.recallAt3, sundayBacktestResult.recallAt3, 1e-12,
   'build-time and browser-model Top-3 recall');
 close(sundayData.backtest.brier, sundayBacktestResult.brier, 1e-12,
   'build-time and browser-model Brier score');
+assert(html.includes('최종 1개 선택') && html.includes('샤타·미라클 다음 예상일'),
+  'Sunday UI must expose the single conclusion and rare-event date forecast sections');
 
 console.log(JSON.stringify({
   starforceFallback: Math.round(unsupportedRestore.total),
@@ -418,7 +459,14 @@ console.log(JSON.stringify({
   uniqueThreeLineProbability: uniqueThreeLine.H,
   clampedThreePersonRevenue: clampedSplit.revenue,
   origin3Total,
-  sundayTopForecast: augustForecast.slice(0, 3).map(item => [item.benefit, item.probability]),
+  sundayTopForecast: rankedAugustForecast.slice(0, 3).map(item => [item.benefit, item.probability]),
+  rareEventForecasts: rareEventForecasts.map(item => ({
+    benefit: item.benefit,
+    predictedDate: item.predictedDate,
+    range: [item.rangeStart, item.rangeEnd],
+    pointProbability: item.pointProbability,
+    confidence: item.confidence,
+  })),
   sundayBacktest: sundayBacktestResult,
   sundayBacktestMs,
 }));
