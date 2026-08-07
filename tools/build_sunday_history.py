@@ -26,7 +26,7 @@ OFFICIAL_ARCHIVE = (
     "?search=%EC%8D%AC%EB%8D%B0%EC%9D%B4"
 )
 OFFICIAL_FIRST = "https://archive.maplestory.nexon.com/News/Update/478?p=27"
-OFFICIAL_LATEST = "https://maplestory.nexon.com/News/Event/1367"
+OFFICIAL_LATEST = "https://maplestory.nexon.com/News/Event/1368"
 FIRST_EVENT = dt.date(2017, 3, 12)
 CONTINUOUS_START = dt.date(2023, 2, 19)
 OFFICIAL_CONFIRMATIONS = {
@@ -49,7 +49,7 @@ OFFICIAL_CONFIRMATIONS = {
         ],
     },
     "2026-08-02": {
-        "officialUrl": OFFICIAL_LATEST,
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1367",
         "officialVerified": True,
         "officialTitle": "스페셜 썬데이 메이플",
         "officialDetails": [
@@ -57,6 +57,20 @@ OFFICIAL_CONFIRMATIONS = {
             "어빌리티 재설정 비용 50% 할인",
         ],
         "extraBenefits": ["미라클 타임", "어빌리티 반값"],
+        "benefitsComplete": True,
+    },
+    "2026-08-09": {
+        "officialUrl": OFFICIAL_LATEST,
+        "officialVerified": True,
+        "officialTitle": "스페셜 썬데이 메이플",
+        "officialDetails": [
+            "접속 시간 2분마다 솔 에르다 조각 교환권 1개 누적 (최대 90개)",
+            "누적 접속 시간 2시간 달성 시 솔 에르다 조각 교환권 10개 추가 지급",
+            "누적 접속 시간 3시간 달성 시 솔 에르다 1개 추가 지급",
+            "사냥으로 획득하는 솔 에르다 3배",
+            "몬스터파크 추가 경험치 +250% (총 400%, 익스트림 제외)",
+        ],
+        "extraBenefits": ["솔에르다 타임", "솔에르다 3배", "몬스터파크"],
         "benefitsComplete": True,
     },
 }
@@ -344,6 +358,30 @@ def build_snapshot(source: dict) -> dict:
                 if key != "extraBenefits"
             })
         records.append(record)
+
+    # The community archive can lag behind a newly published official notice.
+    # Keep manually verified official Sundays in the snapshot immediately,
+    # including an announced event that is still a few days in the future.
+    for date_text, confirmation in OFFICIAL_CONFIRMATIONS.items():
+        if date_text in seen_dates:
+            continue
+        event_date = dt.date.fromisoformat(date_text)
+        benefits = list(dict.fromkeys(confirmation.get("extraBenefits", [])))
+        if not benefits:
+            raise ValueError(f"official-only record has no benefits: {date_text}")
+        record = {
+            "date": date_text,
+            "kind": "sunday" if event_date.weekday() == 6 else "special-day",
+            "mainEvent": confirmation.get("officialTitle", ""),
+            "benefits": benefits,
+        }
+        record.update({
+            key: value
+            for key, value in confirmation.items()
+            if key != "extraBenefits"
+        })
+        records.append(record)
+        seen_dates.add(date_text)
 
     records.sort(key=lambda row: row["date"], reverse=True)
     benefit_names = sorted({
