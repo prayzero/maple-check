@@ -4583,6 +4583,8 @@ const SUNDAY_RARE_EVENT_LABELS = {
   '샤이닝 스타포스': '샤타포스 (샤이닝 스타포스)',
   '미라클 타임': '미라클 타임',
 };
+const SUNDAY_FINAL_CONTENDERS = ['몬스터파크', '샤이닝 스타포스'];
+const SUNDAY_RARE_MODEL_WEIGHTS = { gap: 0.60, season: 0.25, previousYear: 0.15 };
 let _sundayHistoryData = null;
 const loadSundayHistoryData = () => {
   if (_sundayHistoryData) return Promise.resolve(_sundayHistoryData);
@@ -4653,6 +4655,16 @@ const sundayWeightedQuantile = (values, weights, quantile) => {
     if (cumulative >= threshold) return row.value;
   }
   return rows[rows.length - 1].value;
+};
+const sundayNormalizeScores = (values) => {
+  const safe = values.map(value => Number.isFinite(value) && value > 0 ? value : 0);
+  const total = safe.reduce((sum, value) => sum + value, 0);
+  if (!(total > 0)) return safe.map(() => 1 / Math.max(1, safe.length));
+  return safe.map(value => value / total);
+};
+const sundayCircularWeekDistance = (left, right) => {
+  const direct = Math.abs(left - right) % 52;
+  return Math.min(direct, 52 - direct);
 };
 const sundayRankForecasts = (items, scoreKey = 'probability') =>
   [...items].sort((a, b) => {
@@ -4795,6 +4807,17 @@ function sundayForecastBenefit(records, benefit, targetDate, halfLife = 78) {
   };
 }
 
+function sundayPickFinalChoice(records, targetDate) {
+  const compared = sundayRankForecasts(SUNDAY_FINAL_CONTENDERS
+    .map(benefit => sundayForecastBenefit(records, benefit, targetDate)));
+  if (!compared.length) return null;
+  return {
+    ...compared[0],
+    comparedBenefits: compared.map(item => item.benefit),
+    contenderCount: compared.length,
+  };
+}
+
 function sundayPredictRareEvent(records, benefit, forecastStart, horizonWeeks = 104) {
   const sundayRows = (records || [])
     .filter(record => record.kind === 'sunday')
@@ -4803,11 +4826,12 @@ function sundayPredictRareEvent(records, benefit, forecastStart, horizonWeeks = 
   if (!observedThrough) return null;
 
   // 샤이닝·미라클이라는 정확한 기록명만 사용한다. 일반 스타포스/큐브 행사는 합치지 않는다.
-  const hitDates = [...new Set(
+  const rawHitDates = [...new Set(
     (records || [])
       .filter(record => record.date <= observedThrough && (record.benefits || []).includes(benefit))
-      .map(record => sundayCurrentOrNextCalendarDate(record.date))
+      .map(record => record.date)
   )].sort();
+  const hitDates = [...new Set(rawHitDates.map(sundayCurrentOrNextCalendarDate))].sort();
   if (hitDates.length < 3) return null;
 
   const gaps = [];
@@ -4844,14 +4868,14 @@ function sundayPredictRareEvent(records, benefit, forecastStart, horizonWeeks = 
   const geometricValues = candidates.map(candidate =>
     geometricP * Math.pow(1 - geometricP, Math.max(0, candidate.gap - 1))
   );
-  const kdeTotal = kdeValues.reduce((sum, value) => sum + value, 0);
-  const geometricTotal = geometricValues.reduce((sum, value) => sum + value, 0);
+  const kdeProbabilities = sundayNormalizeScores(kdeValues);
+  const geometricProbabilities = sundayNormalizeScores(geometricValues);
   const gapScores = candidates.map((candidate, index) =>
-    0.9 * kdeValues[index] / Math.max(Number.EPSILON, kdeTotal) +
-    0.1 * geometricValues[index] / Math.max(Number.EPSILON, geometricTotal)
+    0.9 * kdeProbabilities[index] + 0.1 * geometricProbabilities[index]
   );
 
-  // 연중 주차는 약한 보정만 적용해 최근 등장 간격 신호를 덮지 않도록 한다.
+  // 역대 연중 주차와 직전 연도 실제 개최 주차를 별도 분포로 만들어
+  // 완료 간격 모델과 직접 혼합한다. 각 성분은 먼저 합계 1로 정규화한다.
   const seasonWeights = hitDates.map(date =>
     Math.pow(2, -sundayWeeksBetween(observedThrough, date) / 156)
   );
@@ -4859,22 +4883,34 @@ function sundayPredictRareEvent(records, benefit, forecastStart, horizonWeeks = 
   const seasonScores = candidates.map(candidate => {
     const targetWeek = sundayWeekOfYear(candidate.date);
     return hitDates.reduce((sum, date, index) => {
-      const directDistance = Math.abs(targetWeek - sundayWeekOfYear(date)) % 52;
-      const weekDistance = Math.min(directDistance, 52 - directDistance);
+      const weekDistance = sundayCircularWeekDistance(targetWeek, sundayWeekOfYear(date));
       return sum + seasonWeights[index] * Math.exp(-0.5 * Math.pow(weekDistance / 4, 2));
     }, 0) / Math.max(Number.EPSILON, seasonWeightTotal);
   });
-  const averageSeasonScore = seasonScores.reduce((sum, value) => sum + value, 0) /
-    Math.max(1, seasonScores.length);
-  const rawScores = gapScores.map((score, index) => {
-    const relativeSeason = Math.max(0.6, Math.min(
-      1.6,
-      seasonScores[index] / Math.max(Number.EPSILON, averageSeasonScore)
-    ));
-    return score * (0.8 + 0.2 * relativeSeason);
+  const seasonProbabilities = sundayNormalizeScores(seasonScores);
+  const previousYearCompleteFlags = candidates.map(candidate => {
+    const candidateYear = Number(candidate.date.slice(0, 4));
+    return observedThrough >= `${candidateYear - 1}-12-31`;
   });
-  const rawTotal = rawScores.reduce((sum, value) => sum + value, 0);
-  const probabilities = rawScores.map(value => value / Math.max(Number.EPSILON, rawTotal));
+  const previousYearScores = candidates.map((candidate, index) => {
+    const candidateYear = Number(candidate.date.slice(0, 4));
+    if (!previousYearCompleteFlags[index]) return seasonScores[index];
+    const previousDates = hitDates.filter(date => Number(date.slice(0, 4)) === candidateYear - 1);
+    if (!previousDates.length) return seasonScores[index];
+    const targetWeek = sundayWeekOfYear(candidate.date);
+    return previousDates.reduce((sum, date) => {
+      const weekDistance = sundayCircularWeekDistance(targetWeek, sundayWeekOfYear(date));
+      return sum + Math.exp(-0.5 * Math.pow(weekDistance / 2.5, 2));
+    }, 0) / previousDates.length;
+  });
+  const previousYearProbabilities = previousYearScores.some(value => value > 0)
+    ? sundayNormalizeScores(previousYearScores)
+    : seasonProbabilities;
+  const probabilities = candidates.map((candidate, index) =>
+    SUNDAY_RARE_MODEL_WEIGHTS.gap * gapScores[index] +
+    SUNDAY_RARE_MODEL_WEIGHTS.season * seasonProbabilities[index] +
+    SUNDAY_RARE_MODEL_WEIGHTS.previousYear * previousYearProbabilities[index]
+  );
   let modeIndex = 0;
   for (let index = 1; index < probabilities.length; index++) {
     if (probabilities[index] > probabilities[modeIndex]) modeIndex = index;
@@ -4900,6 +4936,53 @@ function sundayPredictRareEvent(records, benefit, forecastStart, horizonWeeks = 
     : 0;
   const rangeWeeks = bestRange.end - bestRange.start + 1;
   const pointProbability = probabilities[modeIndex];
+  const forecastYear = Number(forecastStart.slice(0, 4));
+  const previousYear = forecastYear - 1;
+  const previousYearDates = rawHitDates.filter(date => Number(date.slice(0, 4)) === previousYear);
+  const previousYearProjectedDates = previousYearDates
+    .map(date => sundayAddDays(date, 364))
+    .filter(date => date >= forecastStart);
+  const monthCounts = Array.from({ length: 12 }, (_, index) => ({
+    month: index + 1,
+    count: rawHitDates.filter(date => Number(date.slice(5, 7)) === index + 1).length,
+  }));
+  const peakMonths = monthCounts
+    .filter(item => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.month - b.month)
+    .slice(0, 3);
+  const recentPatternDates = rawHitDates.filter(date => Number(date.slice(0, 4)) >= forecastYear - 2);
+  const recentMonthCounts = Array.from({ length: 12 }, (_, index) => ({
+    month: index + 1,
+    count: recentPatternDates.filter(date => Number(date.slice(5, 7)) === index + 1).length,
+  }));
+  const recentPeakMonths = recentMonthCounts
+    .filter(item => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.month - b.month)
+    .slice(0, 3);
+  const yearlyHistory = [...new Set(rawHitDates.map(date => Number(date.slice(0, 4))))]
+    .sort((a, b) => b - a)
+    .map(year => ({ year, dates: rawHitDates.filter(date => Number(date.slice(0, 4)) === year) }));
+  const recentGapValues = gaps.slice(-8);
+  const coreRangeStart = [
+    forecastStart,
+    sundayAddDays(lastDate, sundayWeightedQuantile(gaps, gapWeights, 0.25) * 7),
+  ].sort().at(-1);
+  const coreRangeEnd = [
+    coreRangeStart,
+    sundayAddDays(lastDate, sundayWeightedQuantile(gaps, gapWeights, 0.75) * 7),
+  ].sort().at(-1);
+  const candidateProbabilities = candidates.map((candidate, index) => ({
+    date: candidate.date,
+    probability: probabilities[index],
+    gapProbability: gapScores[index],
+    seasonProbability: seasonProbabilities[index],
+    previousYearProbability: previousYearProbabilities[index],
+    previousYearComplete: previousYearCompleteFlags[index],
+  }));
+  const topCandidateDates = [...candidateProbabilities]
+    .sort((a, b) => b.probability - a.probability || a.date.localeCompare(b.date))
+    .slice(0, 3)
+    .map(item => ({ date: item.date, probability: item.probability }));
 
   return {
     benefit,
@@ -4914,12 +4997,35 @@ function sundayPredictRareEvent(records, benefit, forecastStart, horizonWeeks = 
     lastDate,
     observedThrough,
     elapsedWeeks,
+    predictedGapWeeks: candidates[modeIndex].gap,
+    meanGap: gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length,
+    medianGap: sundayMedian(gaps),
+    gapQ25: sundayWeightedQuantile(gaps, gapWeights, 0.25),
+    gapQ75: sundayWeightedQuantile(gaps, gapWeights, 0.75),
     weightedMedianGap: sundayWeightedQuantile(gaps, gapWeights, 0.5),
     weightedMeanGap,
-    candidateProbabilities: candidates.map((candidate, index) => ({
-      date: candidate.date,
-      probability: probabilities[index],
-    })),
+    previousYear,
+    previousYearDates,
+    previousYearProjectedDates,
+    recentDates: rawHitDates.slice(-6).reverse(),
+    recentGaps: gaps.slice(-5),
+    recentGapMedian: sundayMedian(recentGapValues),
+    recentGapMean: recentGapValues.reduce((sum, gap) => sum + gap, 0) /
+      Math.max(1, recentGapValues.length),
+    monthCounts,
+    peakMonths,
+    recentMonthCounts,
+    recentPeakMonths,
+    yearlyHistory,
+    currentYear: Number(observedThrough.slice(0, 4)),
+    coreRangeStart,
+    coreRangeEnd,
+    topCandidateDates,
+    weeklyProbabilityAtPredictedDate: sundayForecastBenefit(
+      records, benefit, candidates[modeIndex].date
+    ).probability,
+    modelWeights: SUNDAY_RARE_MODEL_WEIGHTS,
+    candidateProbabilities,
   };
 }
 
@@ -4986,8 +5092,12 @@ const sundayFormatDate = (dateText) => {
   const [year, month, day] = dateText.split('-');
   return `${year}.${month}.${day}`;
 };
+const sundayFormatMonthDay = (dateText) => {
+  const [, month, day] = dateText.split('-').map(Number);
+  return `${month}/${day}`;
+};
 const sundayFmtProbability = (value) =>
-  `${(value * 100).toFixed(value < 0.1 ? 1 : 0)}%`;
+  `${(value * 100).toFixed(1)}%`;
 
 function SundayMapleView() {
   const { data, err } = useSundayHistoryData();
@@ -5029,8 +5139,8 @@ function SundayMapleView() {
   const forecastDate = forecastDates[forecastOffset] || forecastDates[0];
   const forecasts = sundayRankForecasts(SUNDAY_ACTIVE_BENEFITS
     .map(benefit => sundayForecastBenefit(data.records, benefit, forecastDate)));
-  const finalPick = forecasts[0] || null;
-  const runnerUp = forecasts[1] || null;
+  const finalPick = sundayPickFinalChoice(data.records, forecastDate);
+  const nextSundayFinalPick = sundayPickFinalChoice(data.records, forecastStart);
   const backtest = data.backtest || null;
   const frequencyRows = (data.benefits || [])
     .map(benefit => ({
@@ -5093,7 +5203,7 @@ function SundayMapleView() {
             {backtest ? (
               <>
                 <div className="text-[10px] text-slate-500">최근 {backtest.weeks}개 시점별 재현 검증</div>
-                <div className="text-sm font-semibold text-amber-300">최종 1개 적중률 {(backtest.top1Rate * 100).toFixed(0)}%</div>
+                <div className="text-sm font-semibold text-amber-300">전체 후보 Top1 적중률 {(backtest.top1Rate * 100).toFixed(0)}%</div>
                 <div className="text-[9px] text-slate-500">TOP 3 혜택 재현율 {(backtest.recallAt3 * 100).toFixed(0)}% · Brier {backtest.brier.toFixed(3)}</div>
               </>
             ) : (
@@ -5119,26 +5229,29 @@ function SundayMapleView() {
           <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-sky-500/10 border border-amber-400/45 rounded-xl p-4">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div>
-                <div className="text-[10px] font-black tracking-[0.2em] text-amber-300">최종 1개 선택</div>
-                <div className="text-sm text-slate-400 mt-1">{sundayFormatDate(forecastDate)} 최종 결론</div>
+                <div className="text-[10px] font-black tracking-[0.2em] text-amber-300">몬파·샤타 중 최종 1개</div>
+                <div className="text-sm text-slate-400 mt-1">{sundayFormatDate(forecastDate)} 단일 선택</div>
                 <div className="text-xl md:text-2xl font-black mt-1">
                   {SUNDAY_BENEFIT_INFO[finalPick.benefit]?.[0] || '•'} {finalPick.benefit}
                 </div>
               </div>
               <div className="text-left md:text-right">
                 <div className="text-3xl font-black text-amber-300">{sundayFmtProbability(finalPick.probability)}</div>
-                <div className="text-[10px] text-slate-500">모델 개별 출현 추정치</div>
+                <div className="text-[10px] text-slate-500">해당 주 개별 출현 추정치</div>
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-amber-400/20 text-xs text-slate-400 flex gap-x-5 gap-y-1 flex-wrap">
-              {runnerUp && <span>2위 {runnerUp.benefit}보다 {((finalPick.probability - runnerUp.probability) * 100).toFixed(1)}%p 높음</span>}
               <span>마지막 등장 {finalPick.lastDate ? sundayFormatDate(finalPick.lastDate) : '-'}</span>
               <span>최근 52주 {finalPick.recentCount}/{finalPick.recentWeeks}회</span>
             </div>
-            <p className="text-[10px] text-amber-200/70 mt-2">공식 확정이 아니라, 여러 후보 중 통계상 딱 하나만 고른 결과입니다.</p>
+            <p className="text-[10px] text-amber-200/70 mt-2">공식 확정이 아닙니다. 서로 함께 나올 수도 있는 몬스터파크와 샤이닝 스타포스를 같은 주간 출현 모델로 비교해 더 높은 한 개만 표시합니다.</p>
           </div>
         )}
 
+        <div>
+          <div className="text-xs font-semibold text-slate-300">전체 혜택 참고 순위</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">아래는 전체 후보 참고값이며, 최종 선택 후보는 요청대로 몬스터파크와 샤이닝 스타포스 두 개로만 제한합니다.</div>
+        </div>
         <div className="grid md:grid-cols-2 gap-3">
           {forecasts.slice(0, 6).map((item, index) => (
             <div key={item.benefit} className="bg-maple-bg/55 border border-maple-border rounded-lg p-3.5">
@@ -5181,7 +5294,7 @@ function SundayMapleView() {
           <div>
             <div className="text-xs text-fuchsia-300 font-bold uppercase tracking-wider">희소 이벤트 날짜 예측</div>
             <h3 className="font-bold text-xl mt-1">샤타·미라클 다음 예상일</h3>
-            <p className="text-xs text-slate-500 mt-1">과거 완료 간격에 최근 기록을 더 크게 반영하고, 연중 시기는 약하게 보정했습니다.</p>
+            <p className="text-xs text-slate-500 mt-1">완료 간격 60% + 연중 주차 25% + 완결된 직전년도 패턴 15%를 반영합니다.</p>
           </div>
           <span className="text-[10px] text-slate-500 border border-maple-border rounded-full px-2.5 py-1">향후 104주 후보 비교</span>
         </div>
@@ -5201,7 +5314,10 @@ function SundayMapleView() {
                 <div className="text-[10px] text-fuchsia-300 font-bold">가장 유력한 다음 날짜</div>
                 <div className="text-2xl md:text-3xl font-black mt-0.5">{sundayFormatDate(item.predictedDate)}</div>
                 <div className="text-xs text-slate-400 mt-1">
-                  70% 예상 범위 {sundayFormatDate(item.rangeStart)} ~ {sundayFormatDate(item.rangeEnd)}
+                  과거 간격 핵심구간 {sundayFormatDate(item.coreRangeStart)} ~ {sundayFormatDate(item.coreRangeEnd)}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  상위 후보 {item.topCandidateDates.map(row => `${sundayFormatMonthDay(row.date)} ${sundayFmtProbability(row.probability)}`).join(' · ')}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
@@ -5210,16 +5326,65 @@ function SundayMapleView() {
                   <div className="font-bold text-fuchsia-300">{sundayFmtProbability(item.pointProbability)}</div>
                 </div>
                 <div className="bg-maple-bg/60 border border-maple-border rounded-lg p-2.5">
-                  <div className="text-slate-500 text-[10px]">최근 등장 / 경과</div>
-                  <div className="font-bold">{sundayFormatDate(item.lastDate)} · {item.elapsedWeeks}주</div>
+                  <div className="text-slate-500 text-[10px]">예상일 주간 출현 추정</div>
+                  <div className="font-bold">{sundayFmtProbability(item.weeklyProbabilityAtPredictedDate)}</div>
                 </div>
               </div>
-              <div className="text-[10px] text-slate-500 mt-2">최근성 가중 중앙 간격 {item.weightedMedianGap}주 · 예상 범위 질량 {(item.rangeMass * 100).toFixed(0)}%</div>
+              <div className="text-[10px] text-slate-500 mt-1.5">최근 등장 {sundayFormatDate(item.lastDate)} → 최빈 예상 간격 {item.predictedGapWeeks}주</div>
+              <div className="mt-3 space-y-2 text-xs">
+                <div className="bg-maple-bg/45 border border-maple-border rounded-lg p-2.5">
+                  <div className="text-[10px] text-slate-500">전년도 {item.previousYear}년 실제 개최</div>
+                  <div className="font-semibold mt-0.5">
+                    {item.previousYearDates.length
+                      ? item.previousYearDates.map(sundayFormatMonthDay).join(', ')
+                      : '확인 기록 없음'}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    같은 주차 환산 {item.previousYearProjectedDates.length
+                      ? item.previousYearProjectedDates.map(sundayFormatMonthDay).join(', ')
+                      : '향후 후보 없음'}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-maple-bg/45 border border-maple-border rounded-lg p-2.5">
+                    <div className="text-[10px] text-slate-500">최근 8개 완료 간격</div>
+                    <div className="font-semibold">중앙 {item.recentGapMedian}주 · 평균 {item.recentGapMean.toFixed(1)}주</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">최근 5개 {item.recentGaps.map(gap => `${gap}주`).join(' → ')}</div>
+                  </div>
+                  <div className="bg-maple-bg/45 border border-maple-border rounded-lg p-2.5">
+                    <div className="text-[10px] text-slate-500">최근 3년 집중 월</div>
+                    <div className="font-semibold">{item.recentPeakMonths.map(row => `${row.month}월 ${row.count}회`).join(' · ')}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">역대 중앙 {item.medianGap}주 · 가중 중앙 {item.weightedMedianGap}주</div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  최근 6회 {item.recentDates.map(sundayFormatDate).join(' · ')}
+                </div>
+                <details className="bg-maple-bg/35 border border-maple-border rounded-lg px-2.5 py-2">
+                  <summary className="cursor-pointer text-[11px] font-semibold text-slate-300">연도별 개최 기록 보기</summary>
+                  <div className="mt-2 space-y-1 text-[10px] text-slate-500">
+                    {item.yearlyHistory.map(row => (
+                      <div key={row.year} className="flex gap-2">
+                        <span className="w-14 shrink-0 text-slate-300">{row.year}{row.year === item.currentYear ? ' YTD' : ''}</span>
+                        <span>{row.dates.map(sundayFormatMonthDay).join(', ')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-2">
+                모델 반영: 완료 간격 60% · 연중 주차 25% · 완결 직전년도 15% · 장기 70% 분포 질량 {(item.rangeMass * 100).toFixed(0)}%
+              </div>
             </article>
           ))}
         </div>
+        {nextSundayFinalPick && (
+          <div className="mt-3 border border-amber-400/25 bg-amber-500/10 rounded-lg px-3 py-2 text-xs text-amber-100/85">
+            희소 이벤트의 날짜 최빈값과 최종 선택은 계산 질문이 다릅니다. 다음 선데이의 몬파·샤타 단일 결론은 <strong>{nextSundayFinalPick.benefit} {sundayFmtProbability(nextSundayFinalPick.probability)}</strong>입니다.
+          </div>
+        )}
         <p className="text-[10px] text-slate-500 mt-3 leading-relaxed">
-          날짜 모델 집중도는 ‘향후 후보 날짜 중 이 날짜가 차지한 비중’이며 실제 공식 개최 확률이 아닙니다. 샤타·미라클은 표본이 적고 운영 일정이 바뀔 수 있어 정확한 하루보다 70% 예상 범위를 함께 봐 주세요.
+          날짜 모델 집중도는 ‘향후 후보 날짜 중 이 날짜가 차지한 비중’이고, 주간 출현 추정치는 그 주에 해당 이벤트가 포함될 개별 추정치입니다. 둘 다 공식 확률은 아니며 표본과 운영 일정 변화에 따라 달라질 수 있습니다.
         </p>
       </section>
 
