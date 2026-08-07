@@ -347,7 +347,7 @@ assert(html.includes('6차 3 = 3,442'),
 const sundayContext = {};
 vm.runInNewContext(
   sourceBetween('const SUNDAY_WEEK_MS =', 'function SundayMapleView()') +
-    '\nglobalThis.testApi = { SUNDAY_ACTIVE_BENEFITS, sundayAddDays, sundayNextCalendarDate, sundayCurrentOrNextCalendarDate, sundayForecastStartDate, sundayRankForecasts, sundayForecastBenefit, sundayPredictRareEvent, sundayBacktest };',
+    '\nglobalThis.testApi = { SUNDAY_ACTIVE_BENEFITS, SUNDAY_FINAL_CONTENDERS, SUNDAY_RARE_MODEL_WEIGHTS, sundayAddDays, sundayNextCalendarDate, sundayCurrentOrNextCalendarDate, sundayForecastStartDate, sundayRankForecasts, sundayForecastBenefit, sundayPickFinalChoice, sundayPredictRareEvent, sundayBacktest };',
   sundayContext,
 );
 const sundayApi = sundayContext.testApi;
@@ -415,13 +415,30 @@ assert(augustForecast.every(item => item.probability >= 0 && item.probability <=
 assert(Math.abs(augustForecast.reduce((sum, item) => sum + item.probability, 0) - 1) > 0.01,
   'multi-label Sunday probabilities must not be normalized to a single-choice total');
 assert(rankedAugustForecast[0]?.benefit === '몬스터파크',
-  'the displayed final one-pick must be the highest-ranked current forecast');
+  'Monster Park must remain the highest-ranked all-benefit forecast for the current snapshot');
+const finalChoice = sundayApi.sundayPickFinalChoice(sundayData.records, '2026-08-16');
+const expectedFinalProbability = augustForecast.find(item => item.benefit === finalChoice.benefit).probability;
+assert(finalChoice?.benefit === '몬스터파크' && finalChoice.contenderCount === 2 &&
+  JSON.stringify([...finalChoice.comparedBenefits].sort()) === JSON.stringify([...sundayApi.SUNDAY_FINAL_CONTENDERS].sort()),
+  'the final conclusion must return exactly one winner from Monster Park and Shining Star Force');
+close(finalChoice.probability, expectedFinalProbability, 1e-12,
+  'the displayed final percentage must retain the winning weekly occurrence estimate');
+assert(!Object.hasOwn(finalChoice, 'choiceProbability'),
+  'non-exclusive Monster Park and Shining estimates must not be relabeled as a normalized probability');
 const nearAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-08-16');
 const farAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-09-20');
 assert(nearAbilityForecast.observedGap === farAbilityForecast.observedGap,
   'future date buttons must censor gap exposure at the latest observed record, not at the target date');
 const rareEventForecasts = ['샤이닝 스타포스', '미라클 타임']
   .map(benefit => sundayApi.sundayPredictRareEvent(sundayData.records, benefit, '2026-08-16'));
+const expectedPreviousYearDates = {
+  '샤이닝 스타포스': ['2025-01-05', '2025-03-02', '2025-05-04', '2025-07-20', '2025-09-21', '2025-11-16', '2025-12-14'],
+  '미라클 타임': ['2025-01-19', '2025-04-20', '2025-06-29', '2025-10-19'],
+};
+const expectedCoreRanges = {
+  '샤이닝 스타포스': ['2026-08-16', '2026-09-06'],
+  '미라클 타임': ['2026-09-27', '2026-11-22'],
+};
 for (const forecast of rareEventForecasts) {
   assert(forecast && forecast.predictedDate >= '2026-08-16' &&
     new Date(`${forecast.predictedDate}T00:00:00Z`).getUTCDay() === 0,
@@ -431,6 +448,41 @@ for (const forecast of rareEventForecasts) {
   'rare-event ranges must contain the point forecast and at least 70% model mass');
   close(forecast.candidateProbabilities.reduce((sum, item) => sum + item.probability, 0), 1, 1e-12,
     `${forecast.benefit} conditional date probability total`);
+  close(forecast.candidateProbabilities.reduce((sum, item) => sum + item.gapProbability, 0), 1, 1e-12,
+    `${forecast.benefit} gap component probability total`);
+  close(forecast.candidateProbabilities.reduce((sum, item) => sum + item.seasonProbability, 0), 1, 1e-12,
+    `${forecast.benefit} season component probability total`);
+  close(forecast.candidateProbabilities.reduce((sum, item) => sum + item.previousYearProbability, 0), 1, 1e-12,
+    `${forecast.benefit} previous-year component probability total`);
+  const mode = forecast.candidateProbabilities.reduce((best, item) =>
+    item.probability > best.probability ? item : best);
+  assert(mode.date === forecast.predictedDate,
+    `${forecast.benefit} predicted date must be the deterministic earliest probability mode`);
+  assert(forecast.previousYear === 2025 &&
+    JSON.stringify(forecast.previousYearDates) === JSON.stringify(expectedPreviousYearDates[forecast.benefit]),
+  `${forecast.benefit} must expose exact previous-year event dates`);
+  assert(JSON.stringify([forecast.coreRangeStart, forecast.coreRangeEnd]) ===
+    JSON.stringify(expectedCoreRanges[forecast.benefit]) &&
+    forecast.topCandidateDates.length === 3 && forecast.topCandidateDates[0].date === forecast.predictedDate,
+  `${forecast.benefit} must expose a concrete interquartile gap range and top dates`);
+  assert(forecast.yearlyHistory.flatMap(row => row.dates).length === forecast.historyCount &&
+    forecast.monthCounts.reduce((sum, row) => sum + row.count, 0) === forecast.historyCount,
+  `${forecast.benefit} yearly and monthly pattern totals must match history count`);
+  assert(forecast.recentMonthCounts.reduce((sum, row) => sum + row.count, 0) <= forecast.historyCount &&
+    forecast.recentPeakMonths.length > 0 && forecast.previousYearProjectedDates.every(date => date >= '2026-08-16'),
+  `${forecast.benefit} recent calendar pattern and projected prior-year anchors must be valid`);
+  assert(forecast.recentGaps.length <= 5 && forecast.recentGaps.every(gap => gap > 0) &&
+    Number.isFinite(forecast.meanGap) && forecast.meanGap > 0 &&
+    Number.isFinite(forecast.recentGapMean) && forecast.recentGapMean > 0 && forecast.recentGapMedian > 0,
+  `${forecast.benefit} interval summaries must be finite completed gaps`);
+  assert(forecast.weeklyProbabilityAtPredictedDate > 0 && forecast.weeklyProbabilityAtPredictedDate <= 1 &&
+    forecast.candidateProbabilities.filter(row => row.date.startsWith('2027-')).every(row => !row.previousYearComplete),
+  `${forecast.benefit} weekly probability must be bounded and incomplete previous years must be flagged`);
+  close(Object.values(forecast.modelWeights).reduce((sum, value) => sum + value, 0), 1, 1e-12,
+    `${forecast.benefit} rare-model component weights`);
+  assert(JSON.stringify(forecast) === JSON.stringify(
+    sundayApi.sundayPredictRareEvent(sundayData.records, forecast.benefit, '2026-08-16')),
+  `${forecast.benefit} rare-event forecast must be deterministic`);
 }
 assert(rareEventForecasts[0].historyCount >= 21 && rareEventForecasts[1].historyCount >= 18,
   'rare-event models must include all currently recorded Shining and Miracle occurrences');
@@ -452,8 +504,11 @@ close(sundayData.backtest.recallAt3, sundayBacktestResult.recallAt3, 1e-12,
   'build-time and browser-model Top-3 recall');
 close(sundayData.backtest.brier, sundayBacktestResult.brier, 1e-12,
   'build-time and browser-model Brier score');
-assert(html.includes('최종 1개 선택') && html.includes('샤타·미라클 다음 예상일'),
-  'Sunday UI must expose the single conclusion and rare-event date forecast sections');
+assert(html.includes('몬파·샤타 중 최종 1개') && html.includes('해당 주 개별 출현 추정치') &&
+  html.includes('샤타·미라클 다음 예상일') && html.includes('전년도') &&
+  html.includes('연도별 개최 기록 보기') && html.includes('완료 간격 60%') &&
+  html.includes('과거 간격 핵심구간') && html.includes('완결된 직전년도 패턴'),
+  'Sunday UI must expose one head-to-head choice and concrete rare-event pattern evidence');
 
 console.log(JSON.stringify({
   starforceFallback: Math.round(unsupportedRestore.total),
@@ -463,6 +518,10 @@ console.log(JSON.stringify({
   clampedThreePersonRevenue: clampedSplit.revenue,
   origin3Total,
   sundayTopForecast: rankedAugustForecast.slice(0, 3).map(item => [item.benefit, item.probability]),
+  sundayFinalChoice: {
+    benefit: finalChoice.benefit,
+    probability: finalChoice.probability,
+  },
   rareEventForecasts: rareEventForecasts.map(item => ({
     benefit: item.benefit,
     predictedDate: item.predictedDate,
