@@ -3,8 +3,8 @@
 파일명 규칙 (소문자, .png):
 zakum, cygnus, pinkbean, hilla, magnus, pierre, vonbon, bloodyqueen,
 vellum, papulatus, lotus, damien, slime, lucid, will, dusk, jinhilla,
-blackmage, dunkel, seren, kalos, adversary, kaling, hyungseong, limbo,
-baldrix, jupiter
+blackmage, dunkel, seren, kalos, adversary, kaling, hyungseong, bellona,
+limbo, baldrix, jupiter
 
 예: icons/kaling.png  (카링 아이콘)
 
