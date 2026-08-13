@@ -251,10 +251,27 @@ assert(duplicateIed.length === 2 && duplicateIed[0][2] === 0 && duplicateIed[1][
 const backupContext = {};
 vm.runInNewContext(
   sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
-    '\nglobalThis.testApi = { validateBackupData, cloneJson, DEFAULT_BOSSES, getBossRevenue, activeExpiryNotificationKeys };',
+    '\nglobalThis.testApi = { validateBackupData, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, activeExpiryNotificationKeys };',
   backupContext,
 );
 const backupApi = backupContext.testApi;
+const bellona = backupApi.DEFAULT_BOSSES.find(boss => boss.id === 'bellona');
+assert(bellona?.name === '벨로나' && bellona.level === 280 && bellona.introduced === '2026-08-20' && !bellona.monthly &&
+  JSON.stringify(Object.keys(bellona.difficulties)) === JSON.stringify(['Easy', 'Normal', 'Hard']),
+  'Bellona must appear in the weekly checklist with all three official difficulties');
+assert(bellona.difficulties.Easy.price === 440000000 && bellona.difficulties.Easy.max === 3 &&
+  bellona.difficulties.Normal.price === 850000000 && bellona.difficulties.Normal.max === 3 &&
+  bellona.difficulties.Hard.price === 2950000000 && bellona.difficulties.Hard.max === 3,
+  'Bellona crystal prices and three-person limits must match the supplied update table');
+assert(!backupApi.priceHistoryBossAvailable(bellona, backupApi.PRICE_HISTORY[0]) &&
+  !backupApi.priceHistoryBossAvailable(bellona, backupApi.PRICE_HISTORY[1]) &&
+  backupApi.priceHistoryBossAvailable(bellona, backupApi.PRICE_HISTORY.at(-1)),
+  'Bellona must be excluded from crystal history periods before its release');
+const bellonaThreePersonRevenue = backupApi.getBossRevenue(
+  bellona, { difficulty: 'Hard', partyMembers: 6 }
+);
+assert(bellonaThreePersonRevenue.members === 3 && bellonaThreePersonRevenue.revenue === 983333333,
+  'Bellona Hard must clamp to three players and floor the per-person crystal revenue');
 const splitBoss = { difficulties: { Hard: { price: 51500000, max: 6 } } };
 assert(backupApi.getBossRevenue(splitBoss, { difficulty: 'Hard', partyMembers: 1 }).revenue === 51500000,
   'solo boss revenue must use the full crystal price');
@@ -277,6 +294,14 @@ const validBackup = {
 const normalizedBackup = backupApi.validateBackupData(validBackup);
 assert(normalizedBackup.characters[0].bosses[0].partyMembers === 3,
   'backup import must clamp actual party size to the boss maximum');
+const legacyBackupWithoutBellona = backupApi.validateBackupData({
+  ...validBackup,
+  bossData: validBackup.bossData.filter(boss => boss.id !== 'bellona'),
+});
+const migratedBellona = legacyBackupWithoutBellona.bossData.find(boss => boss.id === 'bellona');
+assert(migratedBellona?.difficulties.Hard.price === 2950000000 &&
+  migratedBellona.difficulties.Hard.max === 3,
+  'older saved boss data must automatically receive Bellona with current defaults');
 let malformedRejected = false;
 try {
   backupApi.validateBackupData({ ...validBackup, characters: [{ id: 'bad', name: '깨짐', bosses: 'not-an-array' }] });
