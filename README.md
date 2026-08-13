@@ -107,7 +107,8 @@ icons/slime.png        icons/lucid.png       icons/will.png
 icons/dusk.png         icons/jinhilla.png    icons/blackmage.png
 icons/dunkel.png       icons/seren.png       icons/kalos.png
 icons/adversary.png    icons/kaling.png      icons/hyungseong.png
-icons/limbo.png        icons/baldrix.png     icons/jupiter.png
+icons/bellona.png      icons/limbo.png       icons/baldrix.png
+icons/jupiter.png
 ```
 
 파일을 넣으면 새로고침 시 자동으로 표시됩니다. (게임 아이콘 이미지는 직접 준비해 주세요.)
