@@ -69,7 +69,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
  * 보스 결정석 기본 데이터
  * - 가격 / 난이도 / 레벨: 사용자가 제공한 결정석 시세표 기준
  * - 입장 인원(max): 사용자 제공 데이터 기준. 익스트림 스우 2인,
- *   최초의 대적자·찬란한 흉성·림보·발드릭스·유피테르 3인, 그 외 6인.
+ *   최초의 대적자·찬란한 흉성·벨로나·림보·발드릭스·유피테르 3인, 그 외 6인.
  * - monthly: 월간 보스(검은 마법사)는 주간 12개 한도에서 제외.
  * - exclusive: 검은 마법사는 하드/익스트림 중 하나만 선택 가능.
  * - icon: icons/{id}.png 파일이 있으면 표시, 없으면 컬러 배지로 폴백.
@@ -159,6 +159,11 @@ const DEFAULT_BOSSES = [
       'Normal': { price: 625000000, max: 3 },
       'Hard':   { price: 2678000000, max: 3 },
   }},
+  { id: 'bellona', name: '벨로나', level: 280, introduced: '2026-08-20', icon: 'icons/bellona.png', difficulties: {
+      'Easy':   { price: 440000000, max: 3 },
+      'Normal': { price: 850000000, max: 3 },
+      'Hard':   { price: 2950000000, max: 3 },
+  }},
   { id: 'limbo', name: '림보', level: 285, icon: 'icons/limbo.png', difficulties: {
       'Normal': { price: 1026000000, max: 3 },
       'Hard':   { price: 2385000000, max: 3 },
@@ -221,8 +226,16 @@ const PRICE_HISTORY = [
   {
     id: 'cut_20260613',
     title: '결정석 가격 인하',
-    range: '2026-06-13 ~ (현재)',
-    note: '2026-06-13 결정석 가격 인하가 적용된 현재 시세입니다.',
+    range: '2026-06-13 ~ 2026-08-19',
+    note: '2026-06-13 결정석 가격 인하가 적용된 시세입니다.',
+    overrides: {},
+  },
+  {
+    id: 'bellona_20260820',
+    title: '신규 보스 벨로나',
+    range: '2026-08-20 ~ (현재)',
+    note: '벨로나는 2026-08-13 테스트월드 공개 수치를 2026-08-20 정식 업데이트에 앞서 반영했습니다.',
+    introducedBosses: ['bellona'],
     overrides: {}, // 현재 = DEFAULT_BOSSES 기준 (변동 없음)
   },
 ];
@@ -246,6 +259,14 @@ const snapshotPriceMap = (entry) => {
     merged[id] = { ...CURRENT_PRICE_MAP[id], ...((entry && entry.overrides && entry.overrides[id]) || {}) };
   }
   return merged;
+};
+
+const priceHistoryBossAvailable = (boss, entry) => {
+  const introducedAt = PRICE_HISTORY.findIndex(period =>
+    (period.introducedBosses || []).includes(boss.id)
+  );
+  if (introducedAt < 0) return true;
+  return PRICE_HISTORY.findIndex(period => period.id === entry?.id) >= introducedAt;
 };
 
 /* 저장된 보스 데이터를 현재 기본 목록과 동기화
@@ -2969,7 +2990,7 @@ function BossHistoryView() {
           </div>
 
           <div className="divide-y divide-maple-border">
-            {DEFAULT_BOSSES.map(boss => (
+            {DEFAULT_BOSSES.filter(boss => priceHistoryBossAvailable(boss, entry)).map(boss => (
               Object.keys(boss.difficulties).map(diff => {
                 const price = curMap[boss.id]?.[diff] ?? 0;
                 const prevPrice = prevMap ? prevMap[boss.id]?.[diff] : undefined;
