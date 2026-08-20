@@ -251,7 +251,7 @@ assert(duplicateIed.length === 2 && duplicateIed[0][2] === 0 && duplicateIed[1][
 const backupContext = {};
 vm.runInNewContext(
   sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
-    '\nglobalThis.testApi = { validateBackupData, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, activeExpiryNotificationKeys };',
+    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, activeExpiryNotificationKeys };',
   backupContext,
 );
 const backupApi = backupContext.testApi;
@@ -260,9 +260,14 @@ assert(bellona?.name === '벨로나' && bellona.level === 280 && bellona.introdu
   JSON.stringify(Object.keys(bellona.difficulties)) === JSON.stringify(['Easy', 'Normal', 'Hard']),
   'Bellona must appear in the weekly checklist with all three official difficulties');
 assert(bellona.difficulties.Easy.price === 440000000 && bellona.difficulties.Easy.max === 3 &&
-  bellona.difficulties.Normal.price === 850000000 && bellona.difficulties.Normal.max === 3 &&
+  bellona.difficulties.Normal.price === 890000000 && bellona.difficulties.Normal.max === 3 &&
   bellona.difficulties.Hard.price === 2950000000 && bellona.difficulties.Hard.max === 3,
-  'Bellona crystal prices and three-person limits must match the supplied update table');
+  'Bellona crystal prices and three-person limits must match the official live update');
+const currentBellonaHistory = backupApi.PRICE_HISTORY.find(period => period.id === 'bellona_20260820');
+assert(currentBellonaHistory?.note.includes('정식 업데이트') &&
+  currentBellonaHistory.note.includes('8억 9,000만') &&
+  !currentBellonaHistory.note.includes('테스트월드'),
+  'Bellona crystal history must describe the verified live-server price');
 assert(!backupApi.priceHistoryBossAvailable(bellona, backupApi.PRICE_HISTORY[0]) &&
   !backupApi.priceHistoryBossAvailable(bellona, backupApi.PRICE_HISTORY[1]) &&
   backupApi.priceHistoryBossAvailable(bellona, backupApi.PRICE_HISTORY.at(-1)),
@@ -272,6 +277,11 @@ const bellonaThreePersonRevenue = backupApi.getBossRevenue(
 );
 assert(bellonaThreePersonRevenue.members === 3 && bellonaThreePersonRevenue.revenue === 983333333,
   'Bellona Hard must clamp to three players and floor the per-person crystal revenue');
+const bellonaNormalThreePersonRevenue = backupApi.getBossRevenue(
+  bellona, { difficulty: 'Normal', partyMembers: 3 }
+);
+assert(bellonaNormalThreePersonRevenue.revenue === 296666666,
+  'Bellona Normal three-person revenue must use the official 890-million crystal price');
 const splitBoss = { difficulties: { Hard: { price: 51500000, max: 6 } } };
 assert(backupApi.getBossRevenue(splitBoss, { difficulty: 'Hard', partyMembers: 1 }).revenue === 51500000,
   'solo boss revenue must use the full crystal price');
@@ -302,6 +312,18 @@ const migratedBellona = legacyBackupWithoutBellona.bossData.find(boss => boss.id
 assert(migratedBellona?.difficulties.Hard.price === 2950000000 &&
   migratedBellona.difficulties.Hard.max === 3,
   'older saved boss data must automatically receive Bellona with current defaults');
+const previewBossData = backupApi.cloneJson(backupApi.DEFAULT_BOSSES);
+previewBossData.find(boss => boss.id === 'bellona').difficulties.Normal.price = 850000000;
+const migratedPreviewBellona = backupApi.reconcileBossData(previewBossData)
+  .find(boss => boss.id === 'bellona');
+assert(migratedPreviewBellona.difficulties.Normal.price === 890000000,
+  'saved Bellona test-world default must migrate to the live-server Normal price');
+const customizedBossData = backupApi.cloneJson(backupApi.DEFAULT_BOSSES);
+customizedBossData.find(boss => boss.id === 'bellona').difficulties.Normal.price = 860000000;
+const preservedCustomBellona = backupApi.reconcileBossData(customizedBossData)
+  .find(boss => boss.id === 'bellona');
+assert(preservedCustomBellona.difficulties.Normal.price === 860000000,
+  'a user-customized Bellona price must survive the default-price migration');
 let malformedRejected = false;
 try {
   backupApi.validateBackupData({ ...validBackup, characters: [{ id: 'bad', name: '깨짐', bosses: 'not-an-array' }] });
