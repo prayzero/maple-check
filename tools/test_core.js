@@ -557,6 +557,17 @@ assert(html.includes('몬파·샤타 중 최종 1개') && html.includes('해당 
   html.includes('과거 간격 핵심구간') && html.includes('완결된 직전년도 패턴'),
   'Sunday UI must expose one head-to-head choice and concrete rare-event pattern evidence');
 
+const sidebarSource = sourceBetween('function Sidebar(', 'function NavItem(');
+assert(sidebarSource.includes('charTotals[c.id]?.weekly') && sidebarSource.includes('주간 '),
+  'sidebar character cards must use weekly revenue as the primary meso value');
+assert(sidebarSource.includes('charTotals[c.id]?.monthly') && sidebarSource.includes('월간 1회'),
+  'sidebar character cards must show one monthly boss payout below the weekly value');
+assert(!sidebarSource.includes('charTotals[c.id]?.total'),
+  'sidebar character cards must not show the combined weekly-plus-monthly total');
+const navItemSource = sourceBetween('function NavItem(', 'function Dashboard(');
+assert(navItemSource.includes('secondarySubtitle') && navItemSource.includes('text-violet-300/80'),
+  'navigation items must render the monthly value as a distinct secondary line');
+
 console.log(JSON.stringify({
   starforceFallback: Math.round(unsupportedRestore.total),
   gloveCritProbability: glove.H,
