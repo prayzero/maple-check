@@ -1294,6 +1294,48 @@ const emptyGoals = () => ({
   hexa: [false, false, false],
   setMemo: '',
 });
+
+const budgetItemUid = () => 'b_' + Math.random().toString(36).slice(2, 10);
+const emptyBudget = () => ({ total: 0, savedByItem: {}, customItems: [] });
+const safeBudgetMeso = (value, fallback = 0) => {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : fallback;
+};
+const normalizeBudget = (value) => {
+  const raw = isPlainObject(value) ? value : {};
+  const savedByItem = {};
+  if (isPlainObject(raw.savedByItem)) {
+    for (const [key, saved] of Object.entries(raw.savedByItem)) {
+      if (/^[A-Za-z0-9_-]{1,100}$/.test(key)) savedByItem[key] = safeBudgetMeso(saved, 0);
+    }
+  }
+  const seenIds = new Set();
+  const customItems = (Array.isArray(raw.customItems) ? raw.customItems : [])
+    .slice(0, 100)
+    .filter(isPlainObject)
+    .map(item => {
+      let id = typeof item.id === 'string' ? item.id.trim().slice(0, 100) : '';
+      if (!/^[A-Za-z0-9_-]+$/.test(id) || seenIds.has(id)) {
+        do { id = budgetItemUid(); } while (seenIds.has(id));
+      }
+      seenIds.add(id);
+      return {
+        id,
+        name: typeof item.name === 'string' ? item.name.slice(0, 100) : '',
+        cost: safeBudgetMeso(item.cost, 0),
+        saved: safeBudgetMeso(item.saved, 0),
+        done: !!item.done,
+        priority: Math.min(1000, safeNonNegativeInt(item.priority, 0)),
+        memo: typeof item.memo === 'string' ? item.memo.slice(0, 500) : '',
+      };
+    });
+  return {
+    total: safeBudgetMeso(raw.total, 0),
+    savedByItem,
+    customItems,
+  };
+};
+
 const normalizeChar = (c) => ({
   ...c,
   id: typeof c.id === 'string' && c.id ? c.id : uid(),
@@ -1314,7 +1356,7 @@ const normalizeChar = (c) => ({
     hexa: Array.isArray(c.goals.hexa) ? [0, 1, 2].map(i => !!c.goals.hexa[i]) : [false, false, false],
     setMemo: c.goals.setMemo || '',
   } : emptyGoals(),
-  budget: isPlainObject(c.budget) ? c.budget : { total: 0 },
+  budget: normalizeBudget(c.budget),
   bossTimes: isPlainObject(c.bossTimes) ? c.bossTimes : {},
   hexaSkills: isPlainObject(c.hexaSkills) ? {
     slots: { ...emptyHexa().slots, ...(c.hexaSkills.slots || {}) },
@@ -1366,6 +1408,38 @@ const validateBackupData = (value) => {
     if (raw.goals?.symbols != null && !isPlainObject(raw.goals.symbols)) fail(`${raw.name}의 심볼 목표가 올바르지 않습니다.`);
     if (raw.goals?.solErda != null && !isPlainObject(raw.goals.solErda)) fail(`${raw.name}의 솔 에르다 목표가 올바르지 않습니다.`);
     if (raw.hexaSkills?.slots != null && !isPlainObject(raw.hexaSkills.slots)) fail(`${raw.name}의 HEXA 구조가 올바르지 않습니다.`);
+    if (raw.budget) {
+      if (raw.budget.total != null && (typeof raw.budget.total !== 'number' || !Number.isSafeInteger(raw.budget.total) || raw.budget.total < 0)) {
+        fail(`${raw.name}의 예산 한도가 올바르지 않습니다.`);
+      }
+      if (raw.budget.savedByItem != null && !isPlainObject(raw.budget.savedByItem)) {
+        fail(`${raw.name}의 목표별 모은 메소 구조가 올바르지 않습니다.`);
+      }
+      for (const [key, saved] of Object.entries(raw.budget.savedByItem || {})) {
+        if (!/^[A-Za-z0-9_-]{1,100}$/.test(key) || typeof saved !== 'number' || !Number.isSafeInteger(saved) || saved < 0) {
+          fail(`${raw.name}의 목표별 모은 메소 값이 올바르지 않습니다.`);
+        }
+      }
+      if (raw.budget.customItems != null && !Array.isArray(raw.budget.customItems)) {
+        fail(`${raw.name}의 직접 예산 목표가 올바르지 않습니다.`);
+      }
+      if ((raw.budget.customItems || []).length > 100) fail(`${raw.name}의 직접 예산 목표가 너무 많습니다.`);
+      const seenBudgetItemIds = new Set();
+      for (const item of raw.budget.customItems || []) {
+        if (!isPlainObject(item) || typeof item.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(item.id) || seenBudgetItemIds.has(item.id)) {
+          fail(`${raw.name}의 직접 예산 목표 ID가 올바르지 않습니다.`);
+        }
+        seenBudgetItemIds.add(item.id);
+        if (item.name != null && typeof item.name !== 'string') fail(`${raw.name}의 직접 예산 목표 이름이 올바르지 않습니다.`);
+        if (item.memo != null && typeof item.memo !== 'string') fail(`${raw.name}의 직접 예산 목표 메모가 올바르지 않습니다.`);
+        if (item.done != null && typeof item.done !== 'boolean') fail(`${raw.name}의 직접 예산 목표 완료 값이 올바르지 않습니다.`);
+        for (const field of ['cost', 'saved', 'priority']) {
+          if (item[field] != null && (typeof item[field] !== 'number' || !Number.isSafeInteger(item[field]) || item[field] < 0)) {
+            fail(`${raw.name}의 직접 예산 목표 ${field} 값이 올바르지 않습니다.`);
+          }
+        }
+      }
+    }
     if (!Array.isArray(raw.bosses)) fail(`${raw.name}의 보스 선택 목록이 올바르지 않습니다.`);
     if (raw.bosses.length > 100) fail(`${raw.name}의 보스 선택 목록이 너무 많습니다.`);
     for (const slot of Object.values(raw.equipment || {})) {
@@ -1422,7 +1496,7 @@ const validateBackupData = (value) => {
       bosses,
       equipment: cloneJson(raw.equipment || {}),
       goals: raw.goals ? cloneJson(raw.goals) : undefined,
-      budget: raw.budget ? cloneJson(raw.budget) : { total: 0 },
+      budget: raw.budget ? cloneJson(raw.budget) : emptyBudget(),
       bossTimes: raw.bossTimes ? cloneJson(raw.bossTimes) : {},
       hexaSkills: raw.hexaSkills ? cloneJson(raw.hexaSkills) : undefined,
     });
@@ -1628,7 +1702,7 @@ function App() {
       bosses: [],
       equipment: {},
       goals: emptyGoals(),
-      budget: { total: 0 },
+      budget: emptyBudget(),
     };
     setCharacters(prev => [...prev, newChar]);
     setSelected(newChar.id);
@@ -1654,7 +1728,7 @@ function App() {
         const clip = {
           equipment: JSON.parse(JSON.stringify(c.equipment || {})),
           goals: JSON.parse(JSON.stringify(c.goals || emptyGoals())),
-          budget: JSON.parse(JSON.stringify(c.budget || { total: 0 })),
+          budget: JSON.parse(JSON.stringify(normalizeBudget(c.budget))),
           hexaSkills: JSON.parse(JSON.stringify(c.hexaSkills || emptyHexa())),
           from: c.name,
         };
@@ -1671,7 +1745,7 @@ function App() {
       ...c,
       equipment: JSON.parse(JSON.stringify(budgetClip.equipment || {})),
       goals: JSON.parse(JSON.stringify(budgetClip.goals || emptyGoals())),
-      budget: JSON.parse(JSON.stringify(budgetClip.budget || { total: 0 })),
+      budget: JSON.parse(JSON.stringify(normalizeBudget(budgetClip.budget))),
       hexaSkills: JSON.parse(JSON.stringify(budgetClip.hexaSkills || emptyHexa())),
     }) : c));
   }, [budgetClip]);
@@ -2210,14 +2284,21 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
     onUpdate(c => {
       const next = { ...c.equipment };
       delete next[slotId];
-      return { ...c, equipment: next };
+      const currentBudget = normalizeBudget(c.budget);
+      const savedByItem = { ...currentBudget.savedByItem };
+      delete savedByItem['eq_' + slotId];
+      return { ...c, equipment: next, budget: { ...currentBudget, savedByItem } };
     });
   };
   const setGoals = (updater) => {
     onUpdate(c => ({ ...c, goals: updater(c.goals || emptyGoals()) }));
   };
-  const setBudgetTotal = (n) => {
-    onUpdate(c => ({ ...c, budget: { ...(c.budget || {}), total: n } }));
+  const setBudget = (updater) => {
+    onUpdate(c => {
+      const current = normalizeBudget(c.budget);
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      return { ...c, budget: normalizeBudget(next) };
+    });
   };
   const setHexa = (updater) => {
     onUpdate(c => ({ ...c, hexaSkills: updater(c.hexaSkills || emptyHexa()) }));
@@ -2394,7 +2475,7 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
             setEquipSlot={setEquipSlot}
             clearEquipSlot={clearEquipSlot}
             setGoals={setGoals}
-            setBudgetTotal={setBudgetTotal}
+            setBudget={setBudget}
             setHexa={setHexa}
           />
         </>
@@ -3075,7 +3156,8 @@ const fmtMesoShort = (n) => {
   return n.toLocaleString();
 };
 
-function MesoInput({ value, onChange, placeholder, className, ariaLabel }) {
+function MesoInput({ value, onChange, placeholder, className, ariaLabel, disabled = false }) {
+  const inputClassName = className || 'w-full bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm text-right focus:outline-none focus:border-maple-accent';
   return (
     <input
       type="text"
@@ -3083,17 +3165,19 @@ function MesoInput({ value, onChange, placeholder, className, ariaLabel }) {
       value={value ? Number(value).toLocaleString() : ''}
       placeholder={placeholder || '0'}
       aria-label={ariaLabel}
+      disabled={disabled}
       onChange={(e) => onChange(parseNum(e.target.value))}
-      className={className || 'w-full bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm text-right focus:outline-none focus:border-maple-accent'}
+      className={`${inputClassName} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     />
   );
 }
 
-function ProgressBar({ value, tone }) {
+function ProgressBar({ value, tone, label = '진행률' }) {
   const pct = Math.max(0, Math.min(100, value || 0));
   const color = tone || 'bg-maple-accent';
   return (
-    <div className="w-full h-2 bg-maple-bg rounded-full overflow-hidden">
+    <div className="w-full h-2 bg-maple-bg rounded-full overflow-hidden"
+      role="progressbar" aria-label={label} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(pct)}>
       <div className={`h-full ${color} transition-all`} style={{ width: pct + '%' }} />
     </div>
   );
@@ -3230,40 +3314,87 @@ function HexaPlannerPanel({ hexa, setHexa, fragPrice, onFragPrice }) {
 function buildBudgetItems(character) {
   const equipment = character.equipment || {};
   const goals = character.goals || emptyGoals();
+  const budget = normalizeBudget(character.budget);
   const items = [];
   for (const slot of EQUIP_SLOTS) {
     const e = equipment[slot.id];
     if (e && ((e.cost || 0) > 0 || (e.item && e.item.trim()))) {
-      items.push({ key: 'eq_' + slot.id, type: 'equip', slotId: slot.id, name: slot.name,
-        label: e.item || '', star: e.star, potential: e.potential, cost: e.cost || 0,
-        priority: e.priority || 0, done: !!e.done });
+      const key = 'eq_' + slot.id;
+      items.push({ key, type: 'equip', kindLabel: '장비', slotId: slot.id, name: slot.name,
+        label: e.item || '', star: e.star, potential: e.potential, cost: safeBudgetMeso(e.cost, 0),
+        saved: safeBudgetMeso(budget.savedByItem[key], 0), priority: e.priority || 0,
+        done: !!e.done, editableCost: true });
     }
   }
   const symCost = calcSymbolCost(goals.symbols);
-  if (symCost > 0) items.push({ key: 'symbols', type: 'symbols', name: '심볼 강화', label: '아케인 · 어센틱 · 그랜드',
-    cost: symCost, priority: goals.symbols.priority || 0, done: !!goals.symbols.done });
+  const symSaved = safeBudgetMeso(budget.savedByItem.symbols, 0);
+  if (symCost > 0 || symSaved > 0) items.push({ key: 'symbols', type: 'symbols', kindLabel: '자동 계산', name: '심볼 강화', label: '아케인 · 어센틱 · 그랜드',
+    cost: safeBudgetMeso(symCost, 0), saved: symSaved,
+    priority: goals.symbols.priority || 0, done: !!goals.symbols.done, editableCost: false });
   const hx = calcHexa(character.hexaSkills, goals.solErda?.fragPrice);
-  if (hx.cost > 0) items.push({ key: 'hexa', type: 'hexa', name: 'HEXA 스킬',
+  const hexaSaved = safeBudgetMeso(budget.savedByItem.hexa, 0);
+  if (hx.cost > 0 || hexaSaved > 0) items.push({ key: 'hexa', type: 'hexa', kindLabel: '자동 계산', name: 'HEXA 스킬',
     label: `조각 ${hx.frag.toLocaleString()}개 × ${fmtMesoShort(parseNum(goals.solErda?.fragPrice))} · 에르다 ${hx.erda.toLocaleString()}`,
-    cost: hx.cost, priority: character.hexaSkills?.priority || 0, done: !!character.hexaSkills?.done });
+    cost: safeBudgetMeso(hx.cost, 0), saved: hexaSaved,
+    priority: character.hexaSkills?.priority || 0, done: !!character.hexaSkills?.done, editableCost: false });
+  for (const item of budget.customItems) {
+    items.push({
+      key: 'custom_' + item.id, type: 'custom', kindLabel: '직접 목표', customId: item.id,
+      name: item.name, label: item.memo, cost: item.cost, saved: item.saved,
+      priority: item.priority, done: item.done, editableCost: true, deletable: true,
+    });
+  }
   const pr = (p) => (p && p > 0 ? p : Infinity);
   items.sort((a, b) => pr(a.priority) - pr(b.priority) || b.cost - a.cost);
   return items;
 }
-function budgetSummary(character) {
-  const items = buildBudgetItems(character);
-  const total = items.reduce((a, it) => a + it.cost, 0);
-  const done = items.reduce((a, it) => a + (it.done ? it.cost : 0), 0);
-  return { items, total, done, remaining: Math.max(0, total - done), pct: total > 0 ? (done / total) * 100 : 0 };
+
+function deriveBudgetItem(item) {
+  const required = safeBudgetMeso(item?.cost, 0);
+  const saved = safeBudgetMeso(item?.saved, 0);
+  const done = !!item?.done;
+  const completed = done ? required : 0;
+  const creditedSaved = done ? 0 : Math.min(saved, required);
+  const surplus = done ? 0 : Math.max(0, saved - required);
+  const prepared = completed + creditedSaved;
+  const remaining = Math.max(0, required - prepared);
+  const pct = required > 0 ? Math.min(100, (prepared / required) * 100) : 0;
+  const status = required <= 0 ? 'empty' : done ? 'done' : creditedSaved >= required ? 'funded' : creditedSaved > 0 ? 'saving' : 'waiting';
+  return { ...item, cost: required, saved, done, required, completed, creditedSaved, surplus, prepared, remaining, pct, status };
 }
 
-function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoals, setBudgetTotal, setHexa }) {
+function budgetSummary(character, weeklyIncome = 0) {
+  const items = buildBudgetItems(character).map(deriveBudgetItem);
+  const total = items.reduce((sum, item) => sum + item.required, 0);
+  const completed = items.reduce((sum, item) => sum + item.completed, 0);
+  const saved = items.reduce((sum, item) => sum + item.creditedSaved, 0);
+  const surplus = items.reduce((sum, item) => sum + item.surplus, 0);
+  const prepared = completed + saved;
+  const remaining = Math.max(0, total - prepared);
+  const fundingPct = total > 0 ? Math.min(100, (prepared / total) * 100) : 0;
+  const completionPct = total > 0 ? Math.min(100, (completed / total) * 100) : 0;
+  const actionableItems = items.filter(item => item.required > 0);
+  const doneCount = actionableItems.filter(item => item.done).length;
+  const weekly = safeBudgetMeso(weeklyIncome, 0);
+  const weeks = total <= 0 ? null : remaining === 0 ? 0 : weekly > 0 ? Math.ceil(remaining / weekly) : null;
+  return {
+    items, total, completed, done: completed, saved, surplus, prepared, remaining,
+    pct: fundingPct, fundingPct, completionPct,
+    itemCount: actionableItems.length, doneCount,
+    moneyReady: total > 0 && remaining === 0,
+    allDone: actionableItems.length > 0 && doneCount === actionableItems.length,
+    weeks,
+  };
+}
+
+function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoals, setBudget, setHexa }) {
   const equipment = character.equipment || {};
   const goals = character.goals || emptyGoals();
-  const budget = character.budget || { total: 0 };
+  const budget = normalizeBudget(character.budget);
   const [editingSlot, setEditingSlot] = useState(null);
   const [prioOpen, setPrioOpen] = useState(true);
   const [dragIndex, setDragIndex] = useState(null);
+  const [newCustomId, setNewCustomId] = useState(null);
   const scrollPosRef = useRef(0);
 
   const getScroller = () => document.querySelector('main');
@@ -3273,31 +3404,82 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
     requestAnimationFrame(() => { const s = getScroller(); if (s) s.scrollTop = scrollPosRef.current; });
   };
 
-  // 예산 라인 아이템 집계 (공용 헬퍼)
-  const lineItems = useMemo(() => buildBudgetItems(character), [equipment, goals, character.hexaSkills]);
-
-  const totalCost = lineItems.reduce((a, it) => a + it.cost, 0);
-  const doneCost = lineItems.reduce((a, it) => a + (it.done ? it.cost : 0), 0);
-  const remaining = Math.max(0, totalCost - doneCost);
-  const progressPct = totalCost > 0 ? (doneCost / totalCost) * 100 : 0;
-
-  // 보스 주간 수익 연동: 남은 비용 달성까지 예상 기간
   const weeklyIncome = totals.weekly || 0;
-  const weeksToGoal = remaining > 0 && weeklyIncome > 0 ? Math.ceil(remaining / weeklyIncome) : null;
+  const summary = useMemo(() => budgetSummary(character, weeklyIncome), [character, weeklyIncome]);
+  const lineItems = summary.items;
+  const totalCost = summary.total;
+  const doneCost = summary.completed;
+  const savedCost = summary.saved;
+  const remaining = summary.remaining;
+  const progressPct = summary.fundingPct;
+  const weeksToGoal = summary.weeks;
   const monthsToGoal = weeksToGoal ? (weeksToGoal / 4.345).toFixed(1).replace(/\.0$/, '') : null;
 
   const budgetTotal = budget.total || 0;
   const overBudget = budgetTotal > 0 && totalCost > budgetTotal;
 
+  useEffect(() => {
+    if (!newCustomId) return;
+    const card = document.querySelector(`[data-budget-item-key="custom_${newCustomId}"]`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.querySelector('[data-budget-name-input]')?.focus();
+    setNewCustomId(null);
+  }, [lineItems.length, newCustomId]);
+
   const toggleDone = (item) => {
     if (item.type === 'equip') setEquipSlot(item.slotId, { done: !item.done });
     else if (item.type === 'symbols') setGoals(g => ({ ...g, symbols: { ...g.symbols, done: !g.symbols.done } }));
     else if (item.type === 'hexa') setHexa(h => ({ ...h, done: !h.done }));
+    else if (item.type === 'custom') updateCustomItem(item.customId, { done: !item.done });
   };
   const setPriority = (item, n) => {
     if (item.type === 'equip') setEquipSlot(item.slotId, { priority: n });
     else if (item.type === 'symbols') setGoals(g => ({ ...g, symbols: { ...g.symbols, priority: n } }));
     else if (item.type === 'hexa') setHexa(h => ({ ...h, priority: n }));
+    else if (item.type === 'custom') updateCustomItem(item.customId, { priority: n });
+  };
+  function updateCustomItem(id, patch) {
+    setBudget(current => ({
+      ...current,
+      customItems: current.customItems.map(item => item.id === id ? { ...item, ...patch } : item),
+    }));
+  }
+  const setItemCost = (item, cost) => {
+    if (item.type === 'equip') setEquipSlot(item.slotId, { cost });
+    else if (item.type === 'custom') updateCustomItem(item.customId, { cost });
+  };
+  const setItemSaved = (item, saved) => {
+    const normalizedSaved = Math.min(safeBudgetMeso(saved, 0), item.required);
+    if (item.type === 'custom') {
+      updateCustomItem(item.customId, { saved: normalizedSaved });
+      return;
+    }
+    setBudget(current => {
+      const savedByItem = { ...current.savedByItem };
+      if (normalizedSaved > 0) savedByItem[item.key] = normalizedSaved;
+      else delete savedByItem[item.key];
+      return { ...current, savedByItem };
+    });
+  };
+  const addCustomBudgetItem = () => {
+    const id = budgetItemUid();
+    setBudget(current => ({
+      ...current,
+      customItems: [...current.customItems, {
+        id, name: '새 목표', cost: 0, saved: 0, done: false,
+        priority: lineItems.length + 1, memo: '',
+      }],
+    }));
+    setNewCustomId(id);
+    setPrioOpen(true);
+  };
+  const removeCustomBudgetItem = (item) => {
+    if (!confirm(`'${item.name || '이름 없는 목표'}' 예산 목표를 삭제할까요?`)) return;
+    setBudget(current => ({
+      ...current,
+      customItems: current.customItems.filter(candidate => candidate.id !== item.customId),
+    }));
   };
   // 예산 우선순위 ▲▼ 이동: 두 항목 위치를 바꾸고 1..N으로 우선순위 재부여
   const move = (idx, dir) => {
@@ -3318,68 +3500,141 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
 
   const priorityTable = (
     <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
-      <button type="button" onClick={() => setPrioOpen(o => !o)} className="w-full flex items-center justify-between">
-        <h3 className="font-semibold flex items-center gap-2"><span>📋</span> 예산 우선순위 <span className="text-xs text-slate-500 font-normal">({lineItems.length}개 · {fmtMesoShort(totalCost)})</span></h3>
-        <span className="text-slate-400 text-sm">{prioOpen ? '▲ 접기' : '▼ 펼치기'}</span>
-      </button>
+      <div className="flex items-center justify-between gap-3">
+        <button type="button" onClick={() => setPrioOpen(o => !o)} className="flex-1 flex items-center justify-between text-left min-w-0">
+          <h3 className="font-semibold flex items-center gap-2 min-w-0">
+            <span>📋</span>
+            <span>예산 목표</span>
+            <span className="text-xs text-slate-500 font-normal truncate">({lineItems.length}개 · {fmtMesoShort(totalCost) || '0'})</span>
+          </h3>
+          <span className="text-slate-400 text-sm flex-shrink-0">{prioOpen ? '▲ 접기' : '▼ 펼치기'}</span>
+        </button>
+        <button type="button" onClick={addCustomBudgetItem}
+          className="min-h-11 flex-shrink-0 rounded-lg border border-maple-accent/50 bg-maple-accent/10 px-3 py-2 text-xs font-bold text-maple-accent hover:bg-maple-accent/20">
+          + 직접 목표
+        </button>
+      </div>
+      <p className="text-[11px] text-slate-500 mt-1">각 목표의 필요 메소·현재 모은 메소·실제 완료 여부를 따로 기록합니다.</p>
       {!prioOpen ? null : lineItems.length === 0 ? (
-        <div className="text-center py-8 text-slate-500 text-sm">
-          비용이 입력된 항목이 없습니다. 장비 슬롯이나 목표치에 예상 비용을 입력해 보세요.
+        <div className="text-center py-8 text-slate-500 text-sm space-y-3">
+          <p>목표 장비를 선택하거나 직접 예산 목표를 추가해 보세요.</p>
+          <button type="button" onClick={addCustomBudgetItem}
+            className="min-h-11 rounded-lg bg-maple-accent px-4 py-2 text-sm font-bold text-slate-900 hover:bg-amber-300">
+            + 첫 목표 추가
+          </button>
         </div>
       ) : (
-        <>
-          <div className="hidden md:grid grid-cols-12 gap-2 text-xs text-slate-400 px-2 py-2 border-b border-maple-border">
-            <div className="col-span-2 text-center">순위</div>
-            <div className="col-span-1 text-center">완료</div>
-            <div className="col-span-4">항목</div>
-            <div className="col-span-3 text-right">예상 비용</div>
-            <div className="col-span-2 text-right">누적</div>
-          </div>
-          <div className="divide-y divide-maple-border">
-            {(() => {
-              let cum = 0;
-              return lineItems.map((it, idx) => {
-                cum += it.cost;
-                return (
-                  <div key={it.key}
-                    draggable
-                    onDragStart={() => setDragIndex(idx)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => { reorderTo(dragIndex, idx); setDragIndex(null); }}
-                    onDragEnd={() => setDragIndex(null)}
-                    className={`grid grid-cols-12 gap-2 items-center px-2 py-2.5 transition ${it.done ? 'opacity-50' : ''} ${dragIndex === idx ? 'bg-maple-accent/10' : ''}`}>
-                    <div className="col-span-3 md:col-span-2 flex items-center gap-1.5 justify-start md:justify-center">
-                      <span className="text-slate-500 cursor-grab select-none" title="드래그해서 순서 변경">⠿</span>
-                      <span className="text-sm font-bold text-maple-accent w-4 text-center">{idx + 1}</span>
-                      <div className="flex flex-col leading-none">
-                        <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0}
-                          className="px-1 text-slate-300 hover:text-white disabled:opacity-20">▲</button>
-                        <button type="button" onClick={() => move(idx, 1)} disabled={idx === lineItems.length - 1}
-                          className="px-1 text-slate-300 hover:text-white disabled:opacity-20">▼</button>
-                      </div>
+        <div className="mt-4 space-y-3">
+          {lineItems.map((it, idx) => {
+            const statusMeta = {
+              empty: ['필요 메소 입력', 'bg-slate-700/60 text-slate-300 border-slate-500/40', 'bg-slate-500'],
+              waiting: ['대기', 'bg-slate-700/60 text-slate-300 border-slate-500/40', 'bg-slate-500'],
+              saving: ['모으는 중', 'bg-amber-500/15 text-amber-300 border-amber-400/40', 'bg-amber-400'],
+              funded: ['메소 준비 완료', 'bg-sky-500/15 text-sky-300 border-sky-400/40', 'bg-sky-400'],
+              done: ['완료', 'bg-emerald-500/15 text-emerald-300 border-emerald-400/40', 'bg-emerald-400'],
+            }[it.status];
+            const displayName = it.name || '이름 없는 목표';
+            return (
+              <article key={it.key}
+                data-budget-item-key={it.key}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => { reorderTo(dragIndex, idx); setDragIndex(null); }}
+                className={`rounded-xl border p-3 md:p-4 transition ${it.done ? 'border-emerald-400/35 bg-emerald-500/5' : 'border-maple-border bg-maple-bg/35'} ${dragIndex === idx ? 'ring-1 ring-maple-accent bg-maple-accent/10' : ''}`}>
+                <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
+                    <span draggable onDragStart={() => setDragIndex(idx)} onDragEnd={() => setDragIndex(null)}
+                      className="min-h-9 min-w-9 inline-flex items-center justify-center text-slate-500 cursor-grab select-none" title="드래그해서 순서 변경">⠿</span>
+                    <span className="w-5 text-center text-sm font-black text-maple-accent">{idx + 1}</span>
+                    <div className="flex flex-col leading-none">
+                      <button type="button" aria-label={`${displayName} 우선순위 올리기`} onClick={() => move(idx, -1)} disabled={idx === 0}
+                        className="min-w-9 min-h-9 text-slate-300 hover:text-white disabled:opacity-20">▲</button>
+                      <button type="button" aria-label={`${displayName} 우선순위 내리기`} onClick={() => move(idx, 1)} disabled={idx === lineItems.length - 1}
+                        className="min-w-9 min-h-9 text-slate-300 hover:text-white disabled:opacity-20">▼</button>
                     </div>
-                    <div className="col-span-2 md:col-span-1 flex items-center justify-center">
-                      <input type="checkbox" checked={it.done} onChange={() => toggleDone(it)} className="w-5 h-5 accent-emerald-400 cursor-pointer" />
-                    </div>
-                    <div className="col-span-7 md:col-span-4 min-w-0">
-                      <div className={`font-medium truncate ${it.done ? 'line-through text-slate-400' : 'text-slate-100'}`}>
-                        {it.name}
-                        {it.type === 'equip' && it.star ? <span className="text-amber-300 text-xs ml-1">★{it.star}</span> : null}
-                      </div>
-                      {it.label && <div className="text-xs text-slate-500 truncate">{it.label}</div>}
-                    </div>
-                    <div className="col-span-7 md:col-span-3 text-right font-semibold text-emerald-300 text-sm md:text-base">{fmtMeso(it.cost)}</div>
-                    <div className="col-span-5 md:col-span-2 text-right text-xs text-slate-400">{fmtMesoShort(cum)}</div>
                   </div>
-                );
-              });
-            })()}
-          </div>
-          <div className="border-t-2 border-maple-border mt-3 pt-3 flex items-center justify-between">
-            <div className="font-semibold">합계</div>
-            <div className="font-bold text-emerald-300 text-base md:text-lg">{fmtMeso(totalCost)}</div>
-          </div>
-        </>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="rounded-full border border-maple-border bg-maple-bg px-2 py-0.5 text-[10px] font-bold text-slate-400">{it.kindLabel}</span>
+                      {it.type === 'custom' ? (
+                        <input type="text" value={it.name} placeholder="목표 이름"
+                          aria-label={`예산 목표 ${idx + 1} 이름`} data-budget-name-input
+                          onChange={(event) => updateCustomItem(it.customId, { name: event.target.value })}
+                          className="min-w-0 flex-1 border-b border-maple-border bg-transparent px-1 py-0.5 font-semibold text-slate-100 focus:border-maple-accent focus:outline-none" />
+                      ) : (
+                        <div className={`font-semibold ${it.done ? 'text-emerald-300' : 'text-slate-100'}`}>
+                          {it.name}{it.type === 'equip' && it.star ? <span className="ml-1 text-xs text-amber-300">★{it.star}</span> : null}
+                        </div>
+                      )}
+                    </div>
+                    {it.type === 'custom' ? (
+                      <input type="text" value={it.label || ''} placeholder="메모 (선택)"
+                        aria-label={`${displayName} 메모`}
+                        onChange={(event) => updateCustomItem(it.customId, { memo: event.target.value })}
+                        className="mt-1 w-full bg-transparent text-xs text-slate-400 placeholder:text-slate-600 focus:outline-none" />
+                    ) : it.label ? <div className="mt-1 text-xs text-slate-500 break-words">{it.label}</div> : null}
+                  </div>
+
+                  <label className={`flex min-h-11 flex-shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs font-bold ${it.done ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-300' : 'border-maple-border bg-maple-bg text-slate-300'} ${it.required <= 0 && !it.done ? 'cursor-not-allowed opacity-40' : ''}`}>
+                    <input type="checkbox" checked={it.done} disabled={it.required <= 0 && !it.done}
+                      aria-label={`${displayName} 완료`}
+                      onChange={() => toggleDone(it)} className="h-5 w-5 accent-emerald-400" />
+                    완료
+                  </label>
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-maple-border bg-maple-bg/55 p-3">
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-slate-300">필요 메소</label>
+                      {!it.editableCost && <span className="text-[10px] font-bold text-violet-300">자동 계산</span>}
+                    </div>
+                    {it.editableCost ? (
+                      <MesoInput value={it.required} onChange={(value) => setItemCost(it, value)}
+                        ariaLabel={`${displayName} 필요 메소`} />
+                    ) : (
+                      <>
+                        <div className="min-h-9 rounded border border-maple-border/70 bg-maple-bg px-2 py-1.5 text-right text-sm font-bold text-emerald-300">{fmtMeso(it.required)}</div>
+                        <p className="mt-1 text-[10px] text-slate-500">{it.type === 'symbols' ? '아래 심볼 목표에서 변경' : '아래 HEXA 설정에서 변경'}</p>
+                      </>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-maple-border bg-maple-bg/55 p-3">
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-slate-300">현재 모은 메소</label>
+                      <button type="button" disabled={it.required <= 0 || it.done}
+                        onClick={() => setItemSaved(it, it.required)}
+                        className="min-h-11 rounded px-2 text-xs font-bold text-sky-300 hover:bg-sky-500/10 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-30">전액 입력</button>
+                    </div>
+                    <MesoInput value={it.saved} disabled={it.done}
+                      onChange={(value) => setItemSaved(it, value)} ariaLabel={`${displayName} 현재 모은 메소`} />
+                    {it.done && it.saved > 0 && <p className="mt-1 text-[10px] text-slate-500">완료 중에는 저장된 모은 금액을 합계에서 제외합니다.</p>}
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-maple-border/70 bg-maple-bg/35 p-3">
+                  <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+                    <span className={`rounded-full border px-2 py-0.5 font-bold ${statusMeta[1]}`}>{statusMeta[0]}</span>
+                    <span className="font-bold text-slate-200">{it.pct.toFixed(0)}%</span>
+                  </div>
+                  <ProgressBar value={it.pct} tone={statusMeta[2]} label={`${displayName} 메소 준비도`} />
+                  <div className="mt-1.5 flex flex-col items-start gap-1 text-[11px] text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                    <span>{it.status === 'empty' ? '필요 메소를 입력하세요.' : it.status === 'done' ? '실제 구매·강화를 완료했습니다.' : it.status === 'funded' ? '필요 메소를 모두 모았습니다. 완료 후 체크하세요.' : `${fmtMeso(it.remaining)} 더 필요`}</span>
+                    <span className="flex-shrink-0">모음 {fmtMeso(it.creditedSaved)} / 필요 {fmtMeso(it.required)}</span>
+                  </div>
+                  {it.surplus > 0 && <p className="mt-1 text-[10px] text-amber-300">목표보다 {fmtMeso(it.surplus)} 더 입력되어 진행률에는 제외됩니다.</p>}
+                </div>
+
+                {it.deletable && (
+                  <div className="mt-2 text-right">
+                    <button type="button" onClick={() => removeCustomBudgetItem(it)}
+                      className="min-h-11 rounded px-3 text-xs text-maple-danger hover:bg-red-500/10">직접 목표 삭제</button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -3390,44 +3645,68 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
       <div className="bg-gradient-to-br from-emerald-500/15 to-sky-500/5 border border-emerald-500/30 rounded-xl p-5">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <div className="text-sm text-slate-300">목표 달성 총 예산</div>
+            <div className="text-sm text-slate-300">전체 필요 메소</div>
             <div className="text-2xl md:text-4xl font-bold text-emerald-300 mt-1 break-all">{fmtMeso(totalCost)}</div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-slate-400">남은 비용</div>
+            <div className="text-xs text-slate-400">앞으로 모을 메소</div>
             <div className="text-lg md:text-2xl font-bold text-maple-accent break-all">{fmtMeso(remaining)}</div>
           </div>
         </div>
 
         <div className="mt-4">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-            <span>진행률 (완료 {fmtMeso(doneCost)})</span>
+            <span>전체 준비도 (완료 {fmtMeso(doneCost)} + 모음 {fmtMeso(savedCost)})</span>
             <span>{progressPct.toFixed(0)}%</span>
           </div>
-          <ProgressBar value={progressPct} tone="bg-emerald-400" />
+          <ProgressBar value={progressPct} tone="bg-sky-400" label="전체 메소 준비도" />
+          <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 mb-1">
+            <span>실제 완료 {summary.doneCount}/{summary.itemCount}개</span>
+            <span>완료율 {summary.completionPct.toFixed(0)}%</span>
+          </div>
+          <ProgressBar value={summary.completionPct} tone="bg-emerald-400" label="전체 목표 완료율" />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
+            <div className="text-xs text-slate-400">완료 금액</div>
+            <div className="text-sm md:text-base font-bold text-emerald-300 mt-0.5 break-all">{fmtMeso(doneCost)}</div>
+          </div>
+          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
+            <div className="text-xs text-slate-400">목표에 반영된 모은 메소</div>
+            <div className="text-sm md:text-base font-bold text-sky-300 mt-0.5 break-all">{fmtMeso(savedCost)}</div>
+          </div>
           <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
             <div className="text-xs text-slate-400">주간 보스 수익</div>
-            <div className="text-sm md:text-base font-bold text-sky-300 mt-0.5 break-all">{fmtMeso(weeklyIncome)}</div>
+            <div className="text-sm md:text-base font-bold text-violet-300 mt-0.5 break-all">{fmtMeso(weeklyIncome)}</div>
           </div>
           <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
-            <div className="text-xs text-slate-400">달성까지 (수익 연동)</div>
+            <div className="text-xs text-slate-400">부족분 달성까지</div>
             <div className="text-sm md:text-base font-bold text-maple-accent mt-0.5">
-              {totalCost <= 0 ? '비용 입력 필요' : remaining === 0 ? '🎉 달성!' : weeksToGoal ? `약 ${weeksToGoal}주 (${monthsToGoal}개월)` : '수익 입력 필요'}
+              {totalCost <= 0 ? '필요 메소 입력' : summary.allDone ? '🎉 모두 완료' : summary.moneyReady ? '메소 준비 완료' : weeksToGoal ? `약 ${weeksToGoal}주 (${monthsToGoal}개월)` : '주간 수익 입력 필요'}
             </div>
           </div>
-          <div className="bg-maple-bg/40 rounded-lg px-4 py-3 col-span-2 sm:col-span-1">
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
             <div className="text-xs text-slate-400">예산 한도 (선택)</div>
             <MesoInput
               value={budgetTotal}
-              onChange={setBudgetTotal}
+              onChange={(value) => setBudget(current => ({ ...current, total: value }))}
               ariaLabel="예산 한도(메소)"
               className="w-full bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-right mt-0.5 focus:outline-none focus:border-maple-accent"
             />
           </div>
+          <div className="bg-maple-bg/40 rounded-lg px-4 py-3 text-xs text-slate-400 leading-relaxed">
+            완료 체크는 실제 구매·강화를 마쳤을 때 사용하세요. 모은 메소가 필요액에 도달해도 자동 완료하지 않습니다.
+          </div>
         </div>
+        {summary.surplus > 0 && (
+          <div className="mt-3 bg-amber-500/10 border border-amber-400/30 text-amber-200 text-xs rounded px-3 py-2">
+            목표보다 초과 입력된 모은 메소 {fmtMeso(summary.surplus)}는 준비도 합계에서 제외했습니다.
+          </div>
+        )}
         {overBudget && (
           <div className="mt-3 bg-red-500/10 border border-red-500/40 text-red-200 text-xs rounded px-3 py-2">
             ⚠️ 목표 총 예산({fmtMeso(totalCost)})이 설정한 한도({fmtMeso(budgetTotal)})를 {fmtMeso(totalCost - budgetTotal)} 초과했습니다.
@@ -3440,7 +3719,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
 
       {/* 장비창 - 본게임 EQUIPMENT 창 UI */}
       <div>
-        <p className="text-xs text-slate-400 mb-3 text-center">슬롯을 눌러 목표 장비를 검색하고 스타포스·잠재·플레임·예상 비용을 입력하세요.</p>
+        <p className="text-xs text-slate-400 mb-3 text-center">슬롯을 눌러 목표 장비를 검색하고 스타포스·잠재·플레임·필요 메소를 입력하세요.</p>
         <div className="bg-[#243042] border-2 border-black/40 rounded-xl overflow-hidden max-w-2xl mx-auto shadow-xl">
           {/* 타이틀 바 */}
           <div className="bg-[#2c3a4f] px-4 py-2.5 flex items-center justify-between">
@@ -3626,7 +3905,7 @@ function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
     <div className="border border-maple-border rounded-lg overflow-hidden">
       <button type="button" onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-3 py-2 bg-maple-bg/60 hover:bg-maple-bg text-sm">
-        <span className="flex items-center gap-1.5"><span>⚡</span> 예상 비용 자동계산 <span className="text-[10px] text-slate-500">(KMS 공식 확률)</span></span>
+        <span className="flex items-center gap-1.5"><span>⚡</span> 필요 메소 자동계산 <span className="text-[10px] text-slate-500">(KMS 공식 확률)</span></span>
         <span className="text-slate-400">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
@@ -3684,7 +3963,7 @@ function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
             <span className="text-slate-300 font-semibold">합계 <span className="text-maple-accent">{fmtMeso(total)}</span></span>
             <button type="button" onClick={() => onFill(total)} disabled={total <= 0 || hasCalcError}
               className={`px-3 py-1.5 rounded text-xs font-semibold ${total > 0 ? 'bg-maple-accent text-slate-900 hover:bg-amber-300' : 'bg-maple-bg text-slate-500 cursor-not-allowed'}`}>
-              예상 비용에 채우기
+              필요 메소에 채우기
             </button>
           </div>
           <p className="text-[10px] text-slate-500">스타포스는 12성 복구·스페어 0·최적 파방 기준입니다. 잠재·에디는 선택한 크뎀·쿨감·주스탯 등 실제 옵션 조합 전체의 공식 확률을 합산하며, 에디 유효 줄에는 고정 수치·레벨당 수치도 포함합니다.</p>
@@ -3859,8 +4138,8 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             <SlotAutoCost slot={slot} d={d} cap={cap} onFill={(n) => onChange({ cost: n })} onChange={onChange} />
           )}
           <div>
-            <label className="text-sm text-slate-300 block mb-1.5">예상 비용 (메소)</label>
-            <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} ariaLabel={`${slot.name} 예상 비용(메소)`} />
+            <label className="text-sm text-slate-300 block mb-1.5">필요 메소</label>
+            <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} ariaLabel={`${slot.name} 필요 메소`} />
             <p className="text-[11px] text-slate-500 mt-1">※ 우선순위는 예산 우선순위 표에서 ▲▼로 조절합니다.</p>
           </div>
 
@@ -4066,10 +4345,20 @@ function SymbolPriceView() {
  * 총 예산 정리 (캐릭터별 영수증)
  * ========================================================= */
 function BudgetSummaryView({ characters, charTotals, onSelect }) {
-  const cards = characters.map(c => ({ c, s: budgetSummary(c), weekly: (charTotals[c.id]?.weekly) || 0 }));
+  const cards = characters.map(c => {
+    const weekly = (charTotals[c.id]?.weekly) || 0;
+    return { c, s: budgetSummary(c, weekly) };
+  });
   const grand = cards.reduce((a, x) => ({
-    total: a.total + x.s.total, done: a.done + x.s.done, remaining: a.remaining + x.s.remaining,
-  }), { total: 0, done: 0, remaining: 0 });
+    total: a.total + x.s.total,
+    completed: a.completed + x.s.completed,
+    saved: a.saved + x.s.saved,
+    remaining: a.remaining + x.s.remaining,
+    itemCount: a.itemCount + x.s.itemCount,
+    doneCount: a.doneCount + x.s.doneCount,
+  }), { total: 0, completed: 0, saved: 0, remaining: 0, itemCount: 0, doneCount: 0 });
+  const grandPrepared = grand.completed + grand.saved;
+  const grandPct = grand.total > 0 ? Math.min(100, (grandPrepared / grand.total) * 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -4082,16 +4371,22 @@ function BudgetSummaryView({ characters, charTotals, onSelect }) {
         <div className="text-center py-12 text-slate-500">캐릭터를 먼저 추가해 주세요.</div>
       ) : (
         <>
-          <div className="bg-gradient-to-br from-emerald-500/15 to-sky-500/5 border border-emerald-500/30 rounded-xl p-5 grid grid-cols-3 gap-3 max-w-2xl">
-            <div><div className="text-xs text-slate-400">전체 목표 예산</div><div className="text-base md:text-xl font-bold text-emerald-300 break-all">{fmtMeso(grand.total)}</div></div>
-            <div><div className="text-xs text-slate-400">완료</div><div className="text-base md:text-xl font-bold text-sky-300 break-all">{fmtMeso(grand.done)}</div></div>
-            <div><div className="text-xs text-slate-400">남은 비용</div><div className="text-base md:text-xl font-bold text-maple-accent break-all">{fmtMeso(grand.remaining)}</div></div>
+          <div className="bg-gradient-to-br from-emerald-500/15 to-sky-500/5 border border-emerald-500/30 rounded-xl p-5 max-w-4xl">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div><div className="text-xs text-slate-400">전체 필요 메소</div><div className="text-base md:text-xl font-bold text-emerald-300 break-all">{fmtMeso(grand.total)}</div></div>
+              <div><div className="text-xs text-slate-400">완료 금액</div><div className="text-base md:text-xl font-bold text-emerald-300 break-all">{fmtMeso(grand.completed)}</div></div>
+              <div><div className="text-xs text-slate-400">목표에 반영된 모은 메소</div><div className="text-base md:text-xl font-bold text-sky-300 break-all">{fmtMeso(grand.saved)}</div></div>
+              <div><div className="text-xs text-slate-400">앞으로 모을 메소</div><div className="text-base md:text-xl font-bold text-maple-accent break-all">{fmtMeso(grand.remaining)}</div></div>
+            </div>
+            <div className="mt-4 flex items-center justify-between text-xs text-slate-400 mb-1">
+              <span>전체 준비도 · 실제 완료 {grand.doneCount}/{grand.itemCount}개</span>
+              <span>{grandPct.toFixed(0)}%</span>
+            </div>
+            <ProgressBar value={grandPct} tone="bg-sky-400" label="모든 캐릭터 예산 준비도" />
           </div>
 
           <div className="flex gap-4 overflow-x-auto pb-3">
-            {cards.map(({ c, s, weekly }) => {
-              const weeks = s.remaining > 0 && weekly > 0 ? Math.ceil(s.remaining / weekly) : null;
-              return (
+            {cards.map(({ c, s }) => (
                 <div key={c.id} className="flex-shrink-0 w-[280px] bg-[#0b1220] border border-maple-border rounded-xl p-4 font-mono">
                   <button onClick={() => onSelect(c.id)} className="w-full text-center border-b border-dashed border-slate-600 pb-2 mb-2 hover:text-maple-accent">
                     <div className="font-bold text-base">🧾 {c.name}</div>
@@ -4102,24 +4397,27 @@ function BudgetSummaryView({ characters, charTotals, onSelect }) {
                   ) : (
                     <div className="space-y-1 text-xs">
                       {s.items.map(it => (
-                        <div key={it.key} className={`flex justify-between gap-2 ${it.done ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
-                          <span className="truncate">{it.done ? '✓ ' : ''}{it.name}{it.type === 'equip' && it.star ? `★${it.star}` : ''}</span>
-                          <span className="text-emerald-300 whitespace-nowrap">{fmtMesoShort(it.cost)}</span>
+                        <div key={it.key} className={`flex justify-between gap-2 ${it.done ? 'text-slate-500' : 'text-slate-300'}`}>
+                          <span className={`truncate ${it.done ? 'line-through' : ''}`}>{it.done ? '✓ ' : it.status === 'funded' ? '◎ ' : ''}{it.name || '이름 없는 목표'}{it.type === 'equip' && it.star ? `★${it.star}` : ''}</span>
+                          <span className="text-right whitespace-nowrap">
+                            <span className="block text-emerald-300">{fmtMesoShort(it.required) || '0'}</span>
+                            <span className={`block text-[10px] ${it.done ? 'text-emerald-400' : 'text-sky-300'}`}>{it.done ? '완료' : `모음 ${fmtMesoShort(it.creditedSaved) || '0'}`}</span>
+                          </span>
                         </div>
                       ))}
                     </div>
                   )}
                   <div className="border-t border-dashed border-slate-600 mt-2 pt-2 space-y-1 text-xs">
-                    <div className="flex justify-between"><span className="text-slate-400">총 예산</span><span className="font-bold text-emerald-300">{fmtMesoShort(s.total)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">완료</span><span className="text-sky-300">{fmtMesoShort(s.done)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">남음</span><span className="text-maple-accent font-bold">{fmtMesoShort(s.remaining)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">진행률</span><span className="text-slate-200">{s.pct.toFixed(0)}%</span></div>
-                    <div className="pt-1"><ProgressBar value={s.pct} tone="bg-emerald-400" /></div>
-                    <div className="flex justify-between pt-1"><span className="text-slate-400">달성까지</span><span className="text-maple-accent">{s.total <= 0 ? '비용 입력 필요' : s.remaining === 0 ? '완료 🎉' : weeks ? `약 ${weeks}주` : '-'}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-400">필요</span><span className="font-bold text-emerald-300">{fmtMesoShort(s.total) || '0'}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-400">완료</span><span className="text-emerald-300">{fmtMesoShort(s.completed) || '0'}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-400">모음</span><span className="text-sky-300">{fmtMesoShort(s.saved) || '0'}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-400">부족</span><span className="text-maple-accent font-bold">{fmtMesoShort(s.remaining) || '0'}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-400">준비도</span><span className="text-slate-200">{s.fundingPct.toFixed(0)}%</span></div>
+                    <div className="pt-1"><ProgressBar value={s.fundingPct} tone="bg-sky-400" label={`${c.name} 예산 준비도`} /></div>
+                    <div className="flex justify-between pt-1"><span className="text-slate-400">달성까지</span><span className="text-maple-accent">{s.total <= 0 ? '필요 메소 입력' : s.allDone ? '완료 🎉' : s.moneyReady ? '메소 준비 완료' : s.weeks ? `약 ${s.weeks}주` : '-'}</span></div>
                   </div>
                 </div>
-              );
-            })}
+            ))}
           </div>
         </>
       )}
