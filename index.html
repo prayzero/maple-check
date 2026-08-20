@@ -161,7 +161,7 @@ const DEFAULT_BOSSES = [
   }},
   { id: 'bellona', name: '벨로나', level: 280, introduced: '2026-08-20', icon: 'icons/bellona.png', difficulties: {
       'Easy':   { price: 440000000, max: 3 },
-      'Normal': { price: 850000000, max: 3 },
+      'Normal': { price: 890000000, max: 3 },
       'Hard':   { price: 2950000000, max: 3 },
   }},
   { id: 'limbo', name: '림보', level: 285, icon: 'icons/limbo.png', difficulties: {
@@ -234,7 +234,7 @@ const PRICE_HISTORY = [
     id: 'bellona_20260820',
     title: '신규 보스 벨로나',
     range: '2026-08-20 ~ (현재)',
-    note: '벨로나는 2026-08-13 테스트월드 공개 수치를 2026-08-20 정식 업데이트에 앞서 반영했습니다.',
+    note: '2026-08-20 정식 업데이트 기준 벨로나 결정석 가격(이지 4억 4,000만 · 노멀 8억 9,000만 · 하드 29억 5,000만 메소)을 반영했습니다.',
     introducedBosses: ['bellona'],
     overrides: {}, // 현재 = DEFAULT_BOSSES 기준 (변동 없음)
   },
@@ -278,6 +278,18 @@ const cloneJson = (value) => JSON.parse(JSON.stringify(value));
 const safeNonNegativeInt = (value, fallback = 0) =>
   Number.isFinite(Number(value)) && Number(value) >= 0 ? Math.floor(Number(value)) : fallback;
 
+// 정식 서버 반영 전 저장된 기본값만 새 공식값으로 교체한다.
+// 사용자가 직접 입력한 다른 가격은 그대로 보존한다.
+const BOSS_DEFAULT_PRICE_MIGRATIONS = {
+  bellona: { Normal: { from: 850000000, to: 890000000 } },
+};
+
+const migrateSavedBossPrice = (bossId, difficulty, savedPrice, defaultPrice) => {
+  const migration = BOSS_DEFAULT_PRICE_MIGRATIONS[bossId]?.[difficulty];
+  if (!migration || defaultPrice !== migration.to) return savedPrice;
+  return savedPrice === migration.from ? migration.to : savedPrice;
+};
+
 const reconcileBossData = (saved) => {
   if (!Array.isArray(saved)) return cloneJson(DEFAULT_BOSSES);
   const savedMap = new Map(
@@ -292,8 +304,9 @@ const reconcileBossData = (saved) => {
         : { price: defaultValue.price || 0, max: defaultValue.max || 6 };
       const raw = old?.difficulties?.[diff];
       const value = typeof raw === 'number' ? { price: raw, max: base.max } : raw;
+      const savedPrice = safeNonNegativeInt(value?.price, base.price);
       difficulties[diff] = {
-        price: safeNonNegativeInt(value?.price, base.price),
+        price: migrateSavedBossPrice(def.id, diff, savedPrice, base.price),
         max: Math.min(6, Math.max(1, safeNonNegativeInt(value?.max, base.max))),
       };
     }
