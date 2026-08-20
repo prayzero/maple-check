@@ -1957,7 +1957,9 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
             active={selected === c.id}
             onClick={() => onSelect(c.id)}
             label={`👤 ${c.name}`}
-            subtitle={fmtMeso(charTotals[c.id]?.total || 0)}
+            subtitle={`주간 ${fmtMeso(charTotals[c.id]?.weekly || 0)}`}
+            secondarySubtitle={`월간 1회 ${fmtMeso(charTotals[c.id]?.monthly || 0)}`}
+            subtitleClassName="text-sky-300 font-medium"
           />
         ))}
 
@@ -2045,7 +2047,7 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
   );
 }
 
-function NavItem({ active, onClick, label, subtitle }) {
+function NavItem({ active, onClick, label, subtitle, secondarySubtitle, subtitleClassName = 'text-slate-400' }) {
   return (
     <button
       onClick={onClick}
@@ -2055,7 +2057,16 @@ function NavItem({ active, onClick, label, subtitle }) {
       `}
     >
       <div className="text-sm font-medium truncate">{label}</div>
-      {subtitle && <div className="text-xs text-slate-400 mt-0.5 truncate">{subtitle}</div>}
+      {subtitle && (
+        <div className={`text-xs mt-0.5 ${secondarySubtitle ? 'whitespace-normal break-words leading-snug' : 'truncate'} ${subtitleClassName}`}>
+          {subtitle}
+        </div>
+      )}
+      {secondarySubtitle && (
+        <div className="text-[11px] text-violet-300/80 mt-0.5 whitespace-normal break-words leading-snug">
+          {secondarySubtitle}
+        </div>
+      )}
     </button>
   );
 }
