@@ -251,10 +251,22 @@ assert(duplicateIed.length === 2 && duplicateIed[0][2] === 0 && duplicateIed[1][
 const backupContext = {};
 vm.runInNewContext(
   sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
-    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, activeExpiryNotificationKeys };',
+    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, activeExpiryNotificationKeys };',
   backupContext,
 );
 const backupApi = backupContext.testApi;
+const legacyBudget = backupApi.normalizeBudget({ total: 123456789 });
+assert(legacyBudget.total === 123456789 &&
+  Object.keys(legacyBudget.savedByItem).length === 0 && legacyBudget.customItems.length === 0,
+  'legacy budget limits must survive while new savings fields default to empty');
+const normalizedBudget = backupApi.normalizeBudget({
+  total: 900000000,
+  savedByItem: { eq_weapon: 250000000 },
+  customItems: [{ id: 'goal_ring', name: '시드링', cost: 400000000, saved: 100000000, done: false, priority: 2, memo: '직접 목표' }],
+});
+assert(normalizedBudget.savedByItem.eq_weapon === 250000000 &&
+  normalizedBudget.customItems[0].saved === 100000000 && normalizedBudget.customItems[0].name === '시드링',
+  'new budget savings and custom goals must normalize without losing values');
 const bellona = backupApi.DEFAULT_BOSSES.find(boss => boss.id === 'bellona');
 assert(bellona?.name === '벨로나' && bellona.level === 280 && bellona.introduced === '2026-08-20' && !bellona.monthly &&
   JSON.stringify(Object.keys(bellona.difficulties)) === JSON.stringify(['Easy', 'Normal', 'Hard']),
@@ -304,6 +316,40 @@ const validBackup = {
 const normalizedBackup = backupApi.validateBackupData(validBackup);
 assert(normalizedBackup.characters[0].bosses[0].partyMembers === 3,
   'backup import must clamp actual party size to the boss maximum');
+assert(normalizedBackup.characters[0].budget.total === 0 &&
+  Object.keys(normalizedBackup.characters[0].budget.savedByItem).length === 0,
+  'older backups without savings fields must import with an empty normalized budget');
+const budgetBackup = backupApi.validateBackupData({
+  ...validBackup,
+  characters: [{
+    ...validBackup.characters[0],
+    budget: {
+      total: 1500000000,
+      savedByItem: { eq_weapon: 600000000 },
+      customItems: [{ id: 'goal_ring', name: '시드링', cost: 400000000, saved: 100000000, done: false, priority: 2, memo: '' }],
+    },
+  }],
+});
+assert(budgetBackup.characters[0].budget.total === 1500000000 &&
+  budgetBackup.characters[0].budget.savedByItem.eq_weapon === 600000000 &&
+  budgetBackup.characters[0].budget.customItems[0].saved === 100000000,
+  'backup import must preserve budget limits, item savings, and custom goals');
+for (const [budget, label] of [
+  [{ total: 0, savedByItem: { eq_weapon: -1 }, customItems: [] }, 'negative saved amount'],
+  [{ total: 0, savedByItem: {}, customItems: [{ id: 'bad_saved', name: '깨짐', cost: 1, saved: '1', done: false, priority: 0, memo: '' }] }, 'string custom saved amount'],
+  [{ total: 0, savedByItem: {}, customItems: [{ id: 'unsafe_cost', name: '깨짐', cost: Number.MAX_SAFE_INTEGER + 1, saved: 0, done: false, priority: 0, memo: '' }] }, 'unsafe custom cost'],
+]) {
+  let rejected = false;
+  try {
+    backupApi.validateBackupData({
+      ...validBackup,
+      characters: [{ ...validBackup.characters[0], budget }],
+    });
+  } catch {
+    rejected = true;
+  }
+  assert(rejected, `backup import must reject ${label}`);
+}
 const legacyBackupWithoutBellona = backupApi.validateBackupData({
   ...validBackup,
   bossData: validBackup.bossData.filter(boss => boss.id !== 'bellona'),
@@ -364,6 +410,71 @@ try {
   duplicateBossRejected = true;
 }
 assert(duplicateBossRejected, 'duplicate boss rows must be rejected before import');
+
+const budgetModelContext = {};
+vm.runInNewContext(
+  `const isPlainObject = value => !!value && typeof value === 'object' && !Array.isArray(value);\n` +
+  `const safeNonNegativeInt = (value, fallback = 0) => Number.isFinite(Number(value)) && Number(value) >= 0 ? Math.floor(Number(value)) : fallback;\n` +
+  `const parseNum = value => parseInt(String(value ?? '').replace(/[^0-9]/g, '')) || 0;\n` +
+  sourceBetween('const budgetItemUid =', 'const normalizeChar =') +
+  `\nconst EQUIP_SLOTS = [{ id: 'weapon', name: '무기' }];\n` +
+  `const emptyGoals = () => ({ symbols: {}, solErda: { fragPrice: 0 } });\n` +
+  `const calcSymbolCost = () => 0;\n` +
+  `const calcHexa = () => ({ cost: 0, frag: 0, erda: 0 });\n` +
+  `const fmtMesoShort = () => '';\n` +
+  sourceBetween('// 예산 라인 아이템 집계', 'function BudgetPlanner(') +
+  `\nglobalThis.testApi = { normalizeBudget, buildBudgetItems, deriveBudgetItem, budgetSummary };`,
+  budgetModelContext,
+);
+const budgetModelApi = budgetModelContext.testApi;
+const budgetCharacter = {
+  equipment: { weapon: { item: '제네시스 무기', cost: 600000000, saved: 0, priority: 1, done: false } },
+  budget: {
+    total: 0,
+    savedByItem: { eq_weapon: 600000000 },
+    customItems: [{ id: 'goal_ring', name: '시드링', cost: 400000000, saved: 100000000, done: false, priority: 2, memo: '' }],
+  },
+};
+const savingSummary = budgetModelApi.budgetSummary(budgetCharacter, 200000000);
+assert(savingSummary.total === 1000000000 && savingSummary.completed === 0 &&
+  savingSummary.saved === 700000000 && savingSummary.remaining === 300000000 &&
+  savingSummary.weeks === 2 && !savingSummary.moneyReady && !savingSummary.allDone,
+  'budget savings must reduce the funding gap without auto-completing goals');
+close(savingSummary.fundingPct, 70, 1e-12, 'budget funding progress');
+const completedWeaponCharacter = JSON.parse(JSON.stringify(budgetCharacter));
+completedWeaponCharacter.equipment.weapon.done = true;
+const completedWeaponSummary = budgetModelApi.budgetSummary(completedWeaponCharacter, 200000000);
+const completedWeapon = completedWeaponSummary.items.find(item => item.key === 'eq_weapon');
+assert(completedWeaponSummary.completed === 600000000 && completedWeaponSummary.saved === 100000000 &&
+  completedWeaponSummary.remaining === 300000000 && completedWeapon.saved === 600000000 &&
+  completedWeapon.creditedSaved === 0 && completedWeaponSummary.doneCount === 1,
+  'completed goal cost and preserved savings must never be counted twice');
+const restoredWeaponSummary = budgetModelApi.budgetSummary(budgetCharacter, 200000000);
+assert(restoredWeaponSummary.items.find(item => item.key === 'eq_weapon').creditedSaved === 600000000,
+  'unchecking completion must restore the previously entered savings amount');
+const overfundedCharacter = JSON.parse(JSON.stringify(budgetCharacter));
+overfundedCharacter.budget.customItems[0].saved = 500000000;
+const overfundedSummary = budgetModelApi.budgetSummary(overfundedCharacter, 200000000);
+assert(overfundedSummary.saved === 1000000000 && overfundedSummary.surplus === 100000000 &&
+  overfundedSummary.remaining === 0 && overfundedSummary.moneyReady && !overfundedSummary.allDone &&
+  overfundedSummary.items.every(item => !item.done),
+  'fully funded goals must show money ready without changing completion checkboxes');
+const zeroBudgetSummary = budgetModelApi.budgetSummary({
+  budget: { total: 0, savedByItem: {}, customItems: [{ id: 'empty', name: '빈 목표', cost: 0, saved: 100000000, done: true, priority: 1, memo: '' }] },
+}, 0);
+assert(zeroBudgetSummary.total === 0 && zeroBudgetSummary.fundingPct === 0 &&
+  zeroBudgetSummary.completionPct === 0 && zeroBudgetSummary.weeks === null && !zeroBudgetSummary.moneyReady,
+  'zero-cost budget goals must remain finite and must not be reported as completed funding');
+const dormantAutomaticSavings = budgetModelApi.budgetSummary({
+  goals: { symbols: {}, solErda: { fragPrice: 0 } },
+  hexaSkills: {},
+  budget: { total: 0, savedByItem: { symbols: 123000000, hexa: 456000000 }, customItems: [] },
+}, 0);
+assert(dormantAutomaticSavings.items.some(item => item.key === 'symbols' && item.required === 0 && item.saved === 123000000) &&
+  dormantAutomaticSavings.items.some(item => item.key === 'hexa' && item.required === 0 && item.saved === 456000000) &&
+  dormantAutomaticSavings.surplus === 579000000,
+  'automatic-goal savings must stay visible and removable when their calculated cost becomes zero');
+
 const notificationCharacters = Array.from({ length: 501 }, (_, index) => ({
   id: `notify_${index}`,
   durations: { pet: '2026-07-15' },
@@ -567,6 +678,31 @@ assert(!sidebarSource.includes('charTotals[c.id]?.total'),
 const navItemSource = sourceBetween('function NavItem(', 'function Dashboard(');
 assert(navItemSource.includes('secondarySubtitle') && navItemSource.includes('text-violet-300/80'),
   'navigation items must render the monthly value as a distinct secondary line');
+const budgetPlannerSource = sourceBetween('function BudgetPlanner(', 'function EquipSlotCell(');
+assert(budgetPlannerSource.includes('필요 메소') && budgetPlannerSource.includes('현재 모은 메소') &&
+  budgetPlannerSource.includes('완료') && budgetPlannerSource.includes('+ 직접 목표'),
+  'budget planner goal cards must expose required mesos, saved mesos, completion, and custom goals');
+assert(budgetPlannerSource.includes('메소 준비 완료') && budgetPlannerSource.includes('전체 준비도') &&
+  budgetPlannerSource.includes('실제 완료'),
+  'budget planner must distinguish funding readiness from actual completion');
+assert(budgetPlannerSource.includes('ariaLabel={`${displayName} 필요 메소`}') &&
+  budgetPlannerSource.includes('ariaLabel={`${displayName} 현재 모은 메소`}') &&
+  budgetPlannerSource.includes('aria-label={`${displayName} 완료`}'),
+  'budget planner money inputs and completion checkboxes must have goal-specific accessible labels');
+assert(budgetPlannerSource.includes('Math.min(safeBudgetMeso(saved, 0), item.required)') &&
+  budgetPlannerSource.includes('data-budget-name-input'),
+  'budget savings input must clamp to the goal and new custom goals must receive focus');
+assert(budgetPlannerSource.includes('disabled={it.required <= 0 && !it.done}') &&
+  budgetPlannerSource.includes('disabled={it.done}'),
+  'a completed automatic goal that falls to zero cost must allow completion to be unchecked before clearing its saved amount');
+const characterViewSource = sourceBetween('function CharacterView(', 'function TabBtn(');
+assert(characterViewSource.includes("delete savedByItem['eq_' + slotId]") &&
+  characterViewSource.includes('budget: { ...currentBudget, savedByItem }'),
+  'clearing an equipment goal must also clear its hidden saved-meso entry');
+const budgetSummarySource = sourceBetween('function BudgetSummaryView(', 'function StarforceCalc()');
+assert(budgetSummarySource.includes('목표에 반영된 모은 메소') && budgetSummarySource.includes('앞으로 모을 메소') &&
+  budgetSummarySource.includes('s.moneyReady') && budgetSummarySource.includes('s.allDone'),
+  'budget receipt summary must use the same funding-aware completion model');
 
 console.log(JSON.stringify({
   starforceFallback: Math.round(unsupportedRestore.total),
