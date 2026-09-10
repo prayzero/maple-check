@@ -271,10 +271,10 @@ const bellona = backupApi.DEFAULT_BOSSES.find(boss => boss.id === 'bellona');
 assert(bellona?.name === '벨로나' && bellona.level === 280 && bellona.introduced === '2026-08-20' && !bellona.monthly &&
   JSON.stringify(Object.keys(bellona.difficulties)) === JSON.stringify(['Easy', 'Normal', 'Hard']),
   'Bellona must appear in the weekly checklist with all three official difficulties');
-assert(bellona.difficulties.Easy.price === 440000000 && bellona.difficulties.Easy.max === 3 &&
-  bellona.difficulties.Normal.price === 890000000 && bellona.difficulties.Normal.max === 3 &&
+assert(bellona.difficulties.Easy.price === 396000000 && bellona.difficulties.Easy.max === 3 &&
+  bellona.difficulties.Normal.price === 824000000 && bellona.difficulties.Normal.max === 3 &&
   bellona.difficulties.Hard.price === 2950000000 && bellona.difficulties.Hard.max === 3,
-  'Bellona crystal prices and three-person limits must match the official live update');
+  'Bellona crystal prices must match the September test-world plan and retain three-person limits');
 const currentBellonaHistory = backupApi.PRICE_HISTORY.find(period => period.id === 'bellona_20260820');
 assert(currentBellonaHistory?.note.includes('정식 업데이트') &&
   currentBellonaHistory.note.includes('8억 9,000만') &&
@@ -292,8 +292,8 @@ assert(bellonaThreePersonRevenue.members === 3 && bellonaThreePersonRevenue.reve
 const bellonaNormalThreePersonRevenue = backupApi.getBossRevenue(
   bellona, { difficulty: 'Normal', partyMembers: 3 }
 );
-assert(bellonaNormalThreePersonRevenue.revenue === 296666666,
-  'Bellona Normal three-person revenue must use the official 890-million crystal price');
+assert(bellonaNormalThreePersonRevenue.revenue === 274666666,
+  'Bellona Normal three-person revenue must use the announced 824-million crystal price');
 const splitBoss = { difficulties: { Hard: { price: 51500000, max: 6 } } };
 assert(backupApi.getBossRevenue(splitBoss, { difficulty: 'Hard', partyMembers: 1 }).revenue === 51500000,
   'solo boss revenue must use the full crystal price');
@@ -362,8 +362,8 @@ const previewBossData = backupApi.cloneJson(backupApi.DEFAULT_BOSSES);
 previewBossData.find(boss => boss.id === 'bellona').difficulties.Normal.price = 850000000;
 const migratedPreviewBellona = backupApi.reconcileBossData(previewBossData)
   .find(boss => boss.id === 'bellona');
-assert(migratedPreviewBellona.difficulties.Normal.price === 890000000,
-  'saved Bellona test-world default must migrate to the live-server Normal price');
+assert(migratedPreviewBellona.difficulties.Normal.price === 824000000,
+  'saved Bellona test-world default must migrate to the revised Normal price');
 const customizedBossData = backupApi.cloneJson(backupApi.DEFAULT_BOSSES);
 customizedBossData.find(boss => boss.id === 'bellona').difficulties.Normal.price = 860000000;
 const preservedCustomBellona = backupApi.reconcileBossData(customizedBossData)
