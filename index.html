@@ -70,7 +70,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
  * - 가격 / 난이도 / 레벨: 사용자가 제공한 결정석 시세표 기준
  * - 입장 인원(max): 사용자 제공 데이터 기준. 익스트림 스우 2인,
  *   최초의 대적자·찬란한 흉성·벨로나·림보·발드릭스·유피테르 3인, 그 외 6인.
- * - monthly: 월간 보스(검은 마법사)는 주간 12개 한도에서 제외.
+ * - monthly: 월간 보스(검은 마법사)는 주간 수익과 별도 집계.
  * - exclusive: 검은 마법사는 하드/익스트림 중 하나만 선택 가능.
  * - icon: icons/{id}.png 파일이 있으면 표시, 없으면 컬러 배지로 폴백.
  * - 사용자가 [💎 결정석 가격 관리]에서 자유롭게 수정 가능합니다.
@@ -176,12 +176,45 @@ const DEFAULT_BOSSES = [
       'Normal': { price: 1615000000, max: 3 },
       'Hard':   { price: 4845000000, max: 3 },
   }},
-  // 월간 보스: 12개 주간 한도에 포함되지 않음. 하드/익스트림 중 하나만 선택 가능.
+  // 월간 보스: 하드/익스트림 중 하나만 선택 가능.
   { id: 'blackmage', name: '검은 마법사', level: 255, icon: 'icons/blackmage.png', monthly: true, exclusive: true, difficulties: {
       'Hard':    { price: 665000000, max: 6 },
       'Extreme': { price: 8740000000, max: 6 },
   }},
 ];
+
+// 2026-09-10 테스트월드 1.2.206 개편 후 계획값. 위 목록은 개편 전 스냅샷.
+// 과거 이력과 저장된 기본가격의 갱신을 위해 개편 전 값을 별도로 보존한다.
+const PRE_REWORK_PRICE_MAP = Object.fromEntries(DEFAULT_BOSSES.map(boss => [boss.id,
+  Object.fromEntries(Object.entries(boss.difficulties).map(([diff, value]) => [diff, value.price])),
+]));
+const REWORK_PRICE_MAP = {
+  zakum: { Chaos: 4040000 }, magnus: { Hard: 4280000 },
+  pierre: { Chaos: 4080000 }, vonbon: { Chaos: 4070000 },
+  bloodyqueen: { Chaos: 4070000 }, vellum: { Chaos: 4640000 },
+  papulatus: { Chaos: 6550000 },
+  lotus: { Normal: 8350000, Hard: 48900000, Extreme: 545000000 },
+  damien: { Normal: 8750000, Hard: 46400000 },
+  slime: { Normal: 12700000, Chaos: 71300000 },
+  lucid: { Easy: 14900000, Normal: 17800000, Hard: 59700000 },
+  will: { Easy: 16100000, Normal: 20500000, Hard: 73200000 },
+  dusk: { Normal: 22000000, Chaos: 66300000 },
+  jinhilla: { Normal: 67600000, Hard: 100000000 },
+  dunkel: { Normal: 23700000, Hard: 89600000 },
+  seren: { Normal: 167000000, Hard: 302000000, Extreme: 1840000000 },
+  kalos: { Easy: 238000000, Normal: 479000000, Chaos: 1230000000 },
+  adversary: { Easy: 261000000, Normal: 532000000, Hard: 1390000000 },
+  kaling: { Easy: 320000000, Normal: 576000000, Hard: 1560000000 },
+  hyungseong: { Normal: 593000000 }, bellona: { Easy: 396000000, Normal: 824000000 },
+  limbo: { Normal: 995000000 }, baldrix: { Normal: 1320000000 }, jupiter: { Normal: 1560000000 },
+  blackmage: { Hard: 465000000, Extreme: 5680000000 },
+};
+for (const boss of DEFAULT_BOSSES) {
+  for (const [diff, price] of Object.entries(REWORK_PRICE_MAP[boss.id] || {})) {
+    boss.difficulties[diff].price = price;
+  }
+}
+const REWORK_SOURCE_URL = 'https://maplestory.nexon.com/testworld/news/all/199';
 
 /* =========================================================
  * 결정석 가격 변동 이력 (📜 결정석의 역사)
@@ -233,10 +266,18 @@ const PRICE_HISTORY = [
   {
     id: 'bellona_20260820',
     title: '신규 보스 벨로나',
-    range: '2026-08-20 ~ (현재)',
+    range: '2026-08-20 ~ 개편 전',
     note: '2026-08-20 정식 업데이트 기준 벨로나 결정석 가격(이지 4억 4,000만 · 노멀 8억 9,000만 · 하드 29억 5,000만 메소)을 반영했습니다.',
     introducedBosses: ['bellona'],
-    overrides: {}, // 현재 = DEFAULT_BOSSES 기준 (변동 없음)
+    overrides: {},
+  },
+  {
+    id: 'testworld_20260910',
+    title: '9월 개편 예정 가격',
+    range: '9/17 예정 · 검은 마법사 10/1',
+    note: '2026-09-10 테스트월드 1.2.206 공지 기준의 개편 후 계획값입니다. 검은 마법사는 10/1 적용 예정 가격을 포함합니다. 공지의 기존 가격은 이지 윌 3,230만·노멀 벨로나 8억 5,000만으로, 이전 앱 기록과 차이가 있습니다.',
+    preview: true,
+    overrides: REWORK_PRICE_MAP,
   },
 ];
 
@@ -252,11 +293,11 @@ const CURRENT_PRICE_MAP = (() => {
   return m;
 })();
 
-// 특정 이력 항목의 전체 가격 맵 (현재값 + 그 기간의 overrides 병합)
+// 과거 이력은 고정된 개편 전 가격을 기준으로 복원한다.
 const snapshotPriceMap = (entry) => {
   const merged = {};
   for (const id of Object.keys(CURRENT_PRICE_MAP)) {
-    merged[id] = { ...CURRENT_PRICE_MAP[id], ...((entry && entry.overrides && entry.overrides[id]) || {}) };
+    merged[id] = { ...PRE_REWORK_PRICE_MAP[id], ...((entry && entry.overrides && entry.overrides[id]) || {}) };
   }
   return merged;
 };
@@ -280,14 +321,18 @@ const safeNonNegativeInt = (value, fallback = 0) =>
 
 // 정식 서버 반영 전 저장된 기본값만 새 공식값으로 교체한다.
 // 사용자가 직접 입력한 다른 가격은 그대로 보존한다.
-const BOSS_DEFAULT_PRICE_MIGRATIONS = {
-  bellona: { Normal: { from: 850000000, to: 890000000 } },
-};
+const BOSS_DEFAULT_PRICE_MIGRATIONS = Object.fromEntries(Object.entries(REWORK_PRICE_MAP).map(([id, diffs]) =>
+  [id, Object.fromEntries(Object.entries(diffs).map(([diff, to]) => [diff, {
+    from: [PRE_REWORK_PRICE_MAP[id][diff],
+      ...(id === 'bellona' && diff === 'Normal' ? [850000000] : []),
+      ...(id === 'will' && diff === 'Easy' ? [32300000] : [])], to,
+  }]))],
+));
 
 const migrateSavedBossPrice = (bossId, difficulty, savedPrice, defaultPrice) => {
   const migration = BOSS_DEFAULT_PRICE_MIGRATIONS[bossId]?.[difficulty];
   if (!migration || defaultPrice !== migration.to) return savedPrice;
-  return savedPrice === migration.from ? migration.to : savedPrice;
+  return migration.from.includes(savedPrice) ? migration.to : savedPrice;
 };
 
 const reconcileBossData = (saved) => {
@@ -322,6 +367,7 @@ const LS_KEYS = {
   BOSS_DATA: 'maple_check_boss_data_v5',
   SELECTED: 'maple_check_selected_v2',
   NOTIF_SHOWN: 'maple_check_notif_shown_v2',
+  MILEAGE: 'maple_check_mileage_v1',
 };
 
 const loadLS = (key, fallback) => {
@@ -552,7 +598,7 @@ const GRAND_REGIONS = [
  * index = 도달 레벨. arr[1]=0(기본), arr[L]=1레벨부터 L레벨까지 누적비용.
  * 아케인(1→20)·어센틱(1→11)·그랜드 어센틱(1→11) 전 지역 원문 확인값(정확).
  * ========================================================= */
-const ARCANE_COST = {
+const ARCANE_COST_BEFORE_REWORK = {
   yeoro:     [0,0,970000,2200000,3860000,6120000,9180000,13220000,18440000,25040000,33220000,43210000,55220000,69480000,86220000,105670000,128090000,153720000,182820000,215650000,252470000],
   chuchu:    [0,0,1210000,2740000,4800000,7600000,11380000,16360000,22780000,30880000,40900000,53110000,67760000,85120000,105460000,129050000,156190000,187160000,222260000,261790000,306050000],
   lachelein: [0,0,1450000,3280000,5740000,9080000,13580000,19500000,27120000,36720000,48580000,63010000,80300000,100760000,124700000,152430000,184290000,220600000,261700000,307930000,359630000],
@@ -560,6 +606,9 @@ const ARCANE_COST = {
   morass:    [0,0,1930000,4360000,7620000,12040000,17980000,25780000,35800000,48400000,63940000,82810000,105380000,132040000,163180000,199190000,240490000,287480000,340580000,400210000,466790000],
   esfera:    [0,0,2170000,4900000,8560000,13520000,20180000,28920000,40140000,54240000,71620000,92710000,117920000,147680000,182420000,222570000,268590000,320920000,380020000,446350000,520370000],
 };
+// 아케인 전 지역 강화 비용 30% 인하. 심볼 개수와 어센틱 비용은 변경 없음.
+const ARCANE_COST = Object.fromEntries(Object.entries(ARCANE_COST_BEFORE_REWORK)
+  .map(([region, costs]) => [region, costs.map(cost => Math.round(cost * 7 / 10))]));
 const AUTHENTIC_COST = {
   cernium:    [0,0,36500000,127700000,288400000,530300000,861800000,1288000000,1810900000,2429100000,3138100000,3930100000],
   arcs:       [0,0,41700000,146500000,332600000,614800000,1004800000,1510900000,2138300000,2889000000,3761600000,4751600000],
@@ -1471,7 +1520,6 @@ const validateBackupData = (value) => {
       durations[key] = date;
     }
     const characterBossIds = new Set();
-    let weeklyBossCount = 0;
     const bosses = raw.bosses.map(row => {
       if (!isPlainObject(row) || typeof row.bossId !== 'string' || typeof row.difficulty !== 'string') {
         fail(`${raw.name}의 보스 선택 항목이 올바르지 않습니다.`);
@@ -1480,7 +1528,6 @@ const validateBackupData = (value) => {
       if (!boss || !boss.difficulties[row.difficulty]) fail(`${raw.name}에 알 수 없는 보스 또는 난이도가 있습니다.`);
       if (characterBossIds.has(row.bossId)) fail(`${raw.name}에 같은 보스가 중복되어 있습니다.`);
       characterBossIds.add(row.bossId);
-      if (!boss.monthly && ++weeklyBossCount > 12) fail(`${raw.name}의 주간 보스가 12개를 초과했습니다.`);
       const { max } = getDifficultyEntry(boss, row.difficulty);
       return {
         rowId: typeof row.rowId === 'string' && row.rowId ? row.rowId : 'r_' + Math.random().toString(36).slice(2, 8),
@@ -1501,7 +1548,7 @@ const validateBackupData = (value) => {
       hexaSkills: raw.hexaSkills ? cloneJson(raw.hexaSkills) : undefined,
     });
   });
-  return { characters: nextCharacters, bossData: nextBossData };
+  return { characters: nextCharacters, bossData: nextBossData, mileage: normalizeMileageState(value.mileage) };
 };
 
 /* =========================================================
@@ -1583,6 +1630,88 @@ function useExpiryNotifications(characters) {
 /* =========================================================
  * 메인 App
  * ========================================================= */
+// 새 마일리지: 금액 미공개 보스는 null로 유지해 0개와 구분한다.
+const mileageInt = (value, max = 1000000000) => Math.min(max, safeNonNegativeInt(value));
+const MILEAGE_BOSS_OPTIONS = DEFAULT_BOSSES.flatMap(boss => Object.keys(boss.difficulties)
+  .map(difficulty => ({ key: `${boss.id}:${difficulty}`, bossId: boss.id, difficulty,
+    name: boss.name, monthly: !!boss.monthly })));
+const normalizeMileageState = (raw) => {
+  const coins = isPlainObject(raw?.coins) ? raw.coins : {};
+  const credit = isPlainObject(raw?.credit) ? raw.credit : {};
+  const seen = new Set();
+  const bosses = (Array.isArray(coins.bosses) ? coins.bosses : []).flatMap(row => {
+    const option = MILEAGE_BOSS_OPTIONS.find(item => item.key === row?.key);
+    if (!option || seen.has(option.key)) return [];
+    seen.add(option.key);
+    return [{ key: option.key, amount: row.amount == null || row.amount === '' ? null : mileageInt(row.amount),
+      count: mileageInt(row.count, 200), received: mileageInt(row.received, 6) }];
+  });
+  return {
+    coins: { days: coins.days == null ? 7 : mileageInt(coins.days, 31),
+      weeks: coins.weeks == null ? 1 : mileageInt(coins.weeks, 6),
+      balance: mileageInt(coins.balance), earned: mileageInt(coins.earned, 100000),
+      elite: mileageInt(coins.elite, 5), mapleM: mileageInt(coins.mapleM, 700),
+      collection: mileageInt(coins.collection), gift: mileageInt(coins.gift), pc: mileageInt(coins.pc), bosses },
+    credit: { price: credit.price == null ? 10000 : mileageInt(credit.price),
+      cashPaid: credit.cashPaid == null ? 10000 : mileageInt(credit.cashPaid),
+      quantity: credit.quantity == null ? 1 : mileageInt(credit.quantity, 1000),
+      gift: credit.gift === true, confirmed: credit.confirmed !== false,
+      balance: mileageInt(credit.balance), target: credit.target == null ? 10000 : mileageInt(credit.target) },
+  };
+};
+const mileageBossPlanFromCharacters = (characters, previousRows = []) => {
+  const planned = new Map();
+  for (const character of characters) {
+    const seen = new Set();
+    for (const row of character.bosses || []) {
+      const key = `${row.bossId}:${row.difficulty}`;
+      if (seen.has(key) || !MILEAGE_BOSS_OPTIONS.some(option => option.key === key)) continue;
+      seen.add(key);
+      planned.set(key, (planned.get(key) || 0) + 1);
+    }
+  }
+  return [...planned].map(([key, count]) => ({ key, count,
+    amount: previousRows.find(row => row.key === key)?.amount ?? null,
+    received: previousRows.find(row => row.key === key)?.received || 0 }));
+};
+const calculateExplorationCoins = (raw) => {
+  const input = normalizeMileageState({ coins: raw }).coins;
+  const rows = input.bosses.map(row => {
+    const option = MILEAGE_BOSS_OPTIONS.find(item => item.key === row.key);
+    const cycles = option.monthly ? 1 : input.weeks;
+    const eligible = cycles === 0 ? 0 : Math.max(0, Math.min(row.count, 6) - row.received)
+      + Math.min(row.count, 6) * (cycles - 1);
+    const remainingPlan = cycles === 0 ? 0 : Math.max(0, row.count - row.received) + row.count * (cycles - 1);
+    return { ...row, ...option, eligible, excluded: remainingPlan - eligible,
+      coins: (row.amount ?? 0) * eligible, unknown: row.amount == null && eligible > 0 };
+  });
+  const bossCoins = rows.reduce((sum, row) => sum + row.coins, 0);
+  const eliteCoins = input.days * input.elite * 60;
+  const mapleMCoins = input.days * input.mapleM;
+  const planned = bossCoins + eliteCoins + mapleMCoins + input.collection;
+  const remaining = Math.max(0, 100000 - input.earned);
+  const capped = Math.min(remaining, planned);
+  const exempt = input.gift + input.pc;
+  return { rows, bossCoins, eliteCoins, mapleMCoins, planned, remaining, capped, exempt,
+    overflow: planned - capped, total: capped + exempt, balance: input.balance + capped + exempt,
+    monthEarned: input.earned + capped, unknownCount: rows.filter(row => row.unknown).length };
+};
+const calculateMapleCredit = (raw) => {
+  const input = normalizeMileageState({ credit: raw }).credit;
+  const cashPaid = Math.min(input.price, input.cashPaid);
+  const eligible = input.price >= 10 && !input.gift;
+  const expected = eligible ? cashPaid * input.quantity / 20 : 0;
+  const credited = input.confirmed ? expected : 0;
+  // 캐시 단위 정수로 먼저 계산해 부족액을 환산할 때의 소수점 오차를 피한다.
+  const creditedCash = eligible && input.confirmed ? cashPaid * input.quantity : 0;
+  const available = (input.balance * 20 + creditedCash) / 20;
+  const shortageCash = Math.max(0, (input.target - input.balance) * 20 - creditedCash);
+  const shortage = shortageCash / 20;
+  return { cashTotal: cashPaid * input.quantity, eligible, expected, credited,
+    pending: expected - credited, available, shortage,
+    extraCash: shortageCash > 0 ? Math.max(10, shortageCash) : 0 };
+};
+
 function App() {
   const [characters, setCharacters] = useState(() => {
     const saved = loadLS(LS_KEYS.CHARS, []);
@@ -1590,6 +1719,7 @@ function App() {
   });
   const [bossData, setBossData]     = useState(() => reconcileBossData(loadLS(LS_KEYS.BOSS_DATA, null)));
   const [selected, setSelected]     = useState(() => loadLS(LS_KEYS.SELECTED, 'dashboard'));
+  const [mileage, setMileage] = useState(() => normalizeMileageState(loadLS(LS_KEYS.MILEAGE, null)));
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const menuButtonRef = useRef(null);
   const sidebarWasOpen = useRef(false);
@@ -1597,6 +1727,7 @@ function App() {
   useEffect(() => saveLS(LS_KEYS.CHARS, characters), [characters]);
   useEffect(() => saveLS(LS_KEYS.BOSS_DATA, bossData), [bossData]);
   useEffect(() => saveLS(LS_KEYS.SELECTED, selected), [selected]);
+  useEffect(() => saveLS(LS_KEYS.MILEAGE, mileage), [mileage]);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [selected]);
@@ -1609,7 +1740,6 @@ function App() {
         let characterChanged = !Array.isArray(character.bosses);
         if (characterChanged) changed = true;
         const seenBossIds = new Set();
-        let weeklyCount = 0;
         const bosses = [];
         for (const row of (Array.isArray(character.bosses) ? character.bosses : [])) {
           if (!isPlainObject(row)) {
@@ -1623,13 +1753,7 @@ function App() {
             changed = true;
             continue;
           }
-          if (!boss.monthly && weeklyCount >= 12) {
-            characterChanged = true;
-            changed = true;
-            continue;
-          }
           seenBossIds.add(row.bossId);
-          if (!boss.monthly) weeklyCount++;
           const { max } = getDifficultyEntry(boss, row.difficulty);
           const members = clampPartyMembers(row.partyMembers, max);
           if (members !== row.partyMembers) {
@@ -1752,7 +1876,7 @@ function App() {
 
   // 데이터 백업: JSON 파일 내보내기 / 가져오기
   const exportData = useCallback(() => {
-    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData };
+    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData, mileage };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1760,7 +1884,7 @@ function App() {
     a.download = `maple-check-backup-${todayStr()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [characters, bossData]);
+  }, [characters, bossData, mileage]);
 
   const importDataFile = useCallback((file) => {
     if (!file) return;
@@ -1777,6 +1901,7 @@ function App() {
         if (!confirm(`백업 불러오기: ${j.exportedAt || '날짜 미상'} · 캐릭터 ${j.characters.length}명\n현재 이 브라우저의 데이터를 덮어씁니다. 진행할까요?`)) return;
         setCharacters(next.characters);
         setBossData(next.bossData);
+        setMileage(next.mileage);
         setSelected('dashboard');
         alert('불러오기 완료!');
       } catch (error) {
@@ -1829,6 +1954,11 @@ function App() {
         </header>
 
         <div className="p-4 md:p-8">
+          <div className="mb-5 max-w-5xl mx-auto rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 leading-relaxed">
+            <strong>9/10 테스트월드 개편 후 계산</strong> · 결정석 가격·아케인 비용·캐릭터당 판매 제한 삭제를 미리 반영했습니다.
+            검은 마법사는 <strong>10/1 적용 예정 가격</strong>으로 계산합니다. 그 외 개편은 9/17 예정이며 정식 업데이트에서 변경될 수 있습니다.
+            {' '}<a href={REWORK_SOURCE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">공식 공지</a>
+          </div>
           {/* 상단 알림 배너: D-1 / D-day / 만료됨 */}
           {pending.length > 0 && (
             <ExpiryBanner
@@ -1859,6 +1989,9 @@ function App() {
           )}
           {selected === 'enhance_calc' && (
             <EnhanceCalcView />
+          )}
+          {selected === 'mileage_calc' && (
+            <MileageView characters={characters} value={mileage} onChange={setMileage} />
           )}
           {selected === 'sunday_maple' && (
             <SundayMapleView />
@@ -2063,6 +2196,12 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           onClick={() => onSelect('enhance_calc')}
           label="⭐ 강화 기대비용"
           subtitle="스타포스·잠재 계산기"
+        />
+        <NavItem
+          active={selected === 'mileage_calc'}
+          onClick={() => onSelect('mileage_calc')}
+          label="🪙 새 마일리지 계산"
+          subtitle="탐험 코인·메이플크레딧"
         />
         <NavItem
           active={selected === 'sunday_maple'}
@@ -2304,8 +2443,6 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
     onUpdate(c => ({ ...c, hexaSkills: updater(c.hexaSkills || emptyHexa()) }));
   };
 
-  const WEEKLY_LIMIT = 12;
-
   const toggleBoss = (bossId, difficulty) => {
     onUpdate(c => {
       // 현재 보스 목록에 없는(일간 전환 등으로 제거된) 보스 선택은 정리
@@ -2318,14 +2455,6 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
       }
       // 같은 보스는 한 난이도만 선택 가능 → 같은 보스의 다른 난이도는 자동 해제
       list = list.filter(b => b.bossId !== bossId);
-      // 주간 12개 한도: 월간 보스/제거된(목록에 없는) 보스는 카운트에서 제외
-      if (!boss?.monthly) {
-        const weeklyCount = list.filter(b => {
-          const bd = bossData.find(x => x.id === b.bossId);
-          return bd && !bd.monthly;
-        }).length;
-        if (weeklyCount >= WEEKLY_LIMIT) return c; // 안전장치
-      }
       return {
         ...c,
         bosses: [...list, {
@@ -2446,7 +2575,6 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
             rows={character.bosses || []}
             bossData={bossData}
             bossTimes={character.bossTimes || {}}
-            weeklyLimit={WEEKLY_LIMIT}
             onToggle={toggleBoss}
             onSetMembers={setBossMembers}
             onReset={resetBosses}
@@ -2680,7 +2808,7 @@ function BossIcon({ id, name, icon }) {
   );
 }
 
-function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggle, onSetMembers, onReset, onSetTime }) {
+function BossRevenueTable({ rows, bossData, bossTimes = {}, onToggle, onSetMembers, onReset, onSetTime }) {
   const [sortMode, setSortMode] = useState('natural');
 
   // 보스당 선택된 난이도 (보스당 1개) — 현재 보스 목록에 있는 것만 (제거된 보스 무시)
@@ -2727,7 +2855,6 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
   const selectedRows = Object.values(selByBoss);
   const weeklyCount = selectedRows.filter(r => !monthlyIds.has(r.bossId)).length;
   const monthlyCount = selectedRows.filter(r => monthlyIds.has(r.bossId)).length;
-  const isFull = weeklyCount >= weeklyLimit;
 
   const revenue = useMemo(() => {
     let weekly = 0, monthly = 0;
@@ -2769,14 +2896,13 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
             <span>💎</span> 보스 결정석 수익
           </h3>
           <div className="text-xs text-slate-400 mt-1">
-            보스마다 <span className="text-slate-300">난이도 배지를 클릭</span>해 선택하세요. 다시 누르면 해제됩니다. 한 보스는 한 난이도만, 주간 최대 12개. 월간 보스(검은 마법사)는 한도 제외.
+            보스마다 <span className="text-slate-300">난이도 배지를 클릭</span>해 선택하세요. 한 보스는 한 난이도만 선택하며 캐릭터당 주간 12개 제한은 삭제되었습니다. 월드별 판매 한도는 게임에서 별도 확인해 주세요. 표시 수익은 선택한 결정석 전체 합산입니다.
           </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <div className={`text-sm font-medium px-2.5 py-1 rounded-md border ${isFull ? 'bg-emerald-500/15 border-emerald-500/50' : 'bg-maple-bg border-maple-border'}`}>
-            주간 <span className={isFull ? 'text-emerald-300 font-bold' : 'text-maple-accent font-bold'}>{weeklyCount}</span>
-            <span className="text-slate-500"> / {weeklyLimit}</span>
-            {isFull && <span className="text-emerald-300 font-bold ml-1">✓ 가득참</span>}
+          <div className="text-sm font-medium px-2.5 py-1 rounded-md border bg-maple-bg border-maple-border">
+            주간 <span className="text-maple-accent font-bold">{weeklyCount}개</span>
+            <span className="text-slate-500"> · 캐릭터 제한 없음</span>
             {/* 월간 카운터는 항상 표시 → 선택해도 레이아웃이 밀리지 않음 */}
             <span className="text-slate-500 ml-2">· 월간 <span className="text-violet-300 font-bold">{monthlyCount}</span></span>
           </div>
@@ -2788,12 +2914,6 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
         </div>
       </div>
 
-      {isFull && (
-        <div className="mb-3 bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">
-          ⚠️ 주간 한도 12개를 모두 선택했습니다. 다른 보스를 추가하려면 기존 선택을 해제하세요.
-        </div>
-      )}
-
       <div className="divide-y divide-maple-border">
         {sortMode !== 'natural' ? flatEntries.map(({ boss, diff, price, max, monthly }) => {
           const sel = selByBoss[boss.id];
@@ -2801,18 +2921,15 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
           const revenueInfo = active ? getBossRevenue(boss, sel) : null;
           const members = revenueInfo?.members || 1;
           const revenueVal = revenueInfo?.revenue || 0;
-          const bossSelected = !!sel;
-          const cannotAdd = !active && !bossSelected && isFull && !monthly;
           const st = diffStyle(diff);
           return (
             <div key={boss.id + '_' + diff} className={`flex items-center gap-2 px-1 md:px-2 py-2.5 transition ${active ? 'bg-maple-accent/5' : 'hover:bg-maple-bg/30'}`}>
               <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
               <span className={`font-medium ${active ? 'text-slate-100' : 'text-slate-300'}`}>{boss.name}</span>
-              <button type="button" disabled={cannotAdd} onClick={() => onToggle(boss.id, diff)}
+              <button type="button" onClick={() => onToggle(boss.id, diff)}
                 title={`${diff} · ${fmtMeso(price)}`}
                 className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
                   active ? `${st.on} font-bold ring-2 ring-white/40 shadow`
-                    : cannotAdd ? `${st.off} opacity-30 cursor-not-allowed`
                     : `${st.off} hover:brightness-125`}`}>
                 <span className="font-bold tracking-wider uppercase">{diff}</span>
                 <span className="opacity-90">{fmtMeso(price)}</span>
@@ -2839,7 +2956,6 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
           const revenueInfo = checked ? getBossRevenue(boss, sel) : null;
           const members = revenueInfo?.members || 1;
           const revenueVal = revenueInfo?.revenue || 0;
-          const cannotAdd = !checked && isFull && !monthly; // 한도 초과 시 새 보스 추가 불가
 
           return (
             <div key={boss.id} className={`px-1 md:px-2 py-3 transition ${checked ? 'bg-maple-accent/5' : 'hover:bg-maple-bg/30'}`}>
@@ -2864,21 +2980,17 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, weeklyLimit, onToggl
               <div className="flex flex-wrap items-center gap-1.5 pl-1">
                 {diffs.map(d => {
                   const active = checked && sel.difficulty === d.diff;
-                  const disableThis = cannotAdd && !active;
                   const st = diffStyle(d.diff);
                   return (
                     <button
                       key={d.diff}
                       type="button"
-                      disabled={disableThis}
                       onClick={() => onToggle(boss.id, d.diff)}
                       title={`${d.diff} · ${fmtMeso(d.price)}`}
                       className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
                         active
                           ? `${st.on} font-bold ring-2 ring-white/40 shadow`
-                          : disableThis
-                            ? `${st.off} opacity-30 cursor-not-allowed`
-                            : `${st.off} hover:brightness-125`
+                          : `${st.off} hover:brightness-125`
                       }`}
                     >
                       <span className="font-bold tracking-wider uppercase">{d.diff}</span>
@@ -3064,7 +3176,7 @@ function BossHistoryView() {
                   </span>
                   {isCurrent && (
                     <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/40">
-                      현재
+                      {e.preview ? '개편 후 계획값' : '현재'}
                     </span>
                   )}
                 </div>
@@ -4325,6 +4437,7 @@ function SymbolPriceView() {
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">🔮 심볼 가격</h2>
         <p className="text-slate-400 mt-1">심볼 레벨별 강화비용 기록 (도달 레벨까지 단계별 비용 · 단위 메소)</p>
+        <p className="text-sm text-sky-300 mt-2">9/10 테스트월드 기준 아케인 전 지역 비용 30% 인하 적용 · 어센틱·그랜드 어센틱 비용과 필요 심볼 개수는 기존과 동일합니다.</p>
       </div>
 
       <div className="bg-gradient-to-br from-violet-500/15 to-sky-500/5 border border-violet-500/30 rounded-xl p-5 grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -5845,6 +5958,216 @@ function EnhanceCalcView() {
       </div>
       <StarforceCalc />
       <PotentialCalc />
+    </div>
+  );
+}
+
+function MileageNumber({ label, value, onChange, max = 1000000000, hint, placeholder }) {
+  return (
+    <label className="block min-w-0 text-sm text-slate-300">
+      <span className="block mb-1.5">{label}</span>
+      <input type="number" min="0" max={max} step="1" inputMode="numeric"
+        value={value ?? ''} placeholder={placeholder}
+        onChange={event => onChange(event.target.value === '' ? '' : mileageInt(event.target.value, max))}
+        className="w-full bg-maple-bg border border-maple-border rounded-lg px-3 py-2.5 text-base text-right text-slate-100 focus:outline-none focus:border-maple-accent" />
+      {hint && <span className="block text-xs text-slate-400 mt-1.5 leading-relaxed">{hint}</span>}
+    </label>
+  );
+}
+
+function ExplorationCoinCalc({ characters, value, onChange }) {
+  const result = useMemo(() => calculateExplorationCoins(value), [value]);
+  const [addingKey, setAddingKey] = useState(MILEAGE_BOSS_OPTIONS[0].key);
+  const set = (key, next) => onChange({ ...value, [key]: next });
+  const setBoss = (key, field, next) => set('bosses', value.bosses.map(row =>
+    row.key === key ? { ...row, [field]: field === 'amount' && next === '' ? null : next } : row));
+  const addBoss = () => {
+    if (value.bosses.some(row => row.key === addingKey)) return;
+    set('bosses', [...value.bosses, { key: addingKey, amount: null, count: 1, received: 0 }]);
+  };
+  const loadCharacters = () => {
+    const rows = mileageBossPlanFromCharacters(characters, value.bosses);
+    if (value.bosses.length && !confirm('등록 캐릭터의 보스 선택으로 횟수 목록을 다시 만들까요? 같은 보스의 입력 지급량과 수령 횟수는 유지됩니다.')) return;
+    set('bosses', rows);
+  };
+  const fmt = number => number.toLocaleString('ko-KR');
+  return (
+    <div className="space-y-5">
+      <div className="grid sm:grid-cols-3 gap-3" aria-live="polite">
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+          <div className="text-sm text-amber-200">{result.unknownCount ? '입력 완료분 예상 획득' : '앞으로 예상 획득'}</div>
+          <div className="text-2xl font-bold text-maple-accent mt-2">{fmt(result.total)} <span className="text-sm font-normal">개</span></div>
+          <div className="text-xs text-slate-400 mt-1">한도 적용 {fmt(result.capped)} + 한도 제외 {fmt(result.exempt)}</div>
+        </div>
+        <div className="rounded-xl border border-maple-border bg-maple-panel p-4">
+          <div className="text-sm text-slate-300">현재 월간 한도 잔여</div>
+          <div className="text-2xl font-bold mt-2">{fmt(result.remaining)} <span className="text-sm font-normal">개</span></div>
+          <div className="text-xs text-slate-400 mt-1">계획 반영 후 잔여 {fmt(100000 - result.monthEarned)}개</div>
+        </div>
+        <div className="rounded-xl border border-maple-border bg-maple-panel p-4">
+          <div className="text-sm text-slate-300">계획 후 예상 보유량</div>
+          <div className="text-2xl font-bold text-emerald-300 mt-2">{fmt(result.balance)} <span className="text-sm font-normal">개</span></div>
+          <div className="text-xs text-slate-400 mt-1">현재 보유량 + 예상 획득량 · 사용/소멸 전</div>
+        </div>
+      </div>
+      {result.unknownCount > 0 && <p role="status" className="text-sm text-amber-200 bg-amber-500/10 rounded-lg px-4 py-3">
+        지급량을 입력하지 않은 보스 {result.unknownCount}종은 합계에서 빠져 있습니다. 보스별 지급량은 공식 공지에 없어 게임에서 확인한 1인 수령량을 입력해 주세요.
+      </p>}
+      {result.overflow > 0 && <p className="text-sm text-rose-200 bg-rose-500/10 rounded-lg px-4 py-3">
+        월간 한도 초과분 {fmt(result.overflow)}개는 획득 합계에서 제외했습니다.
+      </p>}
+
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+        <h3 className="text-lg font-semibold">이번 달 남은 계획</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <MileageNumber label="현재 코인 보유량" value={value.balance} onChange={next => set('balance', next)} />
+          <MileageNumber label="이번 달 한도 포함 누적 획득량" value={value.earned} max={100000} onChange={next => set('earned', next)} hint="보유량과 다릅니다. 사용해도 획득 한도는 회복되지 않습니다." />
+          <MileageNumber label="남은 활동 일수" value={value.days} max={31} onChange={next => set('days', next)} hint="같은 달 안에서 코인을 얻을 예정인 날만 입력" />
+          <MileageNumber label="남은 주간 보상 회차" value={value.weeks} max={6} onChange={next => set('weeks', next)} hint="이번 주 포함 여부를 직접 정합니다. 월간 보스는 한 달 1회차로 계산" />
+        </div>
+      </section>
+
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="text-lg font-semibold">보스 탐험 코인</h3>
+          <button type="button" onClick={loadCharacters} disabled={!characters.length}
+            className="text-sm border border-maple-border rounded-lg px-3 py-2 hover:border-maple-accent disabled:opacity-40">내 캐릭터 보스 목록 불러오기</button>
+        </div>
+        <p className="text-sm text-slate-400 leading-relaxed">하나의 넥슨ID 기준으로 합산합니다. 같은 보스·같은 난이도는 주간 또는 월간 최대 6회입니다. 결정석 판매 개수와는 별도이며, 입력한 코인은 파티 인원으로 나누지 않습니다.</p>
+        <div className="flex flex-wrap gap-2">
+          <select aria-label="추가할 보스와 난이도" value={addingKey} onChange={event => setAddingKey(event.target.value)}
+            className="flex-1 min-w-0 bg-maple-bg border border-maple-border rounded-lg px-3 py-2 text-sm">
+            {MILEAGE_BOSS_OPTIONS.map(option => <option key={option.key} value={option.key} disabled={value.bosses.some(row => row.key === option.key)}>
+              {option.name} · {option.difficulty}{option.monthly ? ' (월간)' : ''}
+            </option>)}
+          </select>
+          <button type="button" onClick={addBoss} disabled={value.bosses.some(row => row.key === addingKey)}
+            className="bg-maple-accent text-slate-900 rounded-lg px-4 py-2 text-sm font-bold disabled:opacity-40">추가</button>
+        </div>
+        {!result.rows.length && <p className="text-sm text-slate-400 border border-dashed border-slate-600 rounded-lg p-4">보스를 추가하거나 등록된 캐릭터의 선택을 불러오세요. 일간 보스는 코인을 지급하지 않습니다.</p>}
+        <div className="space-y-3">
+          {result.rows.map(row => <div key={row.key} className="bg-maple-bg/60 border border-maple-border rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold">{row.name} · {row.difficulty}</span>
+              <span className="text-xs text-violet-300">{row.monthly ? '월간' : '주간'}</span>
+              <button type="button" aria-label={`${row.name} ${row.difficulty} 코인 계획 삭제`}
+                onClick={() => set('bosses', value.bosses.filter(item => item.key !== row.key))}
+                className="ml-auto text-sm text-slate-400 hover:text-red-300 px-2 py-1">삭제</button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <MileageNumber label={`${row.name} ${row.difficulty} 1회 수령 코인`} value={row.amount} placeholder="게임에서 확인 후 입력" onChange={next => setBoss(row.key, 'amount', next)} />
+              <MileageNumber label={`${row.name} ${row.difficulty} ${row.monthly ? '월간' : '회차당'} 전체 격파 횟수`} value={row.count} max={200} onChange={next => setBoss(row.key, 'count', next)} hint="이미 코인을 받은 격파도 포함" />
+              <MileageNumber label={`${row.name} ${row.difficulty} ${row.monthly ? '이번 달' : '첫 회차'} 이미 받은 횟수`} value={row.received} max={6} onChange={next => setBoss(row.key, 'received', next)} />
+            </div>
+            <div className="text-sm flex flex-wrap justify-between gap-2">
+              <span className="text-slate-400">수령 가능 {row.eligible}회{row.excluded > 0 ? ` · 6회 한도로 ${row.excluded}회 제외` : ''}</span>
+              <span className={row.unknown ? 'text-amber-200' : 'text-maple-accent font-semibold'}>{row.unknown ? '지급량 입력 필요' : `${fmt(row.coins)}개`}</span>
+            </div>
+          </div>)}
+        </div>
+        <p className="text-xs text-slate-400 leading-relaxed">전체 격파 횟수에는 이미 받은 격파를 포함합니다. 첫 회차는 전체 횟수(최대 6회)에서 이미 받은 횟수를 빼고, 다음 회차부터 한도를 새로 적용합니다. 불러온 캐릭터가 같은 넥슨ID인지 확인하고, 월이 바뀌면 누적 획득량과 수령 횟수를 다시 입력해 주세요.</p>
+      </section>
+
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+        <div className="flex justify-between gap-3 flex-wrap items-center">
+          <h3 className="text-lg font-semibold">그 밖의 획득처</h3>
+          <button type="button" onClick={() => onChange({ ...value, elite: 5, mapleM: 700 })}
+            className="text-sm border border-maple-border rounded-lg px-3 py-2 hover:border-maple-accent">엘몬·M 일일 최대치 적용</button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <MileageNumber label="엘리트 몬스터 하루 수령 횟수" value={value.elite} max={5} onChange={next => set('elite', next)} hint={`1회 60개 · 하루 최대 5회 → 계획 합계 ${fmt(result.eliteCoins)}개`} />
+          <MileageNumber label="메이플스토리M 하루 수령 코인" value={value.mapleM} max={700} onChange={next => set('mapleM', next)} hint={`하루 최대 700개 → 계획 합계 ${fmt(result.mapleMCoins)}개`} />
+          <MileageNumber label="몬스터 컬렉션 예정 코인 합계" value={value.collection} onChange={next => set('collection', next)} hint="위 활동 기간의 총 수령 예상량" />
+          <MileageNumber label="데일리 기프트 예정 코인 합계" value={value.gift} onChange={next => set('gift', next)} hint="월간 10만 개 한도에서 제외" />
+          <MileageNumber label="PC방 보상 예정 코인 합계" value={value.pc} onChange={next => set('pc', next)} hint="월간 10만 개 한도에서 제외" />
+        </div>
+        <p className="text-sm text-slate-400 leading-relaxed">기프트 교환권은 같은 넥슨ID의 다른 메이플ID에서 당월 중복 사용할 수 없습니다. PC방 일일 보상 교환권은 당일 중복 사용할 수 없습니다. 코인의 공통 일일 한도는 없으며 획득 즉시 적립됩니다.</p>
+      </section>
+    </div>
+  );
+}
+
+const CREDIT_SHOP_TARGETS = [
+  ['프라임 큐브', 10000], ['프라임 에디셔널 큐브', 20000], ['심연의 서큘레이터', 4900],
+  ['솔 에르다', 9900], ['플래티넘 카르마의 가위', 5900], ['위습의 원더베리', 5400],
+  ['루나 크리스탈', 3900], ['메이플 로얄 스타일', 2200], ['프리미엄 마스터피스', 1900],
+  ['컬러링 프리즘 프로', 25000], ['무기 이펙트 프리즘', 15000],
+  ['프리미엄 헤어 쿠폰', 5500], ['프리미엄 성형 쿠폰', 3500],
+  ['커스텀 믹스염색 쿠폰', 48000], ['커스텀 믹스 컬러렌즈 쿠폰', 24000],
+  ['밸런스 믹스 염색 쿠폰', 24000], ['밸런스 믹스 컬러렌즈 쿠폰', 12000],
+];
+function MapleCreditCalc({ value, onChange }) {
+  const result = useMemo(() => calculateMapleCredit(value), [value]);
+  const set = (key, next) => onChange({ ...value, [key]: next });
+  const fmt = number => number.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+  return (
+    <div className="space-y-5">
+      <div className="grid sm:grid-cols-3 gap-3" aria-live="polite">
+        {[
+          ['구매 시 적립 예상', result.expected, 'text-maple-accent'],
+          ['구매 확정 반영 잔액', result.available, 'text-emerald-300'],
+          ['목표까지 부족한 크레딧', result.shortage, 'text-sky-300'],
+        ].map(([label, amount, tone]) => <div key={label} className="rounded-xl border border-maple-border bg-maple-panel p-4">
+          <div className="text-sm text-slate-300">{label}</div>
+          <div className={`text-2xl font-bold mt-2 ${tone}`}>{fmt(amount)} <span className="text-sm font-normal">크레딧</span></div>
+        </div>)}
+      </div>
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+        <h3 className="text-lg font-semibold">넥슨캐시 구매액의 5% 적립</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <MileageNumber label="상품 1개 가격 (캐시)" value={value.price} onChange={next => onChange({ ...value, price: next, cashPaid: next })} />
+          <MileageNumber label="상품 1개당 실제 넥슨캐시 결제액" value={value.cashPaid} max={mileageInt(value.price)} onChange={next => set('cashPaid', next)} hint="포인트·기존 마일리지 등 다른 결제분은 제외" />
+          <MileageNumber label="구매 수량" value={value.quantity} max={1000} onChange={next => set('quantity', next)} />
+          <MileageNumber label="현재 메이플크레딧 잔액" value={value.balance} onChange={next => set('balance', next)} />
+        </div>
+        <div className="flex flex-wrap gap-5 text-sm">
+          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={value.gift} onChange={event => set('gift', event.target.checked)} className="w-4 h-4 accent-amber-400" />선물 구매</label>
+          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={value.confirmed} onChange={event => set('confirmed', event.target.checked)} className="w-4 h-4 accent-amber-400" />구매 확정 반영</label>
+        </div>
+        <p className="text-sm text-slate-300 leading-relaxed">넥슨캐시 결제 합계 {fmt(result.cashTotal)}캐시 · {value.gift ? '선물은 발신·수신 모두 적립 제외' : mileageInt(value.price) < 10 ? '10캐시 미만 상품은 적립 제외' : `5% 적립 ${fmt(result.expected)}크레딧`}</p>
+        {!value.confirmed && <p className="text-sm text-amber-200">구매 확정 전 예정 적립 {fmt(result.pending)}크레딧은 잔액에 포함하지 않았습니다.</p>}
+        <p className="text-xs text-slate-400 leading-relaxed">적립액은 5%를 그대로 계산한 예상값입니다. 공지에 소수점 처리 방식이 없어 임의로 절사하지 않습니다. 청약철회 가능한 상품은 구매 확정 시 적립됩니다.</p>
+      </section>
+      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+        <h3 className="text-lg font-semibold">목표 상품까지 계산</h3>
+        <label className="block text-sm text-slate-300">크레딧샵 상품 가격 불러오기
+          <select aria-label="크레딧샵 목표 상품" defaultValue="" onChange={event => { if (event.target.value !== '') set('target', Number(event.target.value)); }}
+            className="block w-full mt-1.5 bg-maple-bg border border-maple-border rounded-lg px-3 py-2.5">
+            <option value="">상품 선택</option>
+            {CREDIT_SHOP_TARGETS.map(([name, price]) => <option key={name} value={price}>{name} · {fmt(price)}크레딧</option>)}
+          </select>
+        </label>
+        <MileageNumber label="목표 가격 또는 장바구니 총액 (크레딧)" value={value.target} onChange={next => set('target', next)} />
+        <div className="rounded-lg bg-maple-bg border border-maple-border p-4">
+          <div className="text-sm text-slate-300">부족분을 적립하는 데 필요한 추가 넥슨캐시 구매액</div>
+          <div className="text-xl font-bold text-sky-300 mt-2">{fmt(result.extraCash)}캐시</div>
+          <p className="text-xs text-slate-400 mt-1">전액 넥슨캐시로 적립 대상 상품을 구매하고 확정하는 경우의 계산입니다. 충전만으로 적립되지 않습니다.</p>
+        </div>
+        <p className="text-sm text-slate-400 leading-relaxed">크레딧은 넥슨ID 단위로 공유하며 적립일로부터 1년간 유효합니다. 프라임 큐브·프라임 에디셔널 큐브 판매는 2026년 11월 18일 23:59까지로 공지되었습니다.</p>
+      </section>
+    </div>
+  );
+}
+
+function MileageView({ characters, value, onChange }) {
+  const [tab, setTab] = useState('coins');
+  return (
+    <div className="max-w-5xl mx-auto space-y-5">
+      <div>
+        <h2 className="text-2xl md:text-3xl font-bold">🪙 새 마일리지 계산</h2>
+        <p className="text-slate-400 mt-2">게임 플레이는 탐험 코인, 넥슨캐시 구매는 메이플크레딧으로 계산합니다.</p>
+      </div>
+      <div className="flex gap-2 flex-wrap" role="group" aria-label="마일리지 계산 종류">
+        {[['coins', '탐험 코인'], ['credit', '메이플크레딧']].map(([id, label]) => <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)}
+          className={`px-5 py-3 rounded-lg border text-sm font-semibold ${tab === id ? 'bg-maple-accent text-slate-900 border-maple-accent' : 'bg-maple-panel text-slate-300 border-maple-border hover:border-maple-accent'}`}>{label}</button>)}
+      </div>
+      {tab === 'coins'
+        ? <ExplorationCoinCalc characters={characters} value={value.coins} onChange={coins => onChange({ ...value, coins })} />
+        : <MapleCreditCalc value={value.credit} onChange={credit => onChange({ ...value, credit })} />}
+      <p className="text-sm text-slate-400 leading-relaxed border-t border-maple-border pt-4">
+        기존 마일리지를 새 코인·크레딧으로 환산하지 않습니다. 미수령·미정산 마일리지는 9/17 점검 후,
+        정산된 기존 잔액은 11/19 점검 후 소멸 예정입니다. 입력값은 이 브라우저에 저장되며 내보내기 백업에 포함됩니다.
+      </p>
     </div>
   );
 }
