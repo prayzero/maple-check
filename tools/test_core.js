@@ -251,10 +251,20 @@ assert(duplicateIed.length === 2 && duplicateIed[0][2] === 0 && duplicateIed[1][
 const backupContext = {};
 vm.runInNewContext(
   sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
-    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, activeExpiryNotificationKeys };',
+    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys };',
   backupContext,
 );
 const backupApi = backupContext.testApi;
+assert(backupApi.priceChangePercent(8080000, 4040000) === -50,
+  'history reduction rate must use the previous price as denominator');
+close(backupApi.priceChangePercent(106000000, 100000000), -5.660377358490566, 1e-12,
+  'history must retain precision before display rounding');
+assert(backupApi.priceChangePercent(100, 125) === 25 && backupApi.priceChangePercent(100, 100) === 0,
+  'history must support increases and unchanged prices');
+assert(backupApi.priceChangePercent(0, 100) === null && backupApi.priceChangePercent(undefined, 100) === null,
+  'history must not divide by zero or invent a missing baseline');
+assert(backupApi.priceChangePercent(100, 0) === -100,
+  'a price reduced to zero must show a full reduction');
 const legacyBudget = backupApi.normalizeBudget({ total: 123456789 });
 assert(legacyBudget.total === 123456789 &&
   Object.keys(legacyBudget.savedByItem).length === 0 && legacyBudget.customItems.length === 0,
