@@ -152,6 +152,13 @@ assert(!normalFocusGoal([
 ]), 'normal potential focus goals must not treat flat stats as percent lines');
 
 const cubeApi = cubeContext.testApi;
+for (const method of ['black', 'addi']) {
+  for (const grade of ['레어', '에픽', '유니크', '레전드리']) {
+    const eyeRows = cubeApi.cubeLineRows(cubeData, method, grade, 16, 201);
+    assert(eyeRows.length === 3 && eyeRows.every(line => line.length > 0),
+      `201+ eye accessory must have three official option lines: ${method}/${grade}`);
+  }
+}
 const weaponRows = cubeApi.cubeLineRows(cubeData, 'black', '레전드리', 1, 200);
 const weaponPicks = [
   weaponRows[0].find(row => row.text === '공격력 +12%').idx,
@@ -526,9 +533,9 @@ const calendarSundayCount = Math.round(
   (7 * 24 * 60 * 60 * 1000)
 ) + 1;
 const benefitCount = new Set(sundayData.records.flatMap(record => record.benefits || [])).size;
-assert(sundayData.meta.recordCount === sundayData.records.length && sundayData.records.length >= 468,
+assert(sundayData.meta.recordCount === sundayData.records.length && sundayData.records.length >= 473,
   'Sunday history snapshot record count must match its metadata and include the latest addition');
-assert(sundayData.meta.coverageStart === '2017-03-12' && sundayData.meta.coverageEnd === '2026-08-09',
+assert(sundayData.meta.coverageStart === '2017-03-12' && sundayData.meta.coverageEnd >= '2026-09-13',
   'Sunday history snapshot must cover the first event through the latest official event');
 assert(sundayData.meta.sundayCount === sundayCount && sundayData.meta.specialDayCount === specialDayCount,
   'Sunday and special-day metadata must be derived from the stored records');
@@ -559,7 +566,7 @@ assert(sundayApi.sundayNextCalendarDate('2026-07-25') === '2026-07-26',
   'next calendar Sunday must be calculated in ISO date form');
 assert(sundayApi.sundayCurrentOrNextCalendarDate('2026-07-26') === '2026-07-26',
   'an in-progress Sunday must remain the current official event date');
-assert(sundayApi.sundayForecastStartDate(sundayData.records, '2026-08-07') === '2026-08-16',
+assert(sundayApi.sundayForecastStartDate(sundayData.records, '2026-09-16') === sundayApi.sundayAddDays(sundayData.meta.coverageEnd, 7),
   'forecasting must begin one week after the latest recorded Sunday');
 assert(sundayApi.sundayForecastStartDate([
   { date: '2026-08-09', kind: 'sunday', benefits: [] },
@@ -575,8 +582,9 @@ assert(sundayApi.sundayRankForecasts([
 ])[0].benefit === '가', 'equal forecast scores must use a deterministic benefit-name tie break');
 assert(sundayApi.SUNDAY_ACTIVE_BENEFITS.includes('솔에르다 3배'),
   'the new official Sol Erda 3x benefit must remain available to future forecasts');
+const augustRecords = sundayData.records.filter(record => record.date <= '2026-08-09');
 const augustForecast = sundayApi.SUNDAY_ACTIVE_BENEFITS
-  .map(benefit => sundayApi.sundayForecastBenefit(sundayData.records, benefit, '2026-08-16'));
+  .map(benefit => sundayApi.sundayForecastBenefit(augustRecords, benefit, '2026-08-16'));
 const rankedAugustForecast = sundayApi.sundayRankForecasts(augustForecast);
 assert(augustForecast.every(item => item.probability >= 0 && item.probability <= 1),
   'every Sunday benefit probability must stay within zero and one');
@@ -584,7 +592,7 @@ assert(Math.abs(augustForecast.reduce((sum, item) => sum + item.probability, 0) 
   'multi-label Sunday probabilities must not be normalized to a single-choice total');
 assert(rankedAugustForecast[0]?.benefit === '몬스터파크',
   'Monster Park must remain the highest-ranked all-benefit forecast for the current snapshot');
-const finalChoice = sundayApi.sundayPickFinalChoice(sundayData.records, '2026-08-16');
+const finalChoice = sundayApi.sundayPickFinalChoice(augustRecords, '2026-08-16');
 const expectedFinalProbability = augustForecast.find(item => item.benefit === finalChoice.benefit).probability;
 assert(finalChoice?.benefit === '몬스터파크' && finalChoice.contenderCount === 2 &&
   JSON.stringify([...finalChoice.comparedBenefits].sort()) === JSON.stringify([...sundayApi.SUNDAY_FINAL_CONTENDERS].sort()),
@@ -593,12 +601,12 @@ close(finalChoice.probability, expectedFinalProbability, 1e-12,
   'the displayed final percentage must retain the winning weekly occurrence estimate');
 assert(!Object.hasOwn(finalChoice, 'choiceProbability'),
   'non-exclusive Monster Park and Shining estimates must not be relabeled as a normalized probability');
-const nearAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-08-16');
-const farAbilityForecast = sundayApi.sundayForecastBenefit(sundayData.records, '어빌리티 반값', '2026-09-20');
+const nearAbilityForecast = sundayApi.sundayForecastBenefit(augustRecords, '어빌리티 반값', '2026-08-16');
+const farAbilityForecast = sundayApi.sundayForecastBenefit(augustRecords, '어빌리티 반값', '2026-09-20');
 assert(nearAbilityForecast.observedGap === farAbilityForecast.observedGap,
   'future date buttons must censor gap exposure at the latest observed record, not at the target date');
 const rareEventForecasts = ['샤이닝 스타포스', '미라클 타임']
-  .map(benefit => sundayApi.sundayPredictRareEvent(sundayData.records, benefit, '2026-08-16'));
+  .map(benefit => sundayApi.sundayPredictRareEvent(augustRecords, benefit, '2026-08-16'));
 const expectedPreviousYearDates = {
   '샤이닝 스타포스': ['2025-01-05', '2025-03-02', '2025-05-04', '2025-07-20', '2025-09-21', '2025-11-16', '2025-12-14'],
   '미라클 타임': ['2025-01-19', '2025-04-20', '2025-06-29', '2025-10-19'],
@@ -649,7 +657,7 @@ for (const forecast of rareEventForecasts) {
   close(Object.values(forecast.modelWeights).reduce((sum, value) => sum + value, 0), 1, 1e-12,
     `${forecast.benefit} rare-model component weights`);
   assert(JSON.stringify(forecast) === JSON.stringify(
-    sundayApi.sundayPredictRareEvent(sundayData.records, forecast.benefit, '2026-08-16')),
+    sundayApi.sundayPredictRareEvent(augustRecords, forecast.benefit, '2026-08-16')),
   `${forecast.benefit} rare-event forecast must be deterministic`);
 }
 assert(rareEventForecasts[0].historyCount >= 21 && rareEventForecasts[1].historyCount >= 18,

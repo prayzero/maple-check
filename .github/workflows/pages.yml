@@ -24,6 +24,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Check required files and JSON
         shell: bash
         run: |
@@ -34,6 +39,12 @@ jobs:
           python -m json.tool manifest.json > /dev/null
           python -m json.tool cube-options-v2.json > /dev/null
           python -m json.tool sunday-history.json > /dev/null
+
+      - name: Check service worker and core calculations
+        run: |
+          node --check sw.js
+          node tools/test_core.js
+          node tools/test_boss_selection.js
 
   package:
     name: Package Pages artifact

@@ -56,6 +56,58 @@
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
+  .enhance-lab { --lab-accent: #d96a05; color: #303238; background: #f7f7f8; border-radius: 24px; padding: 24px; }
+  .lab-heading { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; }
+  .lab-heading h2 { font-size: clamp(22px, 3vw, 30px); font-weight: 800; color: var(--lab-accent); letter-spacing: -.04em; }
+  .lab-badge { background: #eeeef0; color: #65666c; border-radius: 99px; padding: 6px 12px; font-size: 11px; }
+  .lab-tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid #e4e4e7; padding-bottom: 12px; }
+  .lab-tabs button { min-height: 44px; border-radius: 12px; padding: 10px 18px; font-weight: 700; color: #707078; }
+  .lab-tabs button[aria-selected=true] { background: #fff0df; color: #b95600; }
+  .lab-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .lab-card { min-width: 0; background: #fff; border: 1px solid #f0f0f2; border-radius: 22px; padding: 22px; box-shadow: 0 6px 24px #172b4d04; }
+  .lab-card h3, .lab-card h4 { color: #b95600; font-size: 17px; font-weight: 750; margin-bottom: 12px; }
+  .lab-config { grid-column: 1; grid-row: 1; }
+  .lab-results { grid-column: 2; grid-row: 1 / span 3; position: sticky; top: 12px; scroll-margin-top: 80px; }
+  .lab-options { grid-column: 1; grid-row: 2; }
+  .lab-details { grid-column: 1 / -1; }
+  .lab-note { font-size: 12px; color: #73747b; line-height: 1.7; margin-top: 12px; }
+  .lab-card .calc-field { display: flex; flex-direction: column; min-width: 0; gap: 6px; padding: 10px 12px; background: #f5f5f6; border-radius: 12px; }
+  .lab-card .calc-field > span { color: #686970; font-size: 11px; margin: 0; }
+  .enhance-lab input:not([type=checkbox]):not([type=radio]), .enhance-lab select { background: #f5f5f6 !important; color: #24262c !important; border: 1px solid transparent; border-radius: 10px; min-height: 42px; font-size: 14px !important; width: 100%; max-width: 100%; }
+  .enhance-lab .calc-field input, .enhance-lab .calc-field select { padding: 0; min-height: 28px; border-radius: 0; }
+  .enhance-lab input:focus-visible, .enhance-lab select:focus-visible, .enhance-lab button:focus-visible { outline: 2px solid #f59b40; outline-offset: 3px; }
+  .enhance-lab input[type=checkbox], .enhance-lab input[type=radio] { accent-color: #e98219; width: 16px; height: 16px; }
+  .enhance-lab .text-slate-100, .enhance-lab .text-slate-200, .enhance-lab .text-slate-300 { color: #34363d; }
+  .enhance-lab .text-slate-400, .enhance-lab .text-slate-500 { color: #72737a; }
+  .enhance-lab .text-amber-200, .enhance-lab .text-amber-300, .enhance-lab .text-maple-accent { color: #bf5900; }
+  .enhance-lab .text-sky-300 { color: #1670a8; }
+  .enhance-lab .text-emerald-300 { color: #158060; }
+  .enhance-lab .text-red-200, .enhance-lab .text-red-300 { color: #b82e39; }
+  .enhance-lab .border-maple-border { border-color: #e9e9ed; }
+  .enhance-lab [class*="bg-maple-bg"], .enhance-lab [class*="bg-slate-900"] { background-color: #f6f6f8; }
+  .enhance-lab button[aria-pressed] { min-height: 40px; }
+  .enhance-lab button[aria-pressed=true] { background: #fff0df; border-color: #efab64; color: #b35300; }
+  .lab-primary { display: block; width: 100%; min-height: 48px; border-radius: 12px; margin-top: 18px; background: #b95600; color: #fff; font-weight: 750; }
+  .lab-primary:hover { background: #a74a00; }
+  .lab-primary:disabled { background: #e4e4e7; color: #909099; cursor: not-allowed; }
+  .lab-metric { background: #fff7ed; border-radius: 16px; padding: 22px; margin: 16px 0; }
+  .lab-metric > span { display: block; font-size: 12px; color: #966631; margin-bottom: 6px; }
+  .lab-metric > strong { display: block; font-size: clamp(23px, 2.3vw, 32px); font-weight: 800; color: #c26007; overflow-wrap: anywhere; letter-spacing: -.04em; }
+  .lab-result-row { display: flex; gap: 16px; justify-content: space-between; align-items: start; border-bottom: 1px solid #f0f0f2; padding: 12px 0; font-size: 13px; }
+  .lab-result-row > :first-child { color: #797980; }
+  .lab-result-row > :last-child { text-align: right; overflow-wrap: anywhere; }
+  .lab-option-row { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 12px; border-radius: 14px; background: #f6f6f8; }
+  .lab-option-row > * { grid-column: auto !important; }
+  .lab-option-row > span:last-child { text-align: left; }
+  .lab-empty { min-height: 280px; display: grid; align-content: center; text-align: center; color: #8c8d94; gap: 12px; padding: 20px; }
+  .lab-distribution { display: flex; align-items: end; gap: 5px; height: 110px; margin: 22px 0 8px; padding-top: 10px; border-bottom: 1px solid #ededf0; }
+  .lab-distribution > div { flex: 1; min-width: 0; background: #f5ba7f; border-radius: 5px 5px 0 0; }
+  .lab-percentiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .lab-percentiles > div { background: #f7f7f8; border-radius: 12px; padding: 12px; }
+  .lab-percentiles strong, .lab-percentiles small { display: block; }
+  .lab-percentiles strong { font-size: 16px; margin-top: 4px; color: #41434c; }
+  @media (max-width: 1050px) { .lab-layout { grid-template-columns: 1fr; } .lab-config, .lab-options, .lab-results, .lab-details { grid-column: 1; grid-row: auto; } .lab-results { position: static; } }
+  @media (max-width: 600px) { .enhance-lab { border-radius: 16px; padding: 14px; } .lab-card { padding: 16px; border-radius: 18px; } .lab-tabs button { padding: 10px 12px; } .lab-layout { gap: 14px; } }
 </style>
 </head>
 <body>
@@ -455,6 +507,45 @@ const getBossRevenue = (boss, row) => {
   const { price, max } = getDifficultyEntry(boss, row?.difficulty);
   const members = clampPartyMembers(row?.partyMembers, max);
   return { price, max, members, revenue: Math.floor(price / members) };
+};
+
+// 주간 계획은 12개까지. 월간 보스와 이미 선택한 보스의 난이도 교체는 별도 처리한다.
+const WEEKLY_BOSS_LIMIT = 12;
+const validBossRows = (rows, bossData) => {
+  const seen = new Set();
+  return (rows || []).filter(row => {
+    const boss = bossData.find(item => item.id === row?.bossId);
+    if (!boss?.difficulties?.[row.difficulty] || seen.has(row.bossId)) return false;
+    seen.add(row.bossId);
+    return true;
+  });
+};
+const summarizeBossRevenue = (rows, bossData) => validBossRows(rows, bossData).reduce((sum, row) => {
+  const boss = bossData.find(item => item.id === row.bossId);
+  const revenue = getBossRevenue(boss, row).revenue;
+  const period = boss.monthly ? 'monthly' : 'weekly';
+  sum[period] += revenue;
+  sum[period + 'Count'] += 1;
+  sum.total += revenue;
+  return sum;
+}, { weekly: 0, monthly: 0, total: 0, weeklyCount: 0, monthlyCount: 0 });
+const canSelectBoss = (rows, bossData, bossId) => {
+  const boss = bossData.find(item => item.id === bossId);
+  if (!boss) return false;
+  const valid = validBossRows(rows, bossData);
+  return !!boss.monthly || valid.some(row => row.bossId === bossId)
+    || summarizeBossRevenue(valid, bossData).weeklyCount < WEEKLY_BOSS_LIMIT;
+};
+const toggleBossSelection = (rows, bossData, bossId, difficulty) => {
+  const boss = bossData.find(item => item.id === bossId);
+  if (!boss?.difficulties?.[difficulty]) return rows || [];
+  const list = validBossRows(rows, bossData);
+  const current = list.find(row => row.bossId === bossId);
+  if (current?.difficulty === difficulty) return list.filter(row => row.bossId !== bossId);
+  if (!canSelectBoss(list, bossData, bossId)) return rows || [];
+  const next = { rowId: current?.rowId || 'r_' + Math.random().toString(36).slice(2, 8),
+    bossId, difficulty, partyMembers: clampPartyMembers(current?.partyMembers, getDifficultyEntry(boss, difficulty).max) };
+  return current ? list.map(row => row.bossId === bossId ? next : row) : [...list, next];
 };
 
 // 숫자 입력 파싱 (콤마/문자 제거)
@@ -1726,6 +1817,7 @@ function App() {
   const [selected, setSelected]     = useState(() => loadLS(LS_KEYS.SELECTED, 'dashboard'));
   const [mileage, setMileage] = useState(() => normalizeMileageState(loadLS(LS_KEYS.MILEAGE, null)));
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [excludedRevenueIds, setExcludedRevenueIds] = useState([]);
   const menuButtonRef = useRef(null);
   const sidebarWasOpen = useRef(false);
 
@@ -1794,15 +1886,7 @@ function App() {
   const charTotals = useMemo(() => {
     const map = {};
     for (const c of characters) {
-      let weekly = 0, monthly = 0;
-      for (const row of (c.bosses || [])) {
-        const boss = bossData.find(b => b.id === row.bossId);
-        if (!boss) continue;
-        const { revenue: rev } = getBossRevenue(boss, row);
-        if (boss.monthly) monthly += rev;
-        else weekly += rev;
-      }
-      map[c.id] = { weekly, monthly, total: weekly + monthly };
+      map[c.id] = summarizeBossRevenue(c.bosses, bossData);
     }
     return map;
   }, [characters, bossData]);
@@ -1939,7 +2023,7 @@ function App() {
         onImportFile={importDataFile}
       />
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-w-0 overflow-y-auto">
         <header className="sticky top-0 z-20 bg-maple-bg/80 backdrop-blur border-b border-maple-border px-4 py-3 flex items-center gap-3 md:hidden">
           <button
             ref={menuButtonRef}
@@ -1960,7 +2044,7 @@ function App() {
 
         <div className="p-4 md:p-8">
           <div className="mb-5 max-w-5xl mx-auto rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 leading-relaxed">
-            <strong>9/10 테스트월드 개편 후 계산</strong> · 결정석 가격·아케인 비용·캐릭터당 판매 제한 삭제를 미리 반영했습니다.
+            <strong>9/10 테스트월드 개편 후 계산</strong> · 결정석 가격·아케인 비용의 예정값을 미리 반영했습니다. 보스 계획은 주간 12개까지 선택할 수 있습니다.
             검은 마법사는 <strong>10/1 적용 예정 가격</strong>으로 계산합니다. 그 외 개편은 9/17 예정이며 정식 업데이트에서 변경될 수 있습니다.
             {' '}<a href={REWORK_SOURCE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">공식 공지</a>
           </div>
@@ -1981,6 +2065,8 @@ function App() {
               grandTotal={grandTotal}
               bossData={bossData}
               onSelect={setSelected}
+              excludedIds={excludedRevenueIds}
+              onExcludedChange={setExcludedRevenueIds}
             />
           )}
           {selected === 'boss_data' && (
@@ -2014,6 +2100,11 @@ function App() {
               onCopyBudget={() => copyBudget(selected)}
               onPasteBudget={() => pasteBudget(selected)}
               budgetClip={budgetClip}
+              characters={characters}
+              charTotals={charTotals}
+              onSelectCharacter={setSelected}
+              excludedIds={excludedRevenueIds}
+              onExcludedChange={setExcludedRevenueIds}
             />
           )}
         </div>
@@ -2292,7 +2383,70 @@ function NavItem({ active, onClick, label, subtitle, secondarySubtitle, subtitle
 /* =========================================================
  * Dashboard (총 통합 정리)
  * ========================================================= */
-function Dashboard({ characters, charTotals, grandTotal, bossData, onSelect }) {
+function RevenueStatsTable({ characters, charTotals, activeId, onSelect, excludedIds = [], onExcludedChange }) {
+  const included = characters.filter(character => !excludedIds.includes(character.id));
+  const total = included.reduce((sum, character) => {
+    const value = charTotals[character.id] || {};
+    return { weekly: sum.weekly + (value.weekly || 0), monthly: sum.monthly + (value.monthly || 0),
+      weeklyCount: sum.weeklyCount + (value.weeklyCount || 0) };
+  }, { weekly: 0, monthly: 0, weeklyCount: 0 });
+  const toggleIncluded = (id) => onExcludedChange?.(excludedIds.includes(id)
+    ? excludedIds.filter(value => value !== id) : [...excludedIds, id]);
+  return (
+    <section aria-label="캐릭터 통합 수익" className="min-w-0 bg-maple-panel border border-maple-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-maple-border flex justify-between gap-2 items-center">
+        <h3 className="text-sm font-semibold">③ 통합 통계</h3>
+        <span className="text-[11px] text-slate-400">체크한 {included.length}명 합산 · 즉시 반영</span>
+      </div>
+      {characters.length === 0 ? <p className="p-5 text-sm text-slate-500">캐릭터를 추가하면 수익이 표시됩니다.</p> : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-right whitespace-nowrap tabular-nums">
+              <caption className="sr-only">체크한 캐릭터의 주간 결정석 수와 주간 수익 합계</caption>
+              <thead className="text-[11px] text-slate-400 border-b border-maple-border">
+                <tr>
+                  <th scope="col" className="py-2 pl-3 w-8"><input type="checkbox" aria-label="모든 캐릭터 통계에 포함" checked={included.length === characters.length}
+                    onChange={() => onExcludedChange?.(included.length === characters.length ? characters.map(character => character.id) : [])}
+                    className="accent-amber-400 h-3.5 w-3.5 align-middle" /></th>
+                  <th scope="col" className="text-left py-2 px-2 font-normal">캐릭터명</th>
+                  <th scope="col" className="py-2 px-2 font-normal">주간 결정</th>
+                  <th scope="col" className="py-2 pl-2 pr-4 font-normal">주간 수익</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-maple-border/60">
+                {characters.map(character => {
+                  const value = charTotals[character.id] || {};
+                  const checked = !excludedIds.includes(character.id);
+                  return (
+                    <tr key={character.id} className={`${activeId === character.id ? 'bg-maple-accent/10' : ''} ${checked ? '' : 'opacity-45'}`}>
+                      <td className="pl-3 py-2"><input type="checkbox" checked={checked} onChange={() => toggleIncluded(character.id)}
+                        aria-label={`${character.name} 통계에 포함`} className="accent-amber-400 h-3.5 w-3.5 align-middle" /></td>
+                      <th scope="row" className="text-left px-2 py-2 font-medium"><button onClick={() => onSelect(character.id)}
+                        className={`max-w-24 truncate align-middle hover:underline ${activeId === character.id ? 'text-maple-accent' : 'text-slate-200'}`}
+                        title={character.name}>{character.name}</button></th>
+                      <td className={`px-2 py-2 ${value.weeklyCount > WEEKLY_BOSS_LIMIT ? 'text-amber-300' : 'text-sky-300'}`}>{value.weeklyCount || 0}</td>
+                      <td className="pl-2 pr-4 py-2 font-medium text-slate-100">{fmtMeso(value.weekly || 0).replace(' 메소', '')}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="border-t border-slate-500/50 bg-maple-bg/35 font-bold">
+                <tr><th colSpan="2" scope="row" className="text-left py-3 pl-4">총합</th><td className="px-2 text-sky-300">{total.weeklyCount}</td>
+                  <td className="pl-2 pr-4 text-maple-accent" aria-live="polite">{fmtMeso(total.weekly).replace(' 메소', '')}</td></tr>
+              </tfoot>
+            </table>
+          </div>
+          <details className="border-t border-maple-border text-xs">
+            <summary className="cursor-pointer px-4 py-3 text-slate-400 hover:text-violet-200">월간 보스 별도 보기 <span className="float-right text-violet-300">{fmtMeso(total.monthly)}</span></summary>
+            <div className="px-4 pb-3 space-y-2">{included.map(character => <div key={character.id} className="flex justify-between gap-3"><span className="text-slate-400 truncate">{character.name}</span><span className="text-violet-200 whitespace-nowrap">{fmtMeso(charTotals[character.id]?.monthly || 0)}</span></div>)}</div>
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
+function Dashboard({ characters, charTotals, grandTotal, bossData, onSelect, excludedIds, onExcludedChange }) {
   const expiring = useMemo(() => {
     const items = [];
     for (const c of characters) {
@@ -2311,13 +2465,13 @@ function Dashboard({ characters, charTotals, grandTotal, bossData, onSelect }) {
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">📊 총 통합 정리</h2>
-        <p className="text-slate-400 mt-1">모든 캐릭터의 주간 수익과 월간 보스 1회 수익을 합산</p>
+        <p className="text-slate-400 mt-1">캐릭터별 주간 결정석 수익을 한눈에 확인하세요.</p>
       </div>
 
       <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-maple-accent/30 rounded-xl p-6 md:p-8">
-        <div className="text-sm text-slate-300">주간 + 월간 1회 보스 결정석 수익</div>
+        <div className="text-sm text-slate-300">모든 캐릭터 주간 결정석 수익</div>
         <div className="text-3xl md:text-5xl font-bold text-maple-accent mt-2 break-all">
-          {fmtMeso(grandTotal.total)}
+          {fmtMeso(grandTotal.weekly)}
         </div>
         <div className="grid grid-cols-2 gap-3 mt-4">
           <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
@@ -2333,6 +2487,9 @@ function Dashboard({ characters, charTotals, grandTotal, bossData, onSelect }) {
           캐릭터 {characters.length}명 · 보스 {characters.reduce((a,c) => a + (c.bosses?.length || 0), 0)}개 항목
         </div>
       </div>
+
+      <RevenueStatsTable characters={characters} charTotals={charTotals} onSelect={onSelect}
+        excludedIds={excludedIds} onExcludedChange={onExcludedChange} />
 
       {expiring.length > 0 && (
         <div className="bg-maple-panel border border-maple-border rounded-xl p-5">
@@ -2384,7 +2541,7 @@ function Dashboard({ characters, charTotals, grandTotal, bossData, onSelect }) {
                   </div>
                   <div className="text-right flex-shrink-0">
                     <div className="font-semibold text-maple-accent">
-                      {fmtMeso(charTotals[c.id]?.total || 0)}
+                      {fmtMeso(charTotals[c.id]?.weekly || 0)}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
                       주간 {fmtMeso(charTotals[c.id]?.weekly || 0)} · 월간 {fmtMeso(charTotals[c.id]?.monthly || 0)}
@@ -2404,7 +2561,8 @@ function Dashboard({ characters, charTotals, grandTotal, bossData, onSelect }) {
 /* =========================================================
  * CharacterView (개별 캐릭터)
  * ========================================================= */
-function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopyBudget, onPasteBudget, budgetClip }) {
+function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopyBudget, onPasteBudget, budgetClip,
+  characters = [], charTotals = {}, onSelectCharacter, excludedIds, onExcludedChange }) {
   const [editName, setEditName] = useState(false);
   const [nameInput, setNameInput] = useState(character.name);
   const [tab, setTab] = useState('boss');
@@ -2449,25 +2607,7 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
   };
 
   const toggleBoss = (bossId, difficulty) => {
-    onUpdate(c => {
-      // 현재 보스 목록에 없는(일간 전환 등으로 제거된) 보스 선택은 정리
-      let list = (c.bosses || []).filter(b => bossData.find(x => x.id === b.bossId));
-      const boss = bossData.find(b => b.id === bossId);
-      const idx = list.findIndex(b => b.bossId === bossId && b.difficulty === difficulty);
-      if (idx >= 0) {
-        // 선택 해제
-        return { ...c, bosses: list.filter((_, i) => i !== idx) };
-      }
-      // 같은 보스는 한 난이도만 선택 가능 → 같은 보스의 다른 난이도는 자동 해제
-      list = list.filter(b => b.bossId !== bossId);
-      return {
-        ...c,
-        bosses: [...list, {
-          rowId: 'r_' + Math.random().toString(36).slice(2, 8),
-          bossId, difficulty, partyMembers: 1
-        }]
-      };
-    });
+    onUpdate(c => ({ ...c, bosses: toggleBossSelection(c.bosses, bossData, bossId, difficulty) }));
   };
 
   const setBossMembers = (bossId, difficulty, n) => {
@@ -2514,7 +2654,7 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className={`${tab === 'boss' ? 'max-w-7xl' : 'max-w-5xl'} mx-auto space-y-5 min-w-0`}>
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           {editName ? (
@@ -2556,36 +2696,52 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
       </div>
 
       {tab === 'boss' && (
-        <>
-          <div className="bg-gradient-to-br from-amber-500/15 to-orange-500/5 border border-maple-accent/30 rounded-xl p-5">
-            <div className="text-sm text-slate-300">이 캐릭터의 주간 + 월간 1회 보스 수익</div>
-            <div className="text-2xl md:text-4xl font-bold text-maple-accent mt-1 break-all">
-              {fmtMeso(totals.total)}
-            </div>
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
-                <div className="text-xs text-slate-400">주간 수익</div>
-                <div className="text-base md:text-lg font-bold text-sky-300 mt-0.5 break-all">{fmtMeso(totals.weekly)}</div>
-                <div className="text-xs text-slate-400 mt-1">주간 소요시간 <span className="text-sky-200/80 font-medium">{fmtMinutes(bossTimeSum.weekly)}</span></div>
-              </div>
-              <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
-                <div className="text-xs text-slate-400">월간 수익</div>
-                <div className="text-base md:text-lg font-bold text-violet-300 mt-0.5 break-all">{fmtMeso(totals.monthly)}</div>
-                <div className="text-xs text-slate-400 mt-1">월간 소요시간 <span className="text-violet-200/80 font-medium">{fmtMinutes(bossTimeSum.monthly)}</span></div>
-              </div>
-            </div>
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_390px] gap-4 items-start min-w-0">
+          <div className="min-w-0 space-y-4">
+            <section className="bg-maple-panel border border-maple-border rounded-xl p-4">
+              <h3 className="text-sm font-semibold mb-3">① 캐릭터</h3>
+              <div className="flex gap-2 flex-wrap">{characters.map(c => <button key={c.id} onClick={() => onSelectCharacter(c.id)}
+                className={`text-xs px-3 py-2 rounded-lg border ${c.id === character.id ? 'bg-maple-accent/15 border-maple-accent/60 text-maple-accent' : 'border-maple-border text-slate-400 hover:text-slate-100 hover:bg-maple-bg'}`}>
+                <span className="font-semibold">{c.name}</span><span className="ml-2 opacity-80">{charTotals[c.id]?.weeklyCount || 0}/12</span>
+              </button>)}</div>
+            </section>
+            <BossRevenueTable
+              rows={character.bosses || []} bossData={bossData} bossTimes={character.bossTimes || {}}
+              onToggle={toggleBoss} onSetMembers={setBossMembers} onReset={resetBosses} onSetTime={setBossTime}
+            />
           </div>
-
-          <BossRevenueTable
-            rows={character.bosses || []}
-            bossData={bossData}
-            bossTimes={character.bossTimes || {}}
-            onToggle={toggleBoss}
-            onSetMembers={setBossMembers}
-            onReset={resetBosses}
-            onSetTime={setBossTime}
-          />
-        </>
+          <aside className="min-w-0 space-y-4 xl:sticky xl:top-4" aria-label="실시간 보스 수익">
+            <RevenueStatsTable characters={characters} charTotals={charTotals} activeId={character.id} onSelect={onSelectCharacter}
+              excludedIds={excludedIds} onExcludedChange={onExcludedChange} />
+            <div className="bg-maple-panel border border-maple-border rounded-xl overflow-hidden">
+              <div className="p-4 border-b border-maple-border">
+                <div className="text-xs text-slate-400">{character.name} · 이번 주 수익</div>
+                <div className="text-2xl font-bold text-maple-accent mt-1 break-words" aria-live="polite">{fmtMeso(totals.weekly)}</div>
+                <div className="text-xs text-slate-400 mt-2">주간 {totals.weeklyCount || 0}/12개 · 소요 {fmtMinutes(bossTimeSum.weekly)}</div>
+                <div className="text-xs text-violet-300 mt-2">월간 별도 {fmtMeso(totals.monthly)}</div>
+              </div>
+              <div className="px-4 py-3 border-b border-maple-border text-sm font-semibold">선택한 보스 <span className="text-xs text-slate-500 font-normal">· 클릭으로 해제</span></div>
+              <div className="divide-y divide-maple-border/60 max-h-96 overflow-y-auto">
+                {validBossRows(character.bosses, bossData).map(row => {
+                  const boss = bossData.find(b => b.id === row.bossId);
+                  const value = getBossRevenue(boss, row);
+                  return <button key={row.bossId} onClick={() => toggleBoss(row.bossId, row.difficulty)}
+                    aria-label={`${boss.name} ${row.difficulty} 선택 해제`} className="w-full flex items-center text-left gap-2 px-4 py-2 hover:bg-maple-bg/50">
+                    <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
+                    <div className="min-w-0"><div className="text-xs font-medium truncate">{boss.name}</div><div className="text-[10px] text-slate-400">{row.difficulty} · {value.members}인{boss.monthly ? ' · 월간' : ''}</div></div>
+                    <span className={`ml-auto text-xs whitespace-nowrap ${boss.monthly ? 'text-violet-300' : 'text-slate-200'}`}>{fmtMeso(value.revenue).replace(' 메소', '')}</span>
+                    <span className="text-slate-500 ml-1" aria-hidden="true">×</span>
+                  </button>;
+                })}
+                {!(character.bosses || []).length && <div className="p-5 text-center text-xs text-slate-500">난이도를 선택하면 여기에 바로 표시됩니다.</div>}
+              </div>
+            </div>
+          </aside>
+          <div className="xl:hidden sticky bottom-3 z-10 rounded-xl border border-maple-accent/40 bg-maple-panel/95 backdrop-blur p-3 flex items-center justify-between gap-3 shadow-lg">
+            <div><div className="text-[10px] text-slate-400">{character.name} · 주간 {totals.weeklyCount || 0}/12</div><div className="text-sm font-bold text-maple-accent" aria-live="polite">{fmtMeso(totals.weekly)}</div></div>
+            <span className="text-[11px] text-violet-300 text-right">월간 별도<br />{fmtMeso(totals.monthly)}</span>
+          </div>
+        </div>
       )}
 
       {tab === 'duration' && (
@@ -2815,101 +2971,35 @@ function BossIcon({ id, name, icon }) {
 
 function BossRevenueTable({ rows, bossData, bossTimes = {}, onToggle, onSetMembers, onReset, onSetTime }) {
   const [sortMode, setSortMode] = useState('natural');
-
-  // 보스당 선택된 난이도 (보스당 1개) — 현재 보스 목록에 있는 것만 (제거된 보스 무시)
-  const selByBoss = useMemo(() => {
-    const valid = new Set(bossData.map(b => b.id));
-    const m = {};
-    for (const r of rows) if (valid.has(r.bossId)) m[r.bossId] = r;
-    return m;
-  }, [rows, bossData]);
-
-  const monthlyIds = useMemo(() => {
-    const s = new Set();
-    for (const b of bossData) if (b.monthly) s.add(b.id);
-    return s;
-  }, [bossData]);
-
-  // 보스별 묶음 (난이도 배지 정렬)
+  const [search, setSearch] = useState('');
+  const [selectedOnly, setSelectedOnly] = useState(false);
+  const selectedRows = validBossRows(rows, bossData);
+  const selByBoss = Object.fromEntries(selectedRows.map(row => [row.bossId, row]));
+  const revenue = summarizeBossRevenue(rows, bossData);
+  const weeklyCount = revenue.weeklyCount;
+  const monthlyCount = revenue.monthlyCount;
+  const limitReached = weeklyCount >= WEEKLY_BOSS_LIMIT;
   const bossList = useMemo(() => {
-    const list = bossData.map(boss => {
-      const diffs = Object.keys(boss.difficulties).map(diff => {
-        const { price, max } = getDifficultyEntry(boss, diff);
-        return { diff, price, max };
-      });
-      diffs.sort((a, b) => (DIFF_ORDER[a.diff] ?? 99) - (DIFF_ORDER[b.diff] ?? 99));
-      const maxPrice = diffs.reduce((a, d) => Math.max(a, d.price), 0);
-      return { boss, diffs, maxPrice, monthly: !!boss.monthly };
-    });
-    return list;
-  }, [bossData]);
-
-  // 가격순: 보스×난이도를 펼쳐서 가격순으로만 정렬
-  const flatEntries = useMemo(() => {
-    const arr = [];
-    for (const boss of bossData) {
-      for (const diff of Object.keys(boss.difficulties)) {
-        const { price, max } = getDifficultyEntry(boss, diff);
-        arr.push({ boss, diff, price, max, monthly: !!boss.monthly });
-      }
-    }
-    arr.sort((a, b) => sortMode === 'price_asc' ? a.price - b.price : b.price - a.price);
-    return arr;
-  }, [bossData, sortMode]);
-
-  const selectedRows = Object.values(selByBoss);
-  const weeklyCount = selectedRows.filter(r => !monthlyIds.has(r.bossId)).length;
-  const monthlyCount = selectedRows.filter(r => monthlyIds.has(r.bossId)).length;
-
-  const revenue = useMemo(() => {
-    let weekly = 0, monthly = 0;
-    for (const r of rows) {
-      const boss = bossData.find(b => b.id === r.bossId);
-      if (!boss) continue;
-      const { revenue: rev } = getBossRevenue(boss, r);
-      if (boss.monthly) monthly += rev;
-      else weekly += rev;
-    }
-    return { weekly, monthly, total: weekly + monthly };
-  }, [rows, bossData]);
-
-  // 소요시간 합산: 선택된 보스 기준
-  // 주간 소요 = 주간보스 시간 합 / 월간 소요 = 주간 소요 ×4 + 월간보스 시간 합
-  const timeSum = useMemo(() => {
-    let weeklyT = 0, monthlyBossT = 0;
-    for (const r of selectedRows) {
-      const boss = bossData.find(b => b.id === r.bossId);
-      if (!boss) continue;
-      const t = Math.max(0, bossTimes[boss.id] || 0);
-      if (boss.monthly) monthlyBossT += t; else weeklyT += t;
-    }
-    return { weekly: weeklyT, monthly: weeklyT * 4 + monthlyBossT };
-  }, [selectedRows, bossData, bossTimes]);
-
+    const matching = bossData.filter(boss => boss.name.toLowerCase().includes(search.trim().toLowerCase()));
+    if (sortMode === 'natural') return matching.map(boss => ({ boss,
+      diffs: Object.keys(boss.difficulties).sort((a, b) => (DIFF_ORDER[a] ?? 99) - (DIFF_ORDER[b] ?? 99)) }));
+    return matching.flatMap(boss => Object.keys(boss.difficulties).map(diff => ({ boss, diffs: [diff] })))
+      .sort((a, b) => (getDifficultyEntry(a.boss, a.diffs[0]).price - getDifficultyEntry(b.boss, b.diffs[0]).price)
+        * (sortMode === 'price_asc' ? 1 : -1));
+  }, [bossData, search, sortMode]);
+  const visibleBosses = bossList.filter(({ boss, diffs }) => !selectedOnly
+    || (selByBoss[boss.id] && diffs.includes(selByBoss[boss.id].difficulty)));
   return (
-    <div className="relative bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
-      <button
-        type="button" onClick={onReset}
-        className="absolute top-3 right-3 md:top-4 md:right-4 text-xs font-semibold text-maple-danger border border-red-500/40 hover:bg-red-500/10 px-3 py-1.5 rounded-md z-10"
-        title="선택한 보스(주간·월간)를 모두 해제"
-      >
-        🔄 초기화
-      </button>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3 pr-20">
-        <div>
-          <h3 className="font-semibold flex items-center gap-2">
-            <span>💎</span> 보스 결정석 수익
-          </h3>
-          <div className="text-xs text-slate-400 mt-1">
-            보스마다 <span className="text-slate-300">난이도 배지를 클릭</span>해 선택하세요. 한 보스는 한 난이도만 선택하며 캐릭터당 주간 12개 제한은 삭제되었습니다. 월드별 판매 한도는 게임에서 별도 확인해 주세요. 표시 수익은 선택한 결정석 전체 합산입니다.
-          </div>
+    <section aria-label="보스 선택" className="min-w-0 bg-maple-panel border border-maple-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-maple-border space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-semibold text-sm">② 보스 선택</h3>
+          <button type="button" onClick={onReset} className="text-xs text-slate-400 hover:text-red-300" title="선택한 보스(주간·월간)를 모두 해제">↻ 초기화</button>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="text-sm font-medium px-2.5 py-1 rounded-md border bg-maple-bg border-maple-border">
-            주간 <span className="text-maple-accent font-bold">{weeklyCount}개</span>
-            <span className="text-slate-500"> · 캐릭터 제한 없음</span>
-            {/* 월간 카운터는 항상 표시 → 선택해도 레이아웃이 밀리지 않음 */}
-            <span className="text-slate-500 ml-2">· 월간 <span className="text-violet-300 font-bold">{monthlyCount}</span></span>
+        <div className="flex justify-between gap-2 items-center flex-wrap">
+          <div className={`text-xs rounded-md px-2.5 py-1.5 border ${limitReached ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' : 'bg-maple-bg border-maple-border text-slate-400'}`}>
+            주간 <strong className="text-maple-accent">{weeklyCount} / {WEEKLY_BOSS_LIMIT}</strong>
+            <span className="ml-2 text-violet-300">월간 {monthlyCount}개</span>
           </div>
           <div className="flex items-center gap-0.5 bg-maple-bg border border-maple-border rounded p-0.5">
             <SortBtn active={sortMode === 'natural'} onClick={() => setSortMode('natural')}>기본</SortBtn>
@@ -2917,134 +3007,73 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, onToggle, onSetMembe
             <SortBtn active={sortMode === 'price_asc'} onClick={() => setSortMode('price_asc')}>가격 ↑</SortBtn>
           </div>
         </div>
+        <div className="flex gap-3 items-center">
+          <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="보스 이름 검색" aria-label="보스 이름 검색"
+            className="min-w-0 flex-1 bg-maple-bg border border-maple-border rounded-md px-3 py-2 text-xs focus:outline-none focus:border-maple-accent" />
+          <label className="text-xs text-slate-400 flex gap-1.5 items-center whitespace-nowrap"><input type="checkbox" checked={selectedOnly}
+            onChange={event => setSelectedOnly(event.target.checked)} className="accent-amber-400" />선택만</label>
+        </div>
+        <p className="text-[11px] leading-relaxed text-slate-400" role="status">
+          {weeklyCount > WEEKLY_BOSS_LIMIT ? '기존 선택이 12개를 초과해 유지 중입니다. 보스를 해제해 12개 이내로 조정해 주세요.'
+            : limitReached ? '주간 12개 선택 완료 · 선택한 보스의 난이도 변경·해제와 월간 보스 선택은 가능합니다.'
+            : '난이도를 누르면 옆 통계에 바로 반영됩니다. 주간 계획은 12개까지, 월간은 별도입니다.'}
+        </p>
       </div>
-
-      <div className="divide-y divide-maple-border">
-        {sortMode !== 'natural' ? flatEntries.map(({ boss, diff, price, max, monthly }) => {
+      <div className="grid grid-cols-[108px_minmax(0,1fr)] sm:grid-cols-[110px_minmax(0,1fr)_122px] gap-2 px-4 py-2 border-b border-maple-border text-[10px] text-slate-500">
+        <span>보스 / 소요시간</span><span>난이도</span><span className="hidden sm:block text-right">파티원 / 수익</span>
+      </div>
+      <div className="divide-y divide-maple-border/70">
+        {visibleBosses.map(({ boss, diffs }) => {
           const sel = selByBoss[boss.id];
-          const active = !!sel && sel.difficulty === diff;
-          const revenueInfo = active ? getBossRevenue(boss, sel) : null;
-          const members = revenueInfo?.members || 1;
-          const revenueVal = revenueInfo?.revenue || 0;
-          const st = diffStyle(diff);
+          const checked = !!sel && diffs.includes(sel.difficulty);
+          const blocked = !canSelectBoss(rows, bossData, boss.id);
+          const value = checked ? getBossRevenue(boss, sel) : null;
           return (
-            <div key={boss.id + '_' + diff} className={`flex items-center gap-2 px-1 md:px-2 py-2.5 transition ${active ? 'bg-maple-accent/5' : 'hover:bg-maple-bg/30'}`}>
-              <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
-              <span className={`font-medium ${active ? 'text-slate-100' : 'text-slate-300'}`}>{boss.name}</span>
-              <button type="button" onClick={() => onToggle(boss.id, diff)}
-                title={`${diff} · ${fmtMeso(price)}`}
-                className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
-                  active ? `${st.on} font-bold ring-2 ring-white/40 shadow`
-                    : `${st.off} hover:brightness-125`}`}>
-                <span className="font-bold tracking-wider uppercase">{diff}</span>
-                <span className="opacity-90">{fmtMeso(price)}</span>
-              </button>
-              {monthly && (
-                <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-violet-500/15 text-violet-300 border-violet-500/40">월간</span>
-              )}
-              {active && (
-                <select value={members} onChange={(e) => onSetMembers(boss.id, diff, parseInt(e.target.value) || 1)}
-                  className="bg-maple-bg border border-maple-border rounded px-2 py-1 text-xs w-16 text-center"
-                  aria-label={`${boss.name} ${diff} 실제 파티원 수`}
-                  title={max === 1 ? '솔로 전용 (1인)' : `최대 ${max}인`}>
-                  {Array.from({ length: max }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}인</option>)}
-                </select>
-              )}
-              <span className={`ml-auto text-sm md:text-base ${active ? 'font-bold text-maple-accent' : 'text-slate-500'}`}>{fmtMeso(active ? revenueVal : price)}</span>
-            </div>
-          );
-        }) : bossList.map(({ boss, diffs, monthly }) => {
-          const sel = selByBoss[boss.id];
-          const checked = !!sel;
-          const selEntry = checked ? getDifficultyEntry(boss, sel.difficulty) : null;
-          const max = selEntry ? selEntry.max : 6;
-          const revenueInfo = checked ? getBossRevenue(boss, sel) : null;
-          const members = revenueInfo?.members || 1;
-          const revenueVal = revenueInfo?.revenue || 0;
-
-          return (
-            <div key={boss.id} className={`px-1 md:px-2 py-3 transition ${checked ? 'bg-maple-accent/5' : 'hover:bg-maple-bg/30'}`}>
-              <div className="flex items-center gap-2 mb-2">
+            <div key={boss.id + (sortMode === 'natural' ? '' : '_' + diffs[0])}
+              className={`grid grid-cols-[108px_minmax(0,1fr)] sm:grid-cols-[110px_minmax(0,1fr)_122px] gap-2 items-center px-3 sm:px-4 py-2 transition ${checked ? 'bg-maple-accent/5' : ''} ${blocked ? 'opacity-40' : ''}`}>
+              <div className="flex items-center gap-2 min-w-0">
                 <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
-                <span className={`font-medium ${checked ? 'text-slate-100' : 'text-slate-300'}`}>{boss.name}</span>
-                <span className="flex items-center gap-1 text-[11px] text-slate-400" title="이 캐릭터의 보스 1회 소요시간(분)">
-                  <span>소요</span>
-                  <input type="text" inputMode="numeric" value={bossTimes[boss.id] || ''} placeholder="-"
-                    aria-label={`${boss.name} 1회 소요시간(분)`}
-                    onChange={(e) => onSetTime(boss.id, parseInt(String(e.target.value).replace(/[^0-9]/g, '')) || 0)}
-                    className="w-12 bg-maple-bg border border-maple-border rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-maple-accent" />
-                  <span>분</span>
-                </span>
-                {monthly && (
-                  <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-violet-500/15 text-violet-300 border-violet-500/40">월간</span>
-                )}
-                {checked && (
-                  <span className="ml-auto font-bold text-maple-accent text-sm md:text-base">{fmtMeso(revenueVal)}</span>
-                )}
+                <div className="min-w-0">
+                  <div className="text-xs font-medium truncate" title={boss.name}>{boss.name}</div>
+                  <label className="flex items-center text-[9px] text-slate-500 gap-0.5">
+                    <input type="text" inputMode="numeric" value={bossTimes[boss.id] || ''} placeholder="소요"
+                      aria-label={`${boss.name} 1회 소요시간(분)`}
+                      onChange={event => onSetTime(boss.id, parseInt(String(event.target.value).replace(/[^0-9]/g, '')) || 0)}
+                      className="w-8 bg-transparent border-b border-maple-border text-center text-[10px] focus:outline-none focus:border-maple-accent" />분
+                  </label>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5 pl-1">
-                {diffs.map(d => {
-                  const active = checked && sel.difficulty === d.diff;
-                  const st = diffStyle(d.diff);
-                  return (
-                    <button
-                      key={d.diff}
-                      type="button"
-                      onClick={() => onToggle(boss.id, d.diff)}
-                      title={`${d.diff} · ${fmtMeso(d.price)}`}
-                      className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
-                        active
-                          ? `${st.on} font-bold ring-2 ring-white/40 shadow`
-                          : `${st.off} hover:brightness-125`
-                      }`}
-                    >
-                      <span className="font-bold tracking-wider uppercase">{d.diff}</span>
-                      <span className={active ? 'opacity-90' : 'opacity-80'}>{fmtMeso(d.price)}</span>
-                    </button>
-                  );
+              <div className="flex flex-wrap gap-1.5 items-center min-w-0">
+                {diffs.map(diff => {
+                  const active = sel?.difficulty === diff;
+                  const style = diffStyle(diff);
+                  const price = getDifficultyEntry(boss, diff).price;
+                  return <button key={diff} type="button" onClick={() => onToggle(boss.id, diff)}
+                    disabled={blocked} aria-pressed={active} aria-label={`${boss.name} ${diff}`}
+                    title={blocked ? '주간 12개 선택 완료: 다른 보스를 해제하면 선택할 수 있습니다.' : `${diff} · ${fmtMeso(price)}`}
+                    className={`rounded border px-2 py-1 text-[10px] font-semibold uppercase transition disabled:cursor-not-allowed ${active ? style.on + ' ring-1 ring-white/30' : style.off + ' hover:brightness-125'}`}>{diff}</button>;
                 })}
-                {checked && (
-                  <select
-                    value={members}
-                    onChange={(e) => onSetMembers(boss.id, sel.difficulty, parseInt(e.target.value) || 1)}
-                    className="ml-1 bg-maple-bg border border-maple-border rounded px-2 py-1 text-xs w-16 text-center"
+                {boss.monthly && <span className="text-[9px] text-violet-300 border border-violet-500/30 rounded px-1">월간</span>}
+              </div>
+              <div className="col-span-2 sm:col-span-1 flex items-center justify-end gap-2 min-w-0">
+                {checked ? <>
+                  <select value={value.members} onChange={event => onSetMembers(boss.id, sel.difficulty, Number(event.target.value))}
                     aria-label={`${boss.name} ${sel.difficulty} 실제 파티원 수`}
-                    title={max === 1 ? '솔로 전용 (1인)' : `최대 ${max}인`}
-                  >
-                    {Array.from({ length: max }, (_, i) => i + 1).map(n => (
-                      <option key={n} value={n}>{n}인</option>
-                    ))}
+                    className="bg-maple-bg border border-maple-border rounded px-1 py-1 text-[10px] w-12">
+                    {Array.from({ length: value.max }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}인</option>)}
                   </select>
-                )}
+                  <span className={`text-[11px] font-medium text-right ${boss.monthly ? 'text-violet-300' : 'text-maple-accent'}`}>{fmtMeso(value.revenue).replace(' 메소', '')}</span>
+                </> : <span className="hidden sm:inline text-[10px] text-slate-600">{sortMode === 'natural' ? '—' : fmtMeso(getDifficultyEntry(boss, diffs[0]).price).replace(' 메소', '')}</span>}
               </div>
             </div>
           );
         })}
+        {!visibleBosses.length && <p className="py-8 text-center text-xs text-slate-500">표시할 보스가 없습니다.</p>}
       </div>
-
-      <div className="border-t-2 border-maple-border mt-3 pt-3 space-y-1.5">
-        <div className="flex items-center justify-between text-sm">
-          <div className="text-slate-300">주간 수익</div>
-          <div className="font-semibold text-sky-300">{fmtMeso(revenue.weekly)}</div>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <div className="text-slate-400">주간 소요시간</div>
-          <div className="font-medium text-sky-200/80">{fmtMinutes(timeSum.weekly)}</div>
-        </div>
-        <div className="flex items-center justify-between text-sm pt-1">
-          <div className="text-slate-300">월간 수익</div>
-          <div className="font-semibold text-violet-300">{fmtMeso(revenue.monthly)}</div>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <div className="text-slate-400">월간 소요시간 <span className="text-slate-500">(주간×4 + 월간보스)</span></div>
-          <div className="font-medium text-violet-200/80">{fmtMinutes(timeSum.monthly)}</div>
-        </div>
-        <div className="flex items-center justify-between pt-1.5 border-t border-maple-border">
-          <div className="font-semibold">주간 + 월간 1회 합계</div>
-          <div className="font-bold text-maple-accent text-base md:text-lg">{fmtMeso(revenue.total)}</div>
-        </div>
+      <div className="px-4 py-3 border-t border-maple-border text-[11px] text-slate-500">
+        주간 선택 한도는 이 플래너의 계획 기준입니다. 수익은 실제 파티원 수로 나누며, 월간 수익은 주간 합계에 포함하지 않습니다.
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -4554,7 +4583,7 @@ function BudgetSummaryView({ characters, charTotals, onSelect }) {
 const SEL_CLS = 'bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-maple-accent';
 function CalcField({ label, children }) {
   return (
-    <label className="block">
+    <label className="block calc-field">
       <span className="text-[11px] text-slate-400 block mb-1">{label}</span>
       {children}
     </label>
@@ -4562,7 +4591,7 @@ function CalcField({ label, children }) {
 }
 function ResultRow({ label, value, strong }) {
   return (
-    <div className="flex items-center justify-between text-sm py-1">
+    <div className="lab-result-row flex items-center justify-between text-sm py-1">
       <span className="text-slate-300">{label}</span>
       <span className={strong ? 'font-bold text-maple-accent text-base' : 'font-semibold text-emerald-300'}>{value}</span>
     </div>
@@ -4597,16 +4626,21 @@ function StarforceCalc() {
   const recoveryRows = useMemo(() => err ? [] : sfRecoveryComparison(c), [c, err]);
   const safeguardRows = useMemo(() => err ? [] : sfSafeguardComparison(c), [c, err]);
   const num = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const resultRef = useRef(null);
   return (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
-      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>⭐</span> 스타포스 기대비용</h3>
-      <p className="text-xs text-slate-400 mb-4">2026-03-19 이후 KMS 일반 장비 · 하락 없음 · 스타캐치 보너스(×1.05) 상시 적용</p>
+    <div className="lab-layout" aria-label="스타포스 계산기">
+      <section className="lab-card lab-config">
+      <h3>장비 설정</h3>
+      <p className="text-xs text-slate-400 mb-4">장비와 목표를 선택하면 기대비용이 바로 계산됩니다.</p>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <CalcField label="장비 레벨"><input type="number" value={c.level} onChange={(e) => set('level', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
         <CalcField label="시작 성"><input type="number" value={c.from} onChange={(e) => set('from', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
         <CalcField label="목표 성"><input type="number" value={c.to} onChange={(e) => set('to', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
         <CalcField label="동일 장비(스페어) 1개 가격"><MesoInput value={c.spare} onChange={(n) => set('spare', n)} ariaLabel="동일 장비 스페어 한 개 가격" /></CalcField>
+      </div>
+      <h3 className="mt-6">세부 설정</h3>
+      <div className="grid grid-cols-2 gap-3">
         <CalcField label="MVP 등급">
           <select value={c.mvp} onChange={(e) => set('mvp', Number(e.target.value))} className={SEL_CLS + ' w-full'}>
             <option value={0}>없음</option><option value={0.03}>실버 (3%)</option><option value={0.05}>골드 (5%)</option><option value={0.1}>다이아/레드 (10%)</option>
@@ -4626,7 +4660,7 @@ function StarforceCalc() {
             <option value="auto">최적 자동</option>
           </select>
         </CalcField>
-        <fieldset className="col-span-2 md:col-span-4">
+        <fieldset className="col-span-2 mt-3">
           <legend className="text-[11px] text-slate-400 mb-1">이벤트 빠른 설정</legend>
           <div className="flex flex-wrap gap-1.5">
             {SF_EVENT_PRESETS.map(preset => {
@@ -4648,9 +4682,9 @@ function StarforceCalc() {
           </div>
           <p className="mt-1 text-[10px] text-slate-500">현행 샤타포스 = 30% 할인 + 21성 이하 파괴율 30% 감소 + 흔적복구 20% 할인 · 과거 5·10·15는 현행 강화 규칙에 해당 효과만 적용</p>
         </fieldset>
-        <fieldset className="col-span-2 md:col-span-4">
+        <fieldset className="col-span-2 mt-3">
           <legend className="sr-only">스타포스 할인 및 이벤트 직접 선택</legend>
-          <div className="flex flex-wrap md:flex-nowrap items-center gap-x-5 gap-y-1 text-[11px]">
+          <div className="grid gap-3 text-xs">
             <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.pcRoom} onChange={(e) => set('pcRoom', e.target.checked)} className="accent-amber-400" /> PC방 5%</label>
             <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.disc30} onChange={(e) => set('disc30', e.target.checked)} className="accent-amber-400" /> 강화비용 30% 할인</label>
             <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.ev51015} onChange={(e) => set('ev51015', e.target.checked)} className="accent-amber-400" /> 5/10/15성 100% (과거 효과)</label>
@@ -4659,23 +4693,32 @@ function StarforceCalc() {
           </div>
         </fieldset>
       </div>
+      <button type="button" className="lab-primary" disabled={!!err}
+        onClick={() => { resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); resultRef.current?.focus({ preventScroll: true }); }}>계산 결과 보기</button>
+      <p className="lab-note">2026-03-19 이후 KMS 일반 장비 기준 · 스타캐치 보너스 상시 적용</p>
+      </section>
 
       {err ? (
-        <div className="mt-4 bg-red-500/10 border border-red-500/40 text-red-200 text-xs rounded px-3 py-2">⚠️ {err}</div>
+        <section className="lab-card lab-results" ref={resultRef} tabIndex={-1}><h3>계산 결과</h3><div role="alert" className="lab-empty">{err}</div></section>
       ) : (
-        <div className="mt-4 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
+        <section className="lab-card lab-results" ref={resultRef} tabIndex={-1} aria-label="스타포스 계산 결과">
+          <div className="flex items-center justify-between gap-2"><h3>계산 결과</h3><span className="lab-badge">실시간 반영</span></div>
           <div className="text-xs text-slate-500 mb-1">{c.from}성 → {c.to}성 · {c.level}제{hasRestore ? '' : ' · 온전 복구표 미지원 레벨(140/160/200/250만) → 12성 복구 기준'}</div>
-          <ResultRow label="총 기대가치 (스페어 포함)" value={fmtMeso(Math.round(r.total))} strong />
+          <div className="lab-metric"><span>총 기대비용 · 스페어 포함</span><strong>{fmtMeso(Math.round(r.total))}</strong></div>
           <ResultRow label="순수 기대 메소" value={fmtMeso(Math.round(r.meso))} />
           <ResultRow label="기대 스페어 소모" value={num(r.equips) + '개'} />
           <ResultRow label="기대 시도 횟수" value={num(r.tries) + '회'} />
           <ResultRow label="기대 파괴 횟수" value={num(r.booms) + '회'} />
-        </div>
+          <div className="mt-6"><h4>목표까지의 평균 시도</h4>
+            <div className="lab-percentiles"><div><small className="text-slate-500">강화 시도</small><strong>{num(r.tries)}회</strong></div><div><small className="text-slate-500">파괴 횟수</small><strong>{num(r.booms)}회</strong></div></div>
+          </div>
+          <p className="lab-note">확률에 따른 평균 기대값입니다. 실제 강화 비용과 횟수는 달라질 수 있습니다.</p>
+        </section>
       )}
 
       {!err && (
-        <div className="mt-4 grid gap-4">
-          <section className="bg-maple-bg/35 border border-maple-border rounded-lg overflow-hidden">
+        <div className="lab-details grid gap-4">
+          <section className="lab-card overflow-hidden">
             <div className="px-4 py-3 border-b border-maple-border">
               <h4 className="text-sm font-semibold">파괴 복구 방식 가성비</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">현재 목표 성급·파괴방지·할인·이벤트 조건 기준입니다.</p>
@@ -4705,7 +4748,7 @@ function StarforceCalc() {
             {!hasRestore && <p className="px-4 py-2.5 border-t border-maple-border text-[11px] text-slate-500">흔적 복구 비교는 복구 비용표가 있는 140·160·200·250제 장비에서 지원합니다.</p>}
           </section>
 
-          <section className="bg-maple-bg/35 border border-maple-border rounded-lg overflow-hidden">
+          <section className="lab-card overflow-hidden">
             <div className="px-4 py-3 border-b border-maple-border">
               <h4 className="text-sm font-semibold">파괴방지 성급별 손익 비교</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">복구 방식도 성급별 자동 최저·현재 이벤트 기준입니다. 손익분기는 스페어가 해당 가격 이상일 때 파괴방지가 유리해지는 지점입니다.</p>
@@ -4837,14 +4880,15 @@ function PotentialCalc() {
   const TARGET_LABEL = ['목표 A', '목표 B', '목표 C'];
   const modeLabel = CUBE_TARGET_MODES.find(([id]) => id === targetMode)?.[1] || '';
   const fmtPct = (p) => (p * 100 < 0.01 && p > 0) ? (p * 100).toFixed(6) + '%' : (p * 100).toFixed(4) + '%';
+  const resultRef = useRef(null);
 
   return (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-5">
-      <div>
-        <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🎲</span> 잠재 정밀 기대비용</h3>
-        <p className="text-xs text-slate-400 mb-3">KMS 공식 확률 · 부위·레벨별 줄 옵션 직접 선택 · 순차 제한 재정규화 · 천장 반영 · 등급업+목표옵션 통합</p>
+    <div className="lab-layout" aria-label="잠재능력 계산기">
+      <section className="lab-card lab-config">
+        <h3>장비 설정</h3>
+        <p className="text-xs text-slate-400 mb-4">장비·잠재 종류와 현재 등급을 선택하세요.</p>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <CalcField label="잠재 종류">
             <select value={c.method} onChange={(e) => set('method', e.target.value)} className={SEL_CLS + ' w-full'}>
               <option value="black">일반/블랙 (메소)</option><option value="addi">에디셔널 (메소)</option>
@@ -4863,29 +4907,30 @@ function PotentialCalc() {
         </div>
 
         {upgrading && !levelErr && (
-          <div className="grid grid-cols-3 gap-3 mt-3">
+          <div className="grid grid-cols-2 gap-3 mt-3">
             {gi(c.curGrade) <= 0 && <CalcField label="레어→에픽 연속 실패"><input type="number" value={fails.r2e} onChange={(e) => setFails(f => ({ ...f, r2e: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
             {gi(c.curGrade) <= 1 && <CalcField label="에픽→유니크 연속 실패"><input type="number" value={fails.e2u} onChange={(e) => setFails(f => ({ ...f, e2u: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
             {u2lStep && <CalcField label="유니크→레전드리 천장 가격"><div className="bg-maple-bg/60 border border-maple-border rounded px-2 py-1.5 text-sm text-amber-300 font-semibold">{fmtMeso(u2lStep.ceilingMeso)}</div></CalcField>}
           </div>
         )}
-      </div>
+      <p className="lab-note">목표는 레전드리 3줄입니다. 현재 등급부터의 등급업 비용과 목표 옵션 비용을 함께 계산합니다.</p>
+      </section>
 
       {cubeErr ? (
-        <div className="bg-red-500/10 border border-red-500/40 text-red-200 text-xs rounded px-3 py-2">⚠️ 옵션 확률 데이터를 불러오지 못했습니다. 네트워크 확인 후 새로고침하세요.</div>
+        <section className="lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">옵션 확률 데이터를 불러오지 못했습니다. 네트워크 확인 후 새로고침하세요.</div></section>
       ) : !cube ? (
-        <div className="text-slate-400 text-sm py-4 text-center">공식 옵션 확률 데이터 로딩 중…</div>
+        <section className="lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="status">공식 옵션 확률 데이터 로딩 중…</div></section>
       ) : levelErr ? (
-        <div className="bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">⚠️ 장비 레벨은 1~300 범위로 입력하세요. (현재 {c.level || 0})</div>
+        <section className="lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">장비 레벨은 1~300 범위로 입력하세요. (현재 {c.level || 0})</div></section>
       ) : lineOpts.missing ? (
-        <div className="bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs rounded px-3 py-2">이 부위·레벨 조합의 공식 옵션 문맥이 없습니다. (레벨 1~300, 지원 부위 확인)</div>
+        <section className="lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">이 부위·레벨 조합의 공식 확률표가 없습니다. 장비 부위와 레벨을 확인하세요.</div></section>
       ) : (
         <>
           {/* 목표 옵션 3줄 선택 */}
-          <div className="border-t border-maple-border pt-4">
+          <section className="lab-card lab-options">
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-              <div className="flex items-center gap-2"><span>🎯</span><h4 className="font-semibold text-sm">목표 옵션 (레전드리 3줄)</h4></div>
-              <div className="flex gap-1 bg-maple-bg/60 border border-maple-border rounded-lg p-1" role="group" aria-label="잠재 목표 계산 방식">
+              <h3>목표 옵션 설정</h3>
+              <div className="flex flex-wrap gap-1 bg-maple-bg/60 border border-maple-border rounded-lg p-1" role="group" aria-label="잠재 목표 계산 방식">
                 {CUBE_TARGET_MODES.map(([id, label]) => (
                   <button
                     key={id}
@@ -4911,16 +4956,16 @@ function PotentialCalc() {
                   : unavailable ? '__unavailable__' : cur;
                 const info = ordered && roll && roll.lines[li];
                 return (
-                  <div key={li} className="grid grid-cols-12 gap-2 items-center">
+                  <div key={li} className="lab-option-row">
                     <span className="col-span-3 md:col-span-2 text-xs text-slate-400">{ordered ? LINE_LABEL[li] : TARGET_LABEL[li]}</span>
                     {category ? (
-                      <select value={cur} onChange={(e) => setCategoryPick(li, e.target.value)}
+                      <select value={cur} onChange={(e) => setCategoryPick(li, e.target.value)} aria-label={`${TARGET_LABEL[li]} 종류`}
                         className={SEL_CLS + ' col-span-6 md:col-span-7 w-full text-xs'}>
                         <option value="any">— 아무거나 (무시) —</option>
                         {CUBE_CATEGORY_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label} · 수치 무관</option>)}
                       </select>
                     ) : (
-                      <select value={displayedOption === 'any' ? 'any' : String(displayedOption)} onChange={(e) => setPick(li, e.target.value)}
+                      <select value={displayedOption === 'any' ? 'any' : String(displayedOption)} onChange={(e) => setPick(li, e.target.value)} aria-label={`${ordered ? LINE_LABEL[li] : TARGET_LABEL[li]} 옵션`}
                         className={SEL_CLS + ' col-span-6 md:col-span-7 w-full text-xs'}>
                         <option value="any">— 아무거나 (무시) —</option>
                         {unavailable && <option value="__unavailable__" disabled>{cube.options[cur]?.[0] || '선택 옵션'} · 이 줄에 등장하지 않음</option>}
@@ -4952,11 +4997,14 @@ function PotentialCalc() {
             {targetMode === 'ordered' && roll && roll.lines.some(l => l.excl > 0) && (
               <p className="text-[10px] text-slate-500 mt-1.5">※ 앞줄 제한(쓸만한 스킬·피격 옵션)으로 뒷줄 확률이 공식 재정규화되었습니다.</p>
             )}
-          </div>
+            <button type="button" className="lab-primary" onClick={() => { resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); resultRef.current?.focus({ preventScroll: true }); }}>계산 결과 보기</button>
+          </section>
 
           {/* 결과 */}
-          <div className="bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-3">
+          <section className="lab-card lab-results" ref={resultRef} tabIndex={-1} aria-label="잠재능력 계산 결과">
+            <div className="flex items-center justify-between gap-2"><h3>계산 결과</h3><span className="lab-badge">실시간 반영</span></div>
             <div className="text-xs text-slate-500 mb-1">{partName} · Lv.{c.level} · {c.method === 'black' ? '일반/블랙' : '에디셔널'} · {c.curGrade} → 레전드리 · {modeLabel}</div>
+            <div className="lab-metric"><span>총 기대 메소 · 등급업 + 목표 옵션</span><strong>{H4 > 0 ? fmtMeso(Math.round(totalMeso)) : '목표 도달 불가'}</strong></div>
 
             {gup.rows.length > 0 && (
               <div className="mb-2">
@@ -4981,17 +5029,29 @@ function PotentialCalc() {
             )}
 
             {H4 > 0 && H4 < 1 && (
-              <div className="mt-2 pt-2 border-t border-dashed border-maple-border grid grid-cols-4 gap-1 text-center">
+              <div className="mt-6">
+              <h4>횟수별 목표 달성 확률</h4>
+              <div className="lab-distribution" role="img" aria-label={`레전드리에서 ${q(0.5).toLocaleString()}회 이내 50%, ${q(0.9).toLocaleString()}회 이내 90% 확률로 목표 옵션 달성`}>
+                {Array.from({ length: 16 }, (_, index) => {
+                  const tries = Math.max(1, Math.ceil(q(0.9) * (index + 1) / 16));
+                  const chance = -Math.expm1(tries * Math.log1p(-H4));
+                  return <div key={index} style={{ height: `${chance * 100}%` }} title={`${tries.toLocaleString()}회 이내 ${(chance * 100).toFixed(1)}%`} />;
+                })}
+              </div>
+              <div className="flex justify-between text-xs text-slate-500 mb-4"><span>0회</span><span>{q(0.9).toLocaleString()}회</span></div>
+              <div className="lab-percentiles">
                 {[[0.5, '50%'], [0.9, '90%'], [0.95, '95%'], [0.99, '99%']].map(([v, lbl]) => (
                   <div key={lbl}>
-                    <div className="text-[10px] text-slate-500">{lbl} 달성</div>
-                    <div className="text-xs font-semibold text-sky-300">{q(v).toLocaleString()}회</div>
+                    <small className="text-slate-500">{lbl} 달성까지</small>
+                    <strong>{q(v).toLocaleString()}회</strong>
                   </div>
                 ))}
               </div>
+              <p className="lab-note">레전드리에서 시작한 목표 옵션 재설정 기준입니다. 등급업 횟수는 위 통합 기대비용에 별도로 반영됩니다.</p>
+              </div>
             )}
-          </div>
-          <p className="text-[10px] text-slate-500">공식 페이지 반올림 표시확률 기반 근사값입니다. 유효옵션 모드는 % 옵션을 기준으로 하며, 현재 3줄과 완전히 동일한 결과의 내부 재추첨은 반영하지 않습니다. (확률표 재확인 2026-07-25)</p>
+          <p className="lab-note">공식 페이지 반올림 표시확률 기반 근사값입니다. 유효옵션 모드는 % 옵션 기준이며 동일한 결과의 내부 재추첨은 반영하지 않습니다. 공식 확률표 확인 {cube.meta?.retrieved || '2026-07-25'}.</p>
+          </section>
         </>
       )}
     </div>
@@ -5960,14 +6020,30 @@ function SundayMapleView() {
 }
 
 function EnhanceCalcView() {
+  const [active, setActive] = useState('starforce');
+  const tabRefs = useRef({});
+  const navigateTab = (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 'starforce' : event.key === 'End' ? 'potential'
+      : active === 'starforce' ? 'potential' : 'starforce';
+    setActive(next);
+    tabRefs.current[next]?.focus();
+  };
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h2 className="text-2xl md:text-3xl font-bold">⭐ 강화 기대비용</h2>
-        <p className="text-slate-400 mt-1">스타포스·잠재 정밀 기대비용 (KMS 공식 확률·천장·재정규화·흔적 복구 반영)</p>
+    <div className="enhance-lab max-w-7xl mx-auto">
+      <div className="lab-heading">
+        <h2>{active === 'starforce' ? '스타포스 기댓값 계산기' : '잠재능력 기댓값 계산기'}</h2>
+        <span className="lab-badge">KMS · {active === 'starforce' ? '2026.03.19 강화 규칙' : '공식 줄별 확률·천장 반영'}</span>
       </div>
-      <StarforceCalc />
-      <PotentialCalc />
+      <div className="lab-tabs" role="tablist" aria-label="강화 계산기 종류">
+        <button type="button" id="sf-tab" role="tab" aria-controls="sf-panel" aria-selected={active === 'starforce'} tabIndex={active === 'starforce' ? 0 : -1}
+          ref={element => { tabRefs.current.starforce = element; }} onKeyDown={navigateTab} onClick={() => setActive('starforce')}>★ 스타포스</button>
+        <button type="button" id="potential-tab" role="tab" aria-controls="potential-panel" aria-selected={active === 'potential'} tabIndex={active === 'potential' ? 0 : -1}
+          ref={element => { tabRefs.current.potential = element; }} onKeyDown={navigateTab} onClick={() => setActive('potential')}>◈ 잠재능력</button>
+      </div>
+      <div id="sf-panel" role="tabpanel" aria-labelledby="sf-tab" hidden={active !== 'starforce'}><StarforceCalc /></div>
+      <div id="potential-panel" role="tabpanel" aria-labelledby="potential-tab" hidden={active !== 'potential'}><PotentialCalc /></div>
     </div>
   );
 }
