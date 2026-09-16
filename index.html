@@ -1648,7 +1648,7 @@ const validateBackupData = (value) => {
 };
 
 /* =========================================================
- * 만료 알림 (브라우저 Notification + 페이지 배너)
+ * 만료 알림 (브라우저 Notification + 알림 센터)
  * - D-1, D-day, 만료 항목 노출
  * - 캐릭터·항목·만료일 조합마다 브라우저 알림은 한 번만 발송
  * ========================================================= */
@@ -1665,32 +1665,48 @@ const activeExpiryNotificationKeys = (characters, oldKeys) => {
     .filter(key => activeKeys.has(key)))];
 };
 
+// 알림 센터 도우미
+const collectExpiryItems = (characters, withinDays = 30) => {
+  const items = [];
+  for (const character of characters) {
+    for (const [type, date] of Object.entries(character.durations || {})) {
+      if (typeof date !== 'string' || !date) continue;
+      const days = daysUntil(date);
+      if (days === null || !Number.isFinite(days) || days > withinDays) continue;
+      items.push({ charId: character.id, charName: character.name, type,
+        typeLabel: TYPE_LABEL[type] || type, date, days });
+    }
+  }
+  return items.sort((a, b) => a.days - b.days || a.charName.localeCompare(b.charName));
+};
+const resolveAppView = (saved, characters) => {
+  const pages = ['notifications', 'budget_summary', 'boss_data', 'boss_history', 'symbol_price',
+    'enhance_calc', 'mileage_calc', 'sunday_maple'];
+  return pages.includes(saved) || characters.some(character => character.id === saved)
+    ? saved : characters[0]?.id || 'budget_summary';
+};
+// 알림 센터 도우미 끝
+
 function useExpiryNotifications(characters) {
   const [permission, setPermission] = useState(() =>
     typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
   );
   const [pending, setPending] = useState([]);
+  const [upcoming, setUpcoming] = useState([]);
+  const [dateKey, setDateKey] = useState(todayStr);
+  useEffect(() => {
+    const checkDay = () => setDateKey(todayStr());
+    const timer = setInterval(checkDay, 60000);
+    document.addEventListener('visibilitychange', checkDay);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', checkDay); };
+  }, []);
 
   // 만료/임박 항목 탐지
   useEffect(() => {
-    const items = [];
-    for (const c of characters) {
-      for (const [k, v] of Object.entries(c.durations || {})) {
-        if (!v) continue;
-        const d = daysUntil(v);
-        if (d === 0 || d === 1 || (d !== null && d < 0)) {
-          items.push({
-            charName: c.name,
-            charId: c.id,
-            type: k,
-            typeLabel: TYPE_LABEL[k] || k,
-            date: v,
-            days: d,
-          });
-        }
-      }
-    }
+    const allItems = collectExpiryItems(characters);
+    const items = allItems.filter(item => item.days <= 1);
     setPending(items);
+    setUpcoming(allItems);
 
     // 브라우저 알림 발송 (같은 만료 항목은 앱을 다시 열어도 한 번만)
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
@@ -1713,14 +1729,14 @@ function useExpiryNotifications(characters) {
     }
     // 현재 존재하는 만료 항목의 발송 기록은 개수와 무관하게 모두 보존한다.
     saveLS(LS_KEYS.NOTIF_SHOWN, { keys: nextKeys });
-  }, [characters, permission]);
+  }, [characters, permission, dateKey]);
 
   const askPermission = () => {
     if (typeof Notification === 'undefined') return;
     Notification.requestPermission().then(p => setPermission(p)).catch(() => {});
   };
 
-  return { pending, permission, askPermission };
+  return { pending, upcoming, permission, askPermission };
 }
 
 /* =========================================================
@@ -1814,10 +1830,11 @@ function App() {
     return Array.isArray(saved) ? saved.filter(isPlainObject).map(normalizeChar) : [];
   });
   const [bossData, setBossData]     = useState(() => reconcileBossData(loadLS(LS_KEYS.BOSS_DATA, null)));
-  const [selected, setSelected]     = useState(() => loadLS(LS_KEYS.SELECTED, 'dashboard'));
+  const [selected, setSelected] = useState(() => resolveAppView(loadLS(LS_KEYS.SELECTED, null), characters));
   const [mileage, setMileage] = useState(() => normalizeMileageState(loadLS(LS_KEYS.MILEAGE, null)));
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [excludedRevenueIds, setExcludedRevenueIds] = useState([]);
+  const [durationTarget, setDurationTarget] = useState(null);
   const menuButtonRef = useRef(null);
   const sidebarWasOpen = useRef(false);
 
@@ -1880,7 +1897,7 @@ function App() {
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [sidebarOpen]);
 
-  const { pending, permission, askPermission } = useExpiryNotifications(characters);
+  const { pending, upcoming, permission, askPermission } = useExpiryNotifications(characters);
 
   // 캐릭터별 총 수익 계산 (주간 / 월간 분리)
   const charTotals = useMemo(() => {
@@ -1890,18 +1907,6 @@ function App() {
     }
     return map;
   }, [characters, bossData]);
-
-  const grandTotal = useMemo(
-    () => Object.values(charTotals).reduce(
-      (a, t) => ({
-        weekly: a.weekly + t.weekly,
-        monthly: a.monthly + t.monthly,
-        total: a.total + t.total,
-      }),
-      { weekly: 0, monthly: 0, total: 0 }
-    ),
-    [charTotals]
-  );
 
   const addCharacter = useCallback((name) => {
     const newChar = {
@@ -1925,8 +1930,8 @@ function App() {
   const removeCharacter = useCallback((id) => {
     if (!confirm('이 캐릭터를 삭제할까요? 되돌릴 수 없습니다.')) return;
     setCharacters(prev => prev.filter(c => c.id !== id));
-    setSelected('dashboard');
-  }, []);
+    setSelected(resolveAppView(null, characters.filter(c => c.id !== id)));
+  }, [characters]);
 
   const updateCharacter = useCallback((id, updater) => {
     setCharacters(prev => prev.map(c => c.id === id ? updater(c) : c));
@@ -1991,7 +1996,7 @@ function App() {
         setCharacters(next.characters);
         setBossData(next.bossData);
         setMileage(next.mileage);
-        setSelected('dashboard');
+        setSelected(resolveAppView(null, next.characters));
         alert('불러오기 완료!');
       } catch (error) {
         alert(`백업을 불러올 수 없습니다.\n${error?.message || 'JSON 형식 오류'}`);
@@ -2015,12 +2020,14 @@ function App() {
         characters={characters}
         charTotals={charTotals}
         selected={selected}
-        onSelect={(id) => { setSelected(id); setSidebarOpen(false); }}
+        onSelect={(id) => { setDurationTarget(null); setSelected(id); setSidebarOpen(false); }}
         onAdd={addCharacter}
         onRemove={removeCharacter}
         open={sidebarOpen}
         onExport={exportData}
         onImportFile={importDataFile}
+        notificationCount={upcoming.length}
+        urgentNotificationCount={pending.length}
       />
 
       <main className="flex-1 min-w-0 overflow-y-auto">
@@ -2043,31 +2050,9 @@ function App() {
         </header>
 
         <div className="p-4 md:p-8">
-          <div className="mb-5 max-w-5xl mx-auto rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 leading-relaxed">
-            <strong>9/10 테스트월드 개편 후 계산</strong> · 결정석 가격·아케인 비용의 예정값을 미리 반영했습니다. 보스 계획은 주간 12개까지 선택할 수 있습니다.
-            검은 마법사는 <strong>10/1 적용 예정 가격</strong>으로 계산합니다. 그 외 개편은 9/17 예정이며 정식 업데이트에서 변경될 수 있습니다.
-            {' '}<a href={REWORK_SOURCE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">공식 공지</a>
-          </div>
-          {/* 상단 알림 배너: D-1 / D-day / 만료됨 */}
-          {pending.length > 0 && (
-            <ExpiryBanner
-              items={pending}
-              permission={permission}
-              onAskPermission={askPermission}
-              onSelect={(id) => setSelected(id)}
-            />
-          )}
-
-          {selected === 'dashboard' && (
-            <Dashboard
-              characters={characters}
-              charTotals={charTotals}
-              grandTotal={grandTotal}
-              bossData={bossData}
-              onSelect={setSelected}
-              excludedIds={excludedRevenueIds}
-              onExcludedChange={setExcludedRevenueIds}
-            />
+          {selected === 'notifications' && (
+            <NotificationCenter items={upcoming} permission={permission}
+              onAskPermission={askPermission} onSelect={(id) => { setDurationTarget(id); setSelected(id); }} />
           )}
           {selected === 'boss_data' && (
             <BossDataEditor bossData={bossData} setBossData={setBossData} />
@@ -2093,6 +2078,7 @@ function App() {
           {characters.find(c => c.id === selected) && (
             <CharacterView
               character={characters.find(c => c.id === selected)}
+              initialTab={durationTarget === selected ? 'duration' : 'boss'}
               bossData={bossData}
               totals={charTotals[selected] || { weekly: 0, monthly: 0, total: 0 }}
               onUpdate={(updater) => updateCharacter(selected, updater)}
@@ -2118,52 +2104,38 @@ function App() {
 }
 
 /* =========================================================
- * 상단 만료 알림 배너 (D-1 / D-day / 만료됨)
+ * 왼쪽 종 아이콘으로 여는 알림 센터
  * ========================================================= */
-function ExpiryBanner({ items, permission, onAskPermission, onSelect }) {
+function NotificationCenter({ items, permission, onAskPermission, onSelect }) {
   return (
-    <div className="mb-6 max-w-5xl mx-auto bg-red-500/10 border border-red-500/40 rounded-xl p-4 md:p-5">
+    <div className="max-w-4xl mx-auto space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <h3 className="font-bold text-maple-danger flex items-center gap-2">
-          <span>🔔</span> 만료 알림
-        </h3>
-        {permission !== 'granted' && permission !== 'unsupported' && (
-          <button
-            onClick={onAskPermission}
-            className="text-xs bg-maple-danger/20 hover:bg-maple-danger/30 border border-red-500/40 text-red-200 px-3 py-1 rounded"
-          >
-            브라우저 알림 허용
-          </button>
+        <div><h2 className="text-2xl font-bold">🔔 알림 센터</h2>
+          <p className="text-sm text-slate-400 mt-2">만료된 항목과 앞으로 30일 이내 만료되는 항목을 모아 볼 수 있어요.</p></div>
+        {permission === 'default' && <button onClick={onAskPermission}
+          className="text-xs bg-maple-panel hover:bg-maple-bg border border-maple-border text-slate-200 px-3 py-2 rounded-lg">브라우저 알림 허용</button>}
+      </div>
+      <section aria-label="만료 알림" className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+        <div className="flex items-center justify-between mb-4"><h3 className="font-semibold">기간제 만료 알림</h3><span className="text-xs text-slate-400">{items.length}건</span></div>
+        {items.length === 0 ? <div className="text-center py-12 text-slate-400"><span className="text-3xl block mb-3" aria-hidden="true">✓</span>30일 이내 만료되는 항목이 없습니다.</div> : (
+          <div className="space-y-2">{items.map(item => {
+            const tag = item.days < 0 ? '만료됨' : item.days === 0 ? '오늘 만료' : item.days === 1 ? '내일 만료' : `${item.days}일 남음`;
+            const tone = item.days <= 1 ? 'text-red-300' : item.days <= 7 ? 'text-amber-300' : 'text-slate-300';
+            return <button key={`${item.charId}|${item.type}|${item.date}`} onClick={() => onSelect(item.charId)}
+              className="w-full text-left bg-maple-bg/60 hover:bg-maple-bg rounded-lg px-3 py-3 flex flex-wrap gap-2 items-center justify-between focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400">
+              <div className="min-w-0"><span className="font-medium break-all">{item.charName}</span><span className="text-slate-500 mx-2">·</span><span className="text-slate-300">{item.typeLabel}</span></div>
+              <div className="text-right shrink-0"><div className={`text-sm font-semibold ${tone}`}>{tag}</div><div className="text-xs text-slate-500 mt-0.5">{item.date}</div></div>
+            </button>;
+          })}</div>
         )}
-      </div>
-      <div className="mt-3 space-y-2">
-        {items.map((it, i) => {
-          const tone =
-            it.days < 0 ? 'text-maple-danger' :
-            it.days === 0 ? 'text-maple-danger' :
-            'text-maple-warn';
-          const tag =
-            it.days < 0 ? '만료됨' :
-            it.days === 0 ? '오늘 만료' :
-            '내일 만료';
-          return (
-            <button
-              key={i}
-              onClick={() => onSelect(it.charId)}
-              className="w-full text-left bg-maple-panel/60 hover:bg-maple-panel rounded px-3 py-2 flex items-center justify-between"
-            >
-              <div>
-                <span className="font-medium">{it.charName}</span>
-                <span className="text-slate-500 mx-2">·</span>
-                <span className="text-slate-300">{it.typeLabel}</span>
-              </div>
-              <div className={`text-sm font-bold ${tone}`}>
-                {tag} <span className="text-slate-500 font-normal text-xs ml-1">{it.date}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+        {permission === 'denied' && <p className="text-xs text-slate-500 mt-4">브라우저 알림은 차단되어 있어요. 이 알림 센터에서는 계속 확인할 수 있습니다.</p>}
+      </section>
+      <details className="bg-maple-panel border border-maple-border rounded-xl p-4 text-sm">
+        <summary className="cursor-pointer font-medium">계산 기준 안내</summary>
+        <p className="mt-3 text-slate-400 leading-relaxed"><strong className="text-slate-200">9/10 테스트월드 개편 예정값</strong> · 결정석 가격·아케인 비용을 미리 반영했습니다. 보스 계획은 주간 12개까지 선택할 수 있습니다.
+          검은 마법사는 <strong className="text-slate-200">10/1 적용 예정 가격</strong>으로 계산하며, 그 외 개편은 9/17 예정입니다. 정식 업데이트에서 변경될 수 있습니다.
+          {' '}<a href={REWORK_SOURCE_URL} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline underline-offset-2">공식 공지</a></p>
+      </details>
     </div>
   );
 }
@@ -2171,7 +2143,8 @@ function ExpiryBanner({ items, permission, onAskPermission, onSelect }) {
 /* =========================================================
  * Sidebar
  * ========================================================= */
-function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, open, onExport, onImportFile }) {
+function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, open, onExport, onImportFile,
+  notificationCount = 0, urgentNotificationCount = 0 }) {
   const [newName, setNewName] = useState('');
   const asideRef = useRef(null);
 
@@ -2224,19 +2197,20 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
       `}
     >
       <div className="px-5 pt-6 pb-4 border-b border-maple-border">
-        <h1 className="text-xl font-bold text-maple-accent flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2"><h1 className="text-xl font-bold text-maple-accent flex items-center gap-2">
           <img src="icon.png" alt="" className="w-8 h-8 rounded-lg object-cover" /> 메이플 체크
         </h1>
+          <button type="button" onClick={() => onSelect('notifications')} title="알림 센터"
+            aria-label={`알림 센터 · 만료 알림 ${notificationCount}건`} aria-current={selected === 'notifications' ? 'page' : undefined}
+            className={`relative shrink-0 w-11 h-11 rounded-xl flex items-center justify-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400 ${selected === 'notifications' ? 'bg-maple-accent/20 text-maple-accent' : 'text-slate-300 hover:bg-maple-bg hover:text-maple-accent'}`}>
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+            {notificationCount > 0 && <span aria-hidden="true" className={`absolute -top-0.5 -right-1 min-w-5 h-5 px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${urgentNotificationCount ? 'bg-red-500 text-white' : 'bg-amber-300 text-slate-900'}`}>{notificationCount > 99 ? '99+' : notificationCount}</span>}
+          </button>
+        </div>
         <p className="text-xs text-slate-400 mt-1">보스 수익 & 기간제 통합 관리</p>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
-        <NavItem
-          active={selected === 'dashboard'}
-          onClick={() => onSelect('dashboard')}
-          label="📊 총 통합 정리"
-          subtitle="모든 캐릭터 수익 합계"
-        />
         <NavItem
           active={selected === 'budget_summary'}
           onClick={() => onSelect('budget_summary')}
@@ -2381,7 +2355,7 @@ function NavItem({ active, onClick, label, subtitle, secondarySubtitle, subtitle
 }
 
 /* =========================================================
- * Dashboard (총 통합 정리)
+ * 보스 화면 통합 통계
  * ========================================================= */
 function RevenueStatsTable({ characters, charTotals, activeId, onSelect, excludedIds = [], onExcludedChange }) {
   const included = characters.filter(character => !excludedIds.includes(character.id));
@@ -2446,128 +2420,17 @@ function RevenueStatsTable({ characters, charTotals, activeId, onSelect, exclude
   );
 }
 
-function Dashboard({ characters, charTotals, grandTotal, bossData, onSelect, excludedIds, onExcludedChange }) {
-  const expiring = useMemo(() => {
-    const items = [];
-    for (const c of characters) {
-      for (const [k, v] of Object.entries(c.durations || {})) {
-        if (!v) continue;
-        const d = daysUntil(v);
-        if (d !== null && d <= 30) {
-          items.push({ char: c.name, charId: c.id, type: k, date: v, days: d });
-        }
-      }
-    }
-    return items.sort((a, b) => a.days - b.days);
-  }, [characters]);
-
-  return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h2 className="text-2xl md:text-3xl font-bold">📊 총 통합 정리</h2>
-        <p className="text-slate-400 mt-1">캐릭터별 주간 결정석 수익을 한눈에 확인하세요.</p>
-      </div>
-
-      <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-maple-accent/30 rounded-xl p-6 md:p-8">
-        <div className="text-sm text-slate-300">모든 캐릭터 주간 결정석 수익</div>
-        <div className="text-3xl md:text-5xl font-bold text-maple-accent mt-2 break-all">
-          {fmtMeso(grandTotal.weekly)}
-        </div>
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
-            <div className="text-xs text-slate-400">주간 수익</div>
-            <div className="text-base md:text-xl font-bold text-sky-300 mt-0.5 break-all">{fmtMeso(grandTotal.weekly)}</div>
-          </div>
-          <div className="bg-maple-bg/40 rounded-lg px-4 py-3">
-            <div className="text-xs text-slate-400">월간 수익</div>
-            <div className="text-base md:text-xl font-bold text-violet-300 mt-0.5 break-all">{fmtMeso(grandTotal.monthly)}</div>
-          </div>
-        </div>
-        <div className="text-sm text-slate-400 mt-3">
-          캐릭터 {characters.length}명 · 보스 {characters.reduce((a,c) => a + (c.bosses?.length || 0), 0)}개 항목
-        </div>
-      </div>
-
-      <RevenueStatsTable characters={characters} charTotals={charTotals} onSelect={onSelect}
-        excludedIds={excludedIds} onExcludedChange={onExcludedChange} />
-
-      {expiring.length > 0 && (
-        <div className="bg-maple-panel border border-maple-border rounded-xl p-5">
-          <h3 className="font-semibold mb-3 flex items-center gap-2">
-            <span>⏰</span> 만료 임박 (30일 이내)
-          </h3>
-          <div className="space-y-2">
-            {expiring.map((e, i) => (
-              <button
-                key={i}
-                onClick={() => onSelect(e.charId)}
-                className="w-full flex items-center justify-between text-left bg-maple-bg/50 hover:bg-maple-bg rounded px-3 py-2"
-              >
-                <div>
-                  <span className="text-slate-300">{e.char}</span>
-                  <span className="text-slate-500 mx-2">·</span>
-                  <span className="text-slate-400">{TYPE_LABEL[e.type] || e.type}</span>
-                </div>
-                <div className="text-right">
-                  <div className={`text-sm font-semibold ${e.days <= 0 ? 'text-maple-danger' : e.days <= 1 ? 'text-maple-danger' : e.days <= 7 ? 'text-maple-warn' : 'text-slate-300'}`}>
-                    {e.days < 0 ? '만료됨' : e.days === 0 ? '오늘 만료' : `${e.days}일 남음`}
-                  </div>
-                  <div className="text-xs text-slate-500">{e.date}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="bg-maple-panel border border-maple-border rounded-xl p-5">
-        <h3 className="font-semibold mb-3">캐릭터별 수익</h3>
-        {characters.length === 0 ? (
-          <div className="text-center py-8 text-slate-500">
-            왼쪽 사이드바에서 캐릭터를 추가해 주세요.
-          </div>
-        ) : (
-          <div className="divide-y divide-maple-border">
-            {characters.map(c => (
-              <button
-                key={c.id}
-                onClick={() => onSelect(c.id)}
-                className="w-full block text-left py-3 hover:bg-maple-bg/40 -mx-2 px-2 rounded transition"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium">{c.name}</div>
-                    <div className="text-xs text-slate-500">보스 {c.bosses?.length || 0}개 선택됨</div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="font-semibold text-maple-accent">
-                      {fmtMeso(charTotals[c.id]?.weekly || 0)}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      주간 {fmtMeso(charTotals[c.id]?.weekly || 0)} · 월간 {fmtMeso(charTotals[c.id]?.monthly || 0)}
-                    </div>
-                  </div>
-                </div>
-                <BossMiniStrip bosses={c.bosses} bossData={bossData} />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /* =========================================================
  * CharacterView (개별 캐릭터)
  * ========================================================= */
-function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopyBudget, onPasteBudget, budgetClip,
+function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopyBudget, onPasteBudget, budgetClip, initialTab = 'boss',
   characters = [], charTotals = {}, onSelectCharacter, excludedIds, onExcludedChange }) {
   const [editName, setEditName] = useState(false);
   const [nameInput, setNameInput] = useState(character.name);
-  const [tab, setTab] = useState('boss');
+  const [tab, setTab] = useState(initialTab);
 
-  useEffect(() => { setNameInput(character.name); setTab('boss'); }, [character.id]);
+  useEffect(() => { setNameInput(character.name); setTab(initialTab); }, [character.id, initialTab]);
 
   const setDuration = (key, value) => {
     onUpdate(c => ({ ...c, durations: { ...c.durations, [key]: value } }));

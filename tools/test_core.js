@@ -693,7 +693,7 @@ assert(sidebarSource.includes('charTotals[c.id]?.monthly') && sidebarSource.incl
   'sidebar character cards must show one monthly boss payout below the weekly value');
 assert(!sidebarSource.includes('charTotals[c.id]?.total'),
   'sidebar character cards must not show the combined weekly-plus-monthly total');
-const navItemSource = sourceBetween('function NavItem(', 'function Dashboard(');
+const navItemSource = sourceBetween('function NavItem(', 'function RevenueStatsTable(');
 assert(navItemSource.includes('secondarySubtitle') && navItemSource.includes('text-violet-300/80'),
   'navigation items must render the monthly value as a distinct secondary line');
 const budgetPlannerSource = sourceBetween('function BudgetPlanner(', 'function EquipSlotCell(');

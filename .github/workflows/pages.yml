@@ -45,6 +45,7 @@ jobs:
           node --check sw.js
           node tools/test_core.js
           node tools/test_boss_selection.js
+          node tools/test_notifications.js
 
   package:
     name: Package Pages artifact
