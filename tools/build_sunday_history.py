@@ -26,7 +26,7 @@ OFFICIAL_ARCHIVE = (
     "?search=%EC%8D%AC%EB%8D%B0%EC%9D%B4"
 )
 OFFICIAL_FIRST = "https://archive.maplestory.nexon.com/News/Update/478?p=27"
-OFFICIAL_LATEST = "https://maplestory.nexon.com/News/Event/1368"
+OFFICIAL_LATEST = "https://maplestory.nexon.com/News/Event/1379"
 FIRST_EVENT = dt.date(2017, 3, 12)
 CONTINUOUS_START = dt.date(2023, 2, 19)
 OFFICIAL_CONFIRMATIONS = {
@@ -60,7 +60,7 @@ OFFICIAL_CONFIRMATIONS = {
         "benefitsComplete": True,
     },
     "2026-08-09": {
-        "officialUrl": OFFICIAL_LATEST,
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1368",
         "officialVerified": True,
         "officialTitle": "스페셜 썬데이 메이플",
         "officialDetails": [
@@ -71,6 +71,69 @@ OFFICIAL_CONFIRMATIONS = {
             "몬스터파크 추가 경험치 +250% (총 400%, 익스트림 제외)",
         ],
         "extraBenefits": ["솔에르다 타임", "솔에르다 3배", "몬스터파크"],
+        "benefitsComplete": True,
+    },
+    "2026-08-16": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1369",
+        "officialVerified": True,
+        "officialTitle": "스페셜 썬데이 메이플",
+        "officialDetails": [
+            "샤이닝 스타포스: 강화 비용 30% 할인 (파괴 방지 추가 메소 제외)",
+            "21성 이하 강화 시 파괴 확률 30% 감소",
+            "흔적 복구 기본 메소 비용 20% 할인 (슈페리얼 장비 제외)",
+            "HEXA 메인 스탯 5레벨 이상에서 메인 스탯 강화 확률 20% 증가 (기존 확률에 곱적용)",
+        ],
+        "extraBenefits": ["샤이닝 스타포스", "헥사 스텟"],
+        "benefitsComplete": True,
+    },
+    "2026-08-23": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1375",
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플",
+        "officialDetails": [
+            "룬 재등장·재사용 대기시간 15분 → 10분, 룬 경험치 +100%",
+            "콤보킬 경험치 +300%",
+            "몬스터파크 클리어 경험치 +250% (총 400%, 익스트림 제외)",
+        ],
+        "extraBenefits": ["룬/콤보킬", "몬스터파크"],
+        "benefitsComplete": True,
+    },
+    "2026-08-30": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1376",
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플",
+        "officialDetails": [
+            "트레저 헌터 경험치 3배 (하루 최대 10회)",
+            "사냥으로 획득하는 솔 에르다 2배 (상인단의 물자 지원 III 특수 물자 보상 제외)",
+            "주문의 흔적 강화 비용 50% 할인",
+        ],
+        "extraBenefits": ["트레저 헌터", "솔에르다 2배", "주문의 흔적 반값"],
+        "benefitsComplete": True,
+    },
+    "2026-09-06": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1377",
+        "officialVerified": True,
+        "officialTitle": "스페셜 썬데이 메이플",
+        "officialDetails": [
+            "샤이닝 스타포스: 강화 비용 30% 할인 (파괴 방지 추가 메소 제외)",
+            "21성 이하 강화 시 파괴 확률 30% 감소",
+            "흔적 복구 기본 메소 비용 20% 할인 (슈페리얼 장비 제외)",
+        ],
+        "extraBenefits": ["샤이닝 스타포스"],
+        "benefitsComplete": True,
+    },
+    "2026-09-13": {
+        "officialUrl": OFFICIAL_LATEST,
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플",
+        "officialDetails": [
+            "룬 재등장·재사용 대기시간 15분 → 10분, 룬 경험치 +100%",
+            "콤보킬 경험치 +300%",
+            "몬스터 컬렉션 신규 등록 확률 +100%",
+            "의문의 모몽 3개 지급 (메이플ID당 1회, 챌린저스 월드 수령 불가)",
+            "일반 사냥 중 소환되는 엘리트 몬스터 수 1마리 → 3마리 (어둠의 룬·엘리트 보스 소환 제외)",
+        ],
+        "extraBenefits": ["룬/콤보킬", "몬컬", "엘몹"],
         "benefitsComplete": True,
     },
 }
@@ -340,7 +403,8 @@ def build_snapshot(source: dict) -> dict:
         benefits = split_benefits(summary)
         if confirmation:
             benefits = list(dict.fromkeys(
-                benefits + confirmation.get("extraBenefits", [])
+                ([] if confirmation.get("benefitsComplete") else benefits)
+                + confirmation.get("extraBenefits", [])
             ))
         if not benefits:
             raise ValueError(f"record has no benefits: {date_text}")
@@ -442,12 +506,18 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=pathlib.Path,
-        help="read a previously downloaded API response instead of using the network",
+        help="read a downloaded API response or existing local snapshot without using the network",
     )
     args = parser.parse_args()
 
     if args.input:
         source = json.loads(args.input.read_text(encoding="utf-8"))
+        if "records" in source and "history" not in source:
+            source = {"history": [
+                {"date": row["date"], "mainEvent": row.get("mainEvent", ""),
+                 "eventSummary": ",".join(row["benefits"])}
+                for row in source["records"]
+            ]}
     else:
         source = fetch_json(SOURCE_API)
     snapshot = build_snapshot(source)
