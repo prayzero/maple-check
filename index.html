@@ -235,12 +235,12 @@ const DEFAULT_BOSSES = [
   }},
 ];
 
-// 2026-09-10 테스트월드 1.2.206 개편 후 계획값. 위 목록은 개편 전 스냅샷.
+// 위 목록은 개편 전 앱 스냅샷. 9/17 본서버 가격과 10/1 검은 마법사 적용일을 구분한다.
 // 과거 이력과 저장된 기본가격의 갱신을 위해 개편 전 값을 별도로 보존한다.
 const PRE_REWORK_PRICE_MAP = Object.fromEntries(DEFAULT_BOSSES.map(boss => [boss.id,
   Object.fromEntries(Object.entries(boss.difficulties).map(([diff, value]) => [diff, value.price])),
 ]));
-const REWORK_PRICE_MAP = {
+const TESTWORLD_REWORK_PRICE_MAP = {
   zakum: { Chaos: 4040000 }, magnus: { Hard: 4280000 },
   pierre: { Chaos: 4080000 }, vonbon: { Chaos: 4070000 },
   bloodyqueen: { Chaos: 4070000 }, vellum: { Chaos: 4640000 },
@@ -261,21 +261,31 @@ const REWORK_PRICE_MAP = {
   limbo: { Normal: 995000000 }, baldrix: { Normal: 1320000000 }, jupiter: { Normal: 1560000000 },
   blackmage: { Hard: 465000000, Extreme: 5680000000 },
 };
+// 본서버 1.2.419에서 테스트월드 대비 노멀 흉성/카링 가격이 변경됐다.
+const LIVE_REWORK_PRICE_MAP = {
+  ...TESTWORLD_REWORK_PRICE_MAP,
+  hyungseong: { Normal: 576000000 },
+  kaling: { ...TESTWORLD_REWORK_PRICE_MAP.kaling, Normal: 593000000 },
+};
+const bossPriceDate = () => new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const bossReworkPricesForDate = (date) => ({
+  ...LIVE_REWORK_PRICE_MAP,
+  blackmage: date < '2026-10-01' ? { ...PRE_REWORK_PRICE_MAP.blackmage } : { ...LIVE_REWORK_PRICE_MAP.blackmage },
+});
+const REWORK_PRICE_MAP = bossReworkPricesForDate(bossPriceDate());
 for (const boss of DEFAULT_BOSSES) {
   for (const [diff, price] of Object.entries(REWORK_PRICE_MAP[boss.id] || {})) {
     boss.difficulties[diff].price = price;
   }
 }
-const REWORK_SOURCE_URL = 'https://maplestory.nexon.com/testworld/news/all/199';
+const REWORK_SOURCE_URL = 'https://maplestory.nexon.com/News/Update/813';
 
 /* =========================================================
  * 결정석 가격 변동 이력 (📜 결정석의 역사)
  * - 위 DEFAULT_BOSSES = "현재" 기준 가격.
- * - 가격이 또 변동되면:
- *   1) 위 DEFAULT_BOSSES 가격을 새 값으로 수정하고,
- *   2) 직전 기간 항목 하나를 아래 PRICE_HISTORY 맨 끝(가장 최신)에 추가하세요.
- *      overrides 에는 그 기간에 적용됐던 "현재와 다른" 가격만 적으면 됩니다.
- *      (현재와 동일한 보스는 생략 → 자동으로 현재값 사용)
+ * - 원본 스냅샷과 테스트월드 이력은 수정하지 않는다.
+ * - overrides는 PRE_REWORK_PRICE_MAP와 병합되므로 해당 시점의 전체 변경표를 넣는다.
+ * - 예정 이력은 effectiveFrom으로 현재 적용 시점과 구분한다.
  * - 시간순(오래된 → 최신)으로 정렬합니다. 화면에는 최신이 위로 표시됩니다.
  * ========================================================= */
 const PRICE_HISTORY = [
@@ -318,20 +328,42 @@ const PRICE_HISTORY = [
   {
     id: 'bellona_20260820',
     title: '신규 보스 벨로나',
-    range: '2026-08-20 ~ 개편 전',
+    range: '2026-08-20 ~ 2026-09-16',
     note: '2026-08-20 정식 업데이트 기준 벨로나 결정석 가격(이지 4억 4,000만 · 노멀 8억 9,000만 · 하드 29억 5,000만 메소)을 반영했습니다.',
     introducedBosses: ['bellona'],
     overrides: {},
   },
   {
     id: 'testworld_20260910',
-    title: '9월 개편 예정 가격',
+    title: '9월 테스트월드 예정안',
     range: '9/17 예정 · 검은 마법사 10/1',
     note: '2026-09-10 테스트월드 1.2.206 공지 기준의 개편 후 계획값입니다. 검은 마법사는 10/1 적용 예정 가격을 포함합니다. 공지의 기존 가격은 이지 윌 3,230만·노멀 벨로나 8억 5,000만으로, 이전 앱 기록과 차이가 있습니다.',
     preview: true,
-    overrides: REWORK_PRICE_MAP,
+    source: 'https://maplestory.nexon.com/testworld/news/all/199',
+    overrides: TESTWORLD_REWORK_PRICE_MAP,
+  },
+  {
+    id: 'live_20260917',
+    title: '9월 본서버 확정 가격',
+    range: '2026-09-17 ~ 2026-09-30',
+    effectiveFrom: '2026-09-17',
+    compareTo: 'bellona_20260820',
+    note: '본서버 1.2.419 공지 기준입니다. 테스트월드 대비 노멀 찬란한 흉성 5억 7,600만·노멀 카링 5억 9,300만으로 수정됐습니다. 검은 마법사는 9월 말까지 기존 가격입니다. 이전 앱 이력의 이지 윌·노멀 벨로나 가격은 공식 공지의 기존 가격과 차이가 있어 그대로 보존했습니다.',
+    source: REWORK_SOURCE_URL,
+    overrides: bossReworkPricesForDate('2026-09-17'),
+  },
+  {
+    id: 'live_20261001',
+    title: '검은 마법사 가격 조정',
+    range: '2026-10-01부터',
+    effectiveFrom: '2026-10-01',
+    note: '공식 적용일은 2026-10-01입니다. 하드 4억 6,500만·익스트림 56억 8,000만 메소로 변경됩니다. 9월에는 수익 계산에 기존 가격을 사용합니다.',
+    source: REWORK_SOURCE_URL,
+    overrides: bossReworkPricesForDate('2026-10-01'),
   },
 ];
+const getActivePriceHistory = (date = bossPriceDate()) => [...PRICE_HISTORY].reverse()
+  .find(entry => !entry.preview && (!entry.effectiveFrom || entry.effectiveFrom <= date));
 
 // DEFAULT_BOSSES(현재) → { bossId: { 난이도: 가격 } } 맵
 const CURRENT_PRICE_MAP = (() => {
@@ -381,6 +413,7 @@ const safeNonNegativeInt = (value, fallback = 0) =>
 const BOSS_DEFAULT_PRICE_MIGRATIONS = Object.fromEntries(Object.entries(REWORK_PRICE_MAP).map(([id, diffs]) =>
   [id, Object.fromEntries(Object.entries(diffs).map(([diff, to]) => [diff, {
     from: [PRE_REWORK_PRICE_MAP[id][diff],
+      TESTWORLD_REWORK_PRICE_MAP[id]?.[diff], LIVE_REWORK_PRICE_MAP[id]?.[diff],
       ...(id === 'bellona' && diff === 'Normal' ? [850000000] : []),
       ...(id === 'will' && diff === 'Easy' ? [32300000] : [])], to,
   }]))],
@@ -2132,8 +2165,9 @@ function NotificationCenter({ items, permission, onAskPermission, onSelect }) {
       </section>
       <details className="bg-maple-panel border border-maple-border rounded-xl p-4 text-sm">
         <summary className="cursor-pointer font-medium">계산 기준 안내</summary>
-        <p className="mt-3 text-slate-400 leading-relaxed"><strong className="text-slate-200">9/10 테스트월드 개편 예정값</strong> · 결정석 가격·아케인 비용을 미리 반영했습니다. 보스 계획은 주간 12개까지 선택할 수 있습니다.
-          검은 마법사는 <strong className="text-slate-200">10/1 적용 예정 가격</strong>으로 계산하며, 그 외 개편은 9/17 예정입니다. 정식 업데이트에서 변경될 수 있습니다.
+        <p className="mt-3 text-slate-400 leading-relaxed"><strong className="text-slate-200">9/17 본서버 확정값</strong> · 결정석 가격·아케인 비용을 공식 업데이트 기준으로 반영했습니다. 노멀 찬란한 흉성·카링의 테스트월드 가격도 정정했습니다.
+          검은 마법사는 <strong className="text-slate-200">10/1부터 새 가격</strong>을 적용하며, 그 전에는 기존 가격으로 계산합니다. 적용일 이후 새로고침하면 자동 반영됩니다.
+          게임 내 캐릭터당 주간 12개 판매 제한은 삭제됐지만, 이 사이트의 12개 선택 제한은 요청하신 계획용 기능으로 유지합니다.
           {' '}<a href={REWORK_SOURCE_URL} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline underline-offset-2">공식 공지</a></p>
       </details>
     </div>
@@ -3032,12 +3066,13 @@ function BossHistoryView() {
   // 시간순(오래된→최신). 화면에는 최신을 위로 표시
   const ordered = PRICE_HISTORY;
   const [selectedId, setSelectedId] = useState(
-    ordered.length ? ordered[ordered.length - 1].id : null
+    getActivePriceHistory()?.id || null
   );
 
   const selIdx = ordered.findIndex(e => e.id === selectedId);
   const entry = ordered[selIdx] || null;
-  const prevEntry = selIdx > 0 ? ordered[selIdx - 1] : null; // 직전(더 오래된) 기간
+  const prevEntry = entry?.compareTo ? ordered.find(period => period.id === entry.compareTo)
+    : selIdx > 0 ? ordered[selIdx - 1] : null;
 
   const curMap = entry ? snapshotPriceMap(entry) : {};
   const prevMap = prevEntry ? snapshotPriceMap(prevEntry) : null;
@@ -3055,7 +3090,8 @@ function BossHistoryView() {
       <div className="space-y-2">
         {[...ordered].reverse().map(e => {
           const active = e.id === selectedId;
-          const isCurrent = e.id === ordered[ordered.length - 1].id;
+          const isCurrent = e.id === getActivePriceHistory()?.id;
+          const isFuture = e.effectiveFrom && e.effectiveFrom > bossPriceDate();
           return (
             <button
               key={e.id}
@@ -3071,9 +3107,9 @@ function BossHistoryView() {
                   <span className={`font-semibold ${active ? 'text-maple-accent' : 'text-slate-100'}`}>
                     {e.title}
                   </span>
-                  {isCurrent && (
+                  {(isCurrent || isFuture || e.preview) && (
                     <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/40">
-                      {e.preview ? '개편 후 계획값' : '현재'}
+                      {isCurrent ? '현재' : e.preview ? '테스트월드 기록' : '적용 예정'}
                     </span>
                   )}
                 </div>
@@ -3091,6 +3127,7 @@ function BossHistoryView() {
               <span>💎</span> {entry.title} <span className="text-xs text-slate-500 font-normal">({entry.range})</span>
             </div>
             {entry.note && <div className="text-xs text-slate-400 mt-1">{entry.note}</div>}
+            {entry.source && <a href={entry.source} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 text-xs text-sky-300 underline underline-offset-2">공식 가격 공지</a>}
             {prevEntry && (
               <div className="text-xs text-slate-500 mt-1">
                 ※ 노란색 항목은 직전 기간(<span className="text-slate-400">{prevEntry.title}</span>) 대비 변동된 가격입니다. 변동률은 직전 가격 기준이며 소수 둘째 자리까지 반올림합니다.
@@ -4339,7 +4376,7 @@ function SymbolPriceView() {
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">🔮 심볼 가격</h2>
         <p className="text-slate-400 mt-1">심볼 레벨별 강화비용 기록 (도달 레벨까지 단계별 비용 · 단위 메소)</p>
-        <p className="text-sm text-sky-300 mt-2">9/10 테스트월드 기준 아케인 전 지역 비용 30% 인하 적용 · 어센틱·그랜드 어센틱 비용과 필요 심볼 개수는 기존과 동일합니다.</p>
+        <p className="text-sm text-sky-300 mt-2">9/17 본서버 기준 아케인 전 지역 비용 30% 인하 적용 · 어센틱·그랜드 어센틱 비용과 필요 심볼 개수는 기존과 동일합니다.</p>
       </div>
 
       <div className="bg-gradient-to-br from-violet-500/15 to-sky-500/5 border border-violet-500/30 rounded-xl p-5 grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -291,7 +291,7 @@ assert(bellona?.name === '벨로나' && bellona.level === 280 && bellona.introdu
 assert(bellona.difficulties.Easy.price === 396000000 && bellona.difficulties.Easy.max === 3 &&
   bellona.difficulties.Normal.price === 824000000 && bellona.difficulties.Normal.max === 3 &&
   bellona.difficulties.Hard.price === 2950000000 && bellona.difficulties.Hard.max === 3,
-  'Bellona crystal prices must match the September test-world plan and retain three-person limits');
+  'Bellona crystal prices must match the September live-server values and retain three-person limits');
 const currentBellonaHistory = backupApi.PRICE_HISTORY.find(period => period.id === 'bellona_20260820');
 assert(currentBellonaHistory?.note.includes('정식 업데이트') &&
   currentBellonaHistory.note.includes('8억 9,000만') &&
@@ -387,6 +387,13 @@ const preservedCustomBellona = backupApi.reconcileBossData(customizedBossData)
   .find(boss => boss.id === 'bellona');
 assert(preservedCustomBellona.difficulties.Normal.price === 860000000,
   'a user-customized Bellona price must survive the default-price migration');
+const oldPreviewPrices = backupApi.cloneJson(backupApi.DEFAULT_BOSSES);
+oldPreviewPrices.find(boss => boss.id === 'hyungseong').difficulties.Normal.price = 593000000;
+oldPreviewPrices.find(boss => boss.id === 'kaling').difficulties.Normal.price = 576000000;
+const importedLivePrices = backupApi.validateBackupData({ ...validBackup, bossData: oldPreviewPrices }).bossData;
+assert(importedLivePrices.find(boss => boss.id === 'hyungseong').difficulties.Normal.price === 576000000 &&
+  importedLivePrices.find(boss => boss.id === 'kaling').difficulties.Normal.price === 593000000,
+  'imported September test-world backups must use the corrected live-server crystal prices');
 let malformedRejected = false;
 try {
   backupApi.validateBackupData({ ...validBackup, characters: [{ id: 'bad', name: '깨짐', bosses: 'not-an-array' }] });
