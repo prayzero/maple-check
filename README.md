@@ -180,9 +180,15 @@ copy(JSON.stringify({
 
 ---
 
+## 공식 자료 대조 (2026-10-23)
+
+- **선데이:** 10월 25일 예정 공지까지 479건을 수록했습니다. 7월 26일~10월 25일의 연속 14회와 과거 표본 2회를 공식 원문·이미지와 대조했습니다. 10월 25일 룬 경험치 정정(+100%)을 반영하고 미래 일정은 과거 결과 검증에서 제외합니다. 과거 463건은 개별 공식 대조 전입니다. [출처와 검증 범위](docs/sunday-verification.md)
+- **스타포스:** 최신 정식 업데이트 1.2.420까지 확률·스타캐치·성급·파괴방지·복구 재료·이벤트 규칙을 확인했습니다. 파괴방지 선택 시 내부 결과의 파괴확률과 잘못된 입력 처리를 수정했습니다. **기본 강화비용 산식과 전체 복구 메소표의 정확한 금액은 공식 원문 대조가 끝나지 않았으므로 기존 금액을 유지**합니다. [출처와 남은 확인 범위](docs/starforce-verification.md)
+- **잠재능력:** 공식 API에서 기존 916개 조합을 전부 다시 수집했습니다. 저레벨 표시확률 정밀도와 옵션 등급 출처를 보완했고, 천장 입력으로 비용이 0이 되는 오류 및 무조건 성공 목표의 확률 오차를 수정했습니다. 등급업·천장·메소 비용은 현재 공식 표와 일치했습니다. [출처와 계산 범위](docs/potential-verification.md)
+
 ## 🧪 개발 검증
 
-저장소 루트에서 Node.js 22로 아래 명령을 실행합니다. GitHub Pages 배포 전 CI에서도 같은 JavaScript 검사를 실행합니다.
+저장소 루트에서 Node.js 22와 Python 3으로 아래 명령을 실행합니다. Python이 PATH에 없으면 `PYTHON` 환경 변수에 실행 파일 경로를 지정합니다. GitHub Pages 배포 전 CI에서도 같은 검사를 실행합니다.
 
 ```bash
 node --check sw.js
@@ -194,9 +200,12 @@ node tools/test_storage.js
 node tools/test_service_worker.js
 node tools/test_equipment_budget.js
 node tools/test_backup_docs.js
+node tools/test_sunday_official.js
+node tools/test_starforce_official.js
+node tools/test_potential_official.js
 ```
 
-기존 계산·보스 선택·알림·결정석 가격 검증에 더해, 저장 실패와 원문 보호, 서비스 워커의 캐시 격리, 장비 구매·스페어 예산, 문서의 백업 예제를 검사합니다.
+기존 계산·보스 선택·알림·결정석 가격 검증에 더해, 저장 실패와 원문 보호, 서비스 워커의 캐시 격리, 장비 구매·스페어 예산, 문서의 백업 예제 및 공식 자료와 대조한 선데이·스타포스·잠재 기준을 검사합니다. CI의 회귀 검사는 저장된 검증 기준을 사용하며, 실행 때마다 외부 공식 자료를 실시간 조회하는 검사는 아닙니다.
 CI는 `manifest.json`, `cube-options-v2.json`, `sunday-history.json`의 JSON 문법도 검사합니다. 브라우저 화면·모바일 레이아웃·배포된 주소의 동작은 별도로 확인합니다.
 
 ---

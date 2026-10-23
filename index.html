@@ -886,7 +886,9 @@ const SF_TABLE = [
   [0.30,0.15,200],[0.15,0.15,125],[0.15,0.20,200],[0.10,0.20,200],[0.10,0.20,200],
   [0.10,0.20,200],[0.07,0.20,200],[0.05,0.20,200],[0.03,0.20,200],[0.01,0.20,200],
 ];
-// 온전 복구 메소 (파괴 성 15~22 × 장비 레벨 140/160/200/250)
+// 기존 온전 복구 메소표 (파괴 성 15~22 × 장비 레벨 140/160/200/250).
+// 정확한 금액 및 SF_TABLE의 비용 분모/반올림은 공식 원문 대조 미완료.
+// 검증 범위와 출처: docs/starforce-verification.md (2026-10-23).
 const SF_RESTORE = {
   140:{15:149000000,16:359000000,17:606000000,18:1380000000,19:2280000000,20:4020000000,21:5050000000,22:8290000000},
   160:{15:222000000,16:535000000,17:904000000,18:2060000000,19:3410000000,20:6000000000,21:7540000000,22:12400000000},
@@ -895,8 +897,17 @@ const SF_RESTORE = {
 };
 const sfMaxStar = (lvl) => lvl <= 94 ? 5 : lvl <= 107 ? 8 : lvl <= 117 ? 10 : lvl <= 127 ? 15 : lvl <= 137 ? 20 : 30;
 const round100 = (x) => Math.round(x / 100) * 100;
+const sfInputError = (o) => {
+  if (!Number.isInteger(o.level) || o.level < 1 || o.level > 300) return '장비 레벨은 1~300의 정수로 입력해 주세요.';
+  const maxStar = sfMaxStar(o.level);
+  if (!Number.isInteger(o.from) || !Number.isInteger(o.to) || o.from < 0 || o.to <= o.from || o.to > maxStar) {
+    return `성급은 시작보다 높은 목표와 0~${maxStar} 사이의 정수로 입력해 주세요.`;
+  }
+  if (!Number.isFinite(o.spare) || o.spare < 0) return '스페어 가격은 0 이상의 유한한 수로 입력해 주세요.';
+  return '';
+};
 
-/* 스타포스 기대비용 (엑셀 계산기 로직 1:1 포팅)
+/* 스타포스 기대비용 (현재 비용표에 대한 기대값; 금액 원문 검증 한계는 위 주석 참고)
  * - 12성 복구: 파괴 시 12성으로 복귀 → 12~(n-1)성 재등반 비용/시도(선택 전략 기준)가 재귀 포함
  * - 흔적 복구: 22성까지 파괴 성 유지(23성 이상 파괴 시 22성), 온전 복구 메소 + 동일장비 K개 소모
  * - 파괴방지: 15~17성, 기본 클릭비 200% 추가
@@ -904,6 +915,8 @@ const round100 = (x) => Math.round(x / 100) * 100;
  *        ev51015, boomReduce30, restoreDisc20, recover('spare12'|'restore'|'auto'),
  *        guard('none'|'all1517'|'auto') } */
 const sfExpect = (o) => {
+  const inputError = sfInputError(o);
+  if (inputError) throw new RangeError(inputError);
   const lvl = o.level;
   const hasRestore = !!SF_RESTORE[lvl];
   // 흔적 복구표가 없는 레벨에서는 저장된 선택값이 restore여도 12성 복구로 계산한다.
@@ -942,7 +955,8 @@ const sfExpect = (o) => {
     const U = (n < 15 || Q === '파괴방지') ? 0 : Q === '흔적 복구' ? boom * (1 + traceClimbU) / succ : boom * (1 + cumU) / succ;
     if (n >= 12) { cumP += P; cumR += R; cumS += S; cumT += T; cumU += U; }
     if (n >= 22) { cum22P += P; cum22R += R; cum22S += S; cum22T += T; cum22U += U; }
-    rows.push({ star: n, strategy: Q, P, R, S, T, U, success: succ, boomChance: boom, noGuardCost: noGuard, guardCost: O });
+    const appliedBoom = Q === '파괴방지' ? 0 : boom;
+    rows.push({ star: n, strategy: Q, P, R, S, T, U, success: succ, stayChance: 1 - succ - appliedBoom, dropChance: 0, boomChance: appliedBoom, noGuardCost: noGuard, guardCost: O });
   }
   const res = { total: 0, meso: 0, equips: 0, tries: 0, booms: 0, rows: [] };
   for (let n = o.from; n < o.to; n++) {
@@ -954,6 +968,9 @@ const sfExpect = (o) => {
       cost: r.P,
       noGuardCost: r.noGuardCost,
       guardCost: r.guardCost,
+      success: r.success,
+      stayChance: r.stayChance,
+      dropChance: r.dropChance,
       boomChance: r.boomChance,
     });
   }
@@ -1019,6 +1036,8 @@ const sfSafeguardComparison = (o) => {
  * 잠재(큐브) 데이터 — 등급업 확률·천장, 동일등급 줄 확률, 메소 재설정 비용
  * ========================================================= */
 const GRADES = ['레어', '에픽', '유니크', '레전드리'];
+// 일반 메소 재설정 기준. 넥슨 공식 확률 안내 및 1.2.420까지 대조한 날짜입니다.
+const CUBE_RULES_VERIFIED_ON = '2026-10-23';
 const CUBE_TIERUP = {
   '메소 일반/블랙': { r2e: [0.150000001275, 10], e2u: [0.035, 42], u2l: [0.014, 107] },
   '메소 에디':      { r2e: [0.02381, 62], e2u: [0.009804, 152], u2l: [0.007, 214] },
@@ -1042,7 +1061,7 @@ const cubeMesoCost = (kind, lvl, grade) => {
   return row ? row.c[grade] || 0 : 0;
 };
 /* =========================================================
- * 정밀 큐브 목표옵션 (KMS 공식 API 확률, 2026-07-15) — cube-options-v2.json 지연 로드
+ * 정밀 큐브 목표옵션 (KMS 공식 API 표시확률) — 수집·검증 범위는 cube-options-v2.json meta 참조
  * data = { parts:[[name,id]], options:[[text,rg,maxlines]], dists:[[[optIdx,prob]]], ctx:{numkey:[d1,d2,d3]} }
  * numeric_lookup_key = method(0/1e7) + 레전드리(4e6) + part×1e4 + 대표레벨
  * ========================================================= */
@@ -1101,9 +1120,11 @@ function cubeGoalProbability(data, method, grade, partId, level, predicate) {
   if (!dists) return { ok: false, reason: 'no-context', perRoll: 0 };
   const primeOptions = new Set(dists[0].map(entry => entry[0]));
   let success = 0;
+  let allOutcomesMatch = true;
   const visit = (lineIndex, probability, priorGroups, lines) => {
     if (lineIndex === 3) {
       if (predicate(lines)) success += probability;
+      else allOutcomesMatch = false;
       return;
     }
     const { rows } = cubeConditionalDist(data, dists[lineIndex], priorGroups, lineIndex, primeOptions);
@@ -1115,7 +1136,8 @@ function cubeGoalProbability(data, method, grade, partId, level, predicate) {
     }
   };
   visit(0, 1, {}, []);
-  return { ok: true, perRoll: success };
+  // 공식 표시확률의 반올림 오차가 무조건 성공인 목표를 100% 미만으로 만들지 않게 합니다.
+  return { ok: true, perRoll: allOutcomesMatch ? 1 : Math.max(0, Math.min(1, success)) };
 }
 
 // picks = [pick1,pick2,pick3]; 각 pick = 옵션 전역 인덱스(number) | 'any'(무시) | null(미선택)
@@ -1205,6 +1227,11 @@ const cubeUnorderedProbability = (data, method, grade, partId, level, targets, m
     lines => cubeUnorderedMatch(lines, targets, matcher),
   );
 
+const cubeFailureCount = (value, pity) => {
+  const count = Number(value);
+  return Number.isFinite(count) ? Math.min(pity - 1, Math.max(0, Math.floor(count))) : 0;
+};
+
 // 등급업 단계 (천장·연속실패 반영, 유니크→레전드리는 0회 누적 기준) — targetGrade에서 멈춤
 function cubeGradeUp({ method, level, curGrade, targetGrade = '레전드리', fails = {} }) {
   const gi = g => GRADES.indexOf(g);
@@ -1217,7 +1244,7 @@ function cubeGradeUp({ method, level, curGrade, targetGrade = '레전드리', fa
   stepsDef.forEach(([a, b, k], idx) => {
     if (gi(curGrade) <= gi(a) && gi(a) < gi(targetGrade)) {
       const [p, pity] = CUBE_TIERUP[tierKey][k];
-      const f = gi(curGrade) === gi(a) ? failArr[idx] : 0;
+      const f = gi(curGrade) === gi(a) ? cubeFailureCount(failArr[idx], pity) : 0;
       const remain = pity - f;
       const t = remain > 0 ? (1 - Math.pow(1 - p, remain)) / p : 0;
       const cost1 = cubeMesoCost(way, level, a);
@@ -4684,8 +4711,7 @@ function StarforceCalc() {
   }));
   const presetActive = (flags) => SF_EVENT_KEYS.every(key => c[key] === !!flags[key]);
   const maxStar = sfMaxStar(c.level);
-  const err = c.level < 1 || c.level > 300 ? '장비 레벨 오류'
-    : (c.from < 0 || c.to <= c.from || c.to > maxStar) ? `성급 입력 오류 (이 레벨 최대 ${maxStar}성)` : '';
+  const err = sfInputError(c);
   const hasRestore = !!SF_RESTORE[c.level];
   const displayedRecover = !hasRestore && c.recover === 'restore' ? 'spare12' : c.recover;
   const r = !err ? sfExpect(c) : null;
@@ -4700,16 +4726,16 @@ function StarforceCalc() {
       <p className="text-xs text-slate-400 mb-4">장비와 목표를 선택하면 기대비용이 바로 계산됩니다.</p>
 
       <div className="lab-fields grid grid-cols-2 gap-3">
-        <CalcField label="장비 레벨"><input type="number" min="1" max="300" step="1" value={c.level} onChange={(e) => set('level', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
-        <CalcField label="시작 성"><input type="number" min="0" max={maxStar - 1} step="1" value={c.from} onChange={(e) => set('from', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
-        <CalcField label="목표 성"><input type="number" min={c.from + 1} max={maxStar} step="1" value={c.to} onChange={(e) => set('to', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="장비 레벨"><input type="number" min="1" max="300" step="1" value={c.level} onChange={(e) => set('level', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="시작 성"><input type="number" min="0" max={maxStar - 1} step="1" value={c.from} onChange={(e) => set('from', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="목표 성"><input type="number" min={c.from + 1} max={maxStar} step="1" value={c.to} onChange={(e) => set('to', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
         <CalcField label="동일 장비(스페어) 1개 가격"><MesoInput value={c.spare} onChange={(n) => set('spare', n)} ariaLabel="동일 장비 스페어 한 개 가격" /></CalcField>
       </div>
       <h3 className="mt-6">세부 설정</h3>
       <div className="lab-fields grid grid-cols-2 gap-3">
-        <CalcField label="MVP 등급">
+        <CalcField label="MVP 등급 (17성 도달까지)">
           <select value={c.mvp} onChange={(e) => set('mvp', Number(e.target.value))} className={SEL_CLS + ' w-full'}>
-            <option value={0}>없음</option><option value={0.03}>실버 (3%)</option><option value={0.05}>골드 (5%)</option><option value={0.1}>다이아/레드 (10%)</option>
+            <option value={0}>없음</option><option value={0.03}>실버 (3%)</option><option value={0.05}>골드 (5%)</option><option value={0.1}>다이아/레드/블랙 (10%)</option>
           </select>
         </CalcField>
         <CalcField label="파괴 후 복구 방식">
@@ -4746,12 +4772,12 @@ function StarforceCalc() {
               );
             })}
           </div>
-          <p className="mt-1 text-[10px] text-slate-500">현행 샤타포스 = 30% 할인 + 21성 이하 파괴율 30% 감소 + 흔적복구 20% 할인 · 과거 5·10·15는 현행 강화 규칙에 해당 효과만 적용</p>
+          <p className="mt-1 text-[10px] text-slate-500">샤타포스는 2026-09-06 공식 행사 조건으로 비교합니다: 30% 할인 + 21성 이하 파괴율 30% 감소 + 흔적복구 20% 할인. 파괴방지 추가금은 할인 제외이며, 현재 행사 여부와는 별개입니다. 과거 5·10·15는 현행 강화 규칙에 해당 효과만 적용합니다.</p>
         </fieldset>
         <fieldset className="col-span-2 mt-3">
           <legend className="sr-only">스타포스 할인 및 이벤트 직접 선택</legend>
           <div className="grid gap-3 text-xs">
-            <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.pcRoom} onChange={(e) => set('pcRoom', e.target.checked)} className="accent-amber-400" /> PC방 5%</label>
+            <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.pcRoom} onChange={(e) => set('pcRoom', e.target.checked)} className="accent-amber-400" /> PC방 5% (17성 도달까지)</label>
             <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.disc30} onChange={(e) => set('disc30', e.target.checked)} className="accent-amber-400" /> 강화비용 30% 할인</label>
             <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.ev51015} onChange={(e) => set('ev51015', e.target.checked)} className="accent-amber-400" /> 5/10/15성 100% (과거 효과)</label>
             <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap"><input type="checkbox" checked={c.boomReduce30} onChange={(e) => set('boomReduce30', e.target.checked)} className="accent-amber-400" /> 21성 이하 파괴율 30% 감소</label>
@@ -4761,7 +4787,8 @@ function StarforceCalc() {
       </div>
       <button type="button" className="lab-primary" disabled={!!err}
         onClick={() => { resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); resultRef.current?.focus({ preventScroll: true }); }}>계산 결과 보기</button>
-      <p className="lab-note">2026-03-19 이후 KMS 일반 장비 기준 · 스타캐치 보너스 상시 적용</p>
+      <p className="lab-note">2026-03-19 개편 적용 · 2026-10-23 공식 규칙 확인 · 스타캐치 보너스 상시 적용</p>
+      <p className="lab-note">일반 장비 기준입니다. 슈페리얼, 제로 무기, 아스트라 보조무기, 데스티니 2차 초월, 어센던트 펄스 링 등 별도 강화·복구 규칙 장비는 지원하지 않습니다.</p>
       </section>
 
       {err ? (
@@ -4770,6 +4797,7 @@ function StarforceCalc() {
         <section className="lab-card lab-results" ref={resultRef} tabIndex={-1} aria-label="스타포스 계산 결과">
           <div className="flex items-center justify-between gap-2"><h3>계산 결과</h3><span className="lab-badge">실시간 반영</span></div>
           <div className="text-xs text-slate-500 mb-1">{c.from}성 → {c.to}성 · {c.level}제{hasRestore ? '' : ' · 온전 복구표 미지원 레벨(140/160/200/250만) → 12성 복구 기준'}</div>
+          <p className="lab-note">확률·성급·복구 재료 규칙을 공식 자료와 대조했습니다. 기본 강화비용 산식과 흔적 복구 메소표의 정확한 금액은 공식 원문 대조가 끝나지 않아 기존 수치로 계산합니다. <a href="docs/starforce-verification.md" target="_blank" rel="noopener noreferrer" className="text-sky-300 underline">검증 범위와 근거</a></p>
           <div className="lab-metric"><span>총 기대비용 · 스페어 포함</span><strong>{fmtMeso(Math.round(r.total))}</strong></div>
           <ResultRow label="순수 기대 메소" value={fmtMeso(Math.round(r.meso))} />
           <ResultRow label="기대 스페어 소모" value={num(r.equips) + '개'} />
@@ -4862,6 +4890,7 @@ function PotentialCalc() {
   const [c, setC] = useState({ method: 'black', partId: 1, level: 200, curGrade: '유니크' });
   const set = (k, v) => setC(p => ({ ...p, [k]: v }));
   const [fails, setFails] = useState({ r2e: 0, e2u: 0 });
+  const tierRules = CUBE_TIERUP[c.method === 'black' ? '메소 일반/블랙' : '메소 에디'];
   const [picks, setPicks] = useState(['any', 'any', 'any']);
   const [targetMode, setTargetMode] = useState('exact-unordered');
   const [categoryPicks, setCategoryPicks] = useState(['attack_pct', 'boss_pct', 'ied_pct']);
@@ -4974,12 +5003,14 @@ function PotentialCalc() {
 
         {upgrading && !levelErr && (
           <div className="lab-fields grid grid-cols-2 gap-3 mt-3">
-            {gi(c.curGrade) <= 0 && <CalcField label="레어→에픽 연속 실패"><input type="number" value={fails.r2e} onChange={(e) => setFails(f => ({ ...f, r2e: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
-            {gi(c.curGrade) <= 1 && <CalcField label="에픽→유니크 연속 실패"><input type="number" value={fails.e2u} onChange={(e) => setFails(f => ({ ...f, e2u: parseNum(e.target.value) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
+            {gi(c.curGrade) <= 0 && <CalcField label="레어→에픽 연속 실패"><input type="number" min="0" max={tierRules.r2e[1] - 1} step="1" value={cubeFailureCount(fails.r2e, tierRules.r2e[1])} onChange={(e) => setFails(f => ({ ...f, r2e: cubeFailureCount(Number(e.target.value), tierRules.r2e[1]) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
+            {gi(c.curGrade) <= 1 && <CalcField label="에픽→유니크 연속 실패"><input type="number" min="0" max={tierRules.e2u[1] - 1} step="1" value={cubeFailureCount(fails.e2u, tierRules.e2u[1])} onChange={(e) => setFails(f => ({ ...f, e2u: cubeFailureCount(Number(e.target.value), tierRules.e2u[1]) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
             {u2lStep && <CalcField label="유니크→레전드리 천장 가격"><div className="bg-maple-bg/60 border border-maple-border rounded px-2 py-1.5 text-sm text-amber-300 font-semibold">{fmtMeso(u2lStep.ceilingMeso)}</div></CalcField>}
           </div>
         )}
-      <p className="lab-note">목표는 레전드리 3줄입니다. 현재 등급부터의 등급업 비용과 목표 옵션 비용을 함께 계산합니다.</p>
+      <p className="lab-note">목표는 레전드리 3줄입니다. 현재 등급부터의 등급업 비용과 목표 옵션 비용을 함께 계산합니다. 유니크→레전드리는 연속 실패 0회 기준입니다.</p>
+      <p className="lab-note">이벤트가 없는 메소 재설정 기준입니다. 미라클 타임·프라임 큐브·소울 잠재능력은 포함하지 않습니다.</p>
+      {c.level > 250 && <p className="lab-note text-amber-300">공식 옵션 검색은 250레벨까지 제공합니다. 입력한 레벨의 옵션은 201~250레벨 표를 확장 적용한 근사값입니다.</p>}
       </section>
 
       {cubeErr ? (
@@ -5116,7 +5147,8 @@ function PotentialCalc() {
               <p className="lab-note">레전드리에서 시작한 목표 옵션 재설정 기준입니다. 등급업 횟수는 위 통합 기대비용에 별도로 반영됩니다.</p>
               </div>
             )}
-          <p className="lab-note">공식 페이지 반올림 표시확률 기반 근사값입니다. 유효옵션 모드는 % 옵션 기준이며 동일한 결과의 내부 재추첨은 반영하지 않습니다. 공식 확률표 확인 {cube.meta?.retrieved || '2026-07-25'}.</p>
+          <p className="lab-note">공식 페이지 반올림 표시확률 기반 근사값입니다. 유효옵션 모드는 % 옵션 기준이며 동일한 결과의 내부 재추첨은 반영하지 않습니다.</p>
+          <p className="lab-note"><a href={`https://maplestory.nexon.com/Guide/OtherProbability/cube/${c.method}`} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">넥슨 공식 확률표 ↗</a> · 규칙 대조 {CUBE_RULES_VERIFIED_ON} · 옵션표 수집 {cube.meta?.retrieved || '확인일 없음'}</p>
           </section>
         </>
       )}
@@ -5759,7 +5791,7 @@ function SundayMapleView() {
         <section className="bg-gradient-to-br from-emerald-500/15 to-sky-500/10 border border-emerald-400/40 rounded-xl p-4 md:p-5">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <div className="text-xs font-bold text-emerald-300 uppercase tracking-wider">공식 확정 요약 · 이번 선데이</div>
+              <div className="text-xs font-bold text-emerald-300 uppercase tracking-wider">공식 확정 요약 · {knownUpcoming.date === today ? '오늘 진행' : '진행 예정'}</div>
               <h3 className="text-xl font-bold mt-1">{sundayFormatDate(knownUpcoming.date)} {knownUpcoming.officialTitle || knownUpcoming.mainEvent}</h3>
             </div>
             {knownUpcoming.officialUrl && (
@@ -5983,8 +6015,8 @@ function SundayMapleView() {
       <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
         <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
           <div>
-            <h3 className="font-bold text-lg">혜택별 역대 빈도</h3>
-            <p className="text-xs text-slate-500">누락된 달력 주는 미등장으로 세지 않고, 기록이 확인된 일요일만 분모에 포함했습니다.</p>
+            <h3 className="font-bold text-lg">혜택별 기록·발표 빈도</h3>
+            <p className="text-xs text-slate-500">누락된 달력 주는 제외하고 기록이 있는 일요일만 셉니다. 공식 발표된 예정 혜택도 포함합니다.</p>
           </div>
           <span className="text-xs text-slate-400">현재 후보 {SUNDAY_ACTIVE_BENEFITS.length}종 · 전체 기록 명칭 {data.meta.benefitCount}종</span>
         </div>
@@ -6022,7 +6054,7 @@ function SundayMapleView() {
       <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
         <div className="flex items-end justify-between gap-3 flex-wrap mb-4">
           <div>
-            <h3 className="font-bold text-lg">역대 기록 {data.meta.recordCount}건</h3>
+            <h3 className="font-bold text-lg">역대 기록·예정 공지 {data.meta.recordCount}건</h3>
             <p className="text-xs text-slate-500">
               {sundayFormatDate(data.meta.coverageStart)} ~ {sundayFormatDate(data.meta.coverageEnd)} · 일요일 {data.meta.sundayCount}건 + 특별 진행일 {data.meta.specialDayCount}건
               {data.meta.missingSundayCount > 0 && ` · 달력 ${data.meta.calendarSundayCount}주 중 ${data.meta.missingSundayCount}주는 수집 범위 밖·미확인`}
@@ -6044,6 +6076,8 @@ function SundayMapleView() {
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <time className="font-bold text-sky-300">{sundayFormatDate(record.date)}</time>
+                    {record.date > today && <span className="text-[9px] bg-sky-500/10 text-sky-300 rounded px-1.5 py-0.5">진행 예정</span>}
+                    {record.date === today && <span className="text-[9px] bg-amber-500/10 text-amber-300 rounded px-1.5 py-0.5">오늘 진행</span>}
                     {record.kind !== 'sunday' && <span className="text-[9px] bg-amber-500/10 text-amber-300 rounded px-1.5 py-0.5">특별 진행일</span>}
                     {record.officialUrl && <span className="text-[9px] bg-emerald-500/10 text-emerald-300 rounded px-1.5 py-0.5">공식 링크 확인</span>}
                   </div>
@@ -6071,7 +6105,9 @@ function SundayMapleView() {
       </section>
 
       <section className="text-[11px] text-slate-500 leading-relaxed">
+        {data.meta.officialVerifiedAt && <p className="text-slate-300 mb-2">최근 공식 공지 대조 {data.meta.officialVerifiedAt} · 지난 일정 {data.meta.observedThrough}까지 · 발표된 일정 {data.meta.announcedThrough}까지. 발표된 미래 일정은 진행 예정으로 표시합니다.</p>}
         <p>데이터는 넥슨 공식 이벤트 공지를 바탕으로 날짜별 요약된 공개 커뮤니티 기록을 로컬 스냅샷으로 보관합니다. 기간제 이벤트 재화·코인샵처럼 정리 원문의 수집 범위에서 제외된 혜택과 확인되지 않은 주가 있어 공식 전수 기록은 아니며, 이런 주는 모델 학습에서 제외했습니다.</p>
+        <p className="mt-2">개별 공식 대조 {data.meta.officialVerifiedRecordCount}건 · 미대조 {data.meta.unverifiedRecordCount}건. <a href="docs/sunday-verification.md" target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">대조 범위와 공식 출처 ↗</a></p>
         <div className="flex gap-x-4 gap-y-1 flex-wrap mt-2">
           <a href={data.meta.officialArchive} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">넥슨 이벤트 아카이브 ↗</a>
           {data.meta.officialFirst && <a href={data.meta.officialFirst} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">최초 공식 안내 ↗</a>}
@@ -6103,7 +6139,7 @@ function EnhanceCalcView() {
           <h2><span aria-hidden="true">🧮 </span>강화 기댓값 계산기</h2>
           <p>스타포스와 잠재능력의 목표에 맞춰 필요한 메소를 확인하세요.</p>
         </div>
-        <span className="lab-badge">KMS · {active === 'starforce' ? '2026.03.19 강화 규칙' : '공식 줄별 확률·천장 반영'}</span>
+          <span className="lab-badge">KMS · 공식 기준 대조 2026.10.23</span>
       </div>
       <div className="lab-tabs" role="tablist" aria-label="강화 계산기 종류">
         <button type="button" id="sf-tab" role="tab" aria-controls="sf-panel" aria-selected={active === 'starforce'} tabIndex={active === 'starforce' ? 0 : -1}

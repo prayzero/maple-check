@@ -2,7 +2,7 @@
  * 단순 캐시 전략: 첫 로드 시 핵심 파일 캐시 → 이후 네트워크 우선, 실패 시 캐시 폴백
  */
 const CACHE_PREFIX = 'maple-check-v';
-const CACHE_VERSION = 20;
+const CACHE_VERSION = 21;
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const APP_ROOT = new URL('./', self.location.href);
 const INDEX_URL = new URL('index.html', APP_ROOT).href;
