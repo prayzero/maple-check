@@ -11,7 +11,7 @@ function between(start, end) {
   return html.slice(from, to);
 }
 const storageSource = between('const LS_KEYS =', 'const fmtMeso =');
-const importSource = between('  const importDataFile =', '  return (\n    <div className="flex h-full');
+const importSource = between('  const importDataFile =', '  return (\n    <div className="app-shell');
 const exportSource = between('  const exportData =', '  const exportStorageRecovery =');
 const plain = value => JSON.parse(JSON.stringify(value));
 

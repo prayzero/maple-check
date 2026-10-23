@@ -43,6 +43,11 @@
 <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
 
 <style>
+  :root {
+    --ui-bg: #0f172a; --ui-panel: #1e293b; --ui-border: #334155;
+    --ui-text: #e2e8f0; --ui-muted: #94a3b8; --ui-accent: #fbbf24;
+    --ui-radius: 12px; --ui-control-radius: 8px; color-scheme: dark;
+  }
   html, body, #root { height: 100%; }
   body {
     background: #0f172a;
@@ -57,7 +62,7 @@
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
   /* 계산기도 메이플 체크 공통 배경·카드·강조색을 사용합니다. */
-  .enhance-lab { --lab-bg: #0f172a; --lab-panel: #1e293b; --lab-border: #334155; --lab-accent: #fbbf24; color: #e2e8f0; color-scheme: dark; }
+  .enhance-lab { --lab-bg: var(--ui-bg); --lab-panel: var(--ui-panel); --lab-border: var(--ui-border); --lab-accent: var(--ui-accent); color: var(--ui-text); }
   .lab-heading { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 20px; }
   .lab-heading h2 { font-size: clamp(24px, 3vw, 30px); font-weight: 700; line-height: 1.3; }
   .lab-heading p { margin-top: 8px; color: #94a3b8; font-size: 14px; line-height: 1.6; }
@@ -78,7 +83,7 @@
   .lab-note { font-size: 12px; color: #94a3b8; line-height: 1.7; margin-top: 12px; }
   .lab-card .calc-field { display: flex; flex-direction: column; min-width: 0; gap: 6px; }
   .lab-card .calc-field > span { color: #cbd5e1; font-size: 12px; margin: 0; }
-  .enhance-lab input:not([type=checkbox]):not([type=radio]), .enhance-lab select { background: var(--lab-bg); color: #e2e8f0; border: 1px solid var(--lab-border); border-radius: 8px; min-height: 42px; padding: 9px 12px; font-size: 14px; width: 100%; max-width: 100%; }
+  .enhance-lab [data-ui-field] { width: 100%; }
   .enhance-lab .calc-field > div { min-height: 42px; border-radius: 8px; padding: 9px 12px; }
   .enhance-lab input:focus, .enhance-lab select:focus { border-color: var(--lab-accent); }
   .enhance-lab input:focus-visible, .enhance-lab select:focus-visible, .enhance-lab button:focus-visible, .lab-results:focus-visible { outline: 2px solid var(--lab-accent); outline-offset: 3px; }
@@ -106,6 +111,48 @@
   @media (max-width: 1199px) { .lab-layout { grid-template-columns: 1fr; } .lab-config, .lab-options, .lab-results, .lab-details { grid-column: 1; grid-row: auto; } .lab-results { position: static; } }
   @media (max-width: 600px) { .lab-card { padding: 16px; } .lab-table-card { padding: 0; } .lab-tabs button { padding: 10px 14px; } .lab-layout { gap: 16px; } .enhance-lab input:not([type=checkbox]):not([type=radio]), .enhance-lab select { font-size: 16px; } }
   @media (max-width: 420px) { .enhance-lab .lab-fields { grid-template-columns: minmax(0, 1fr); } .lab-fields > fieldset { grid-column: 1; } .lab-metric { padding: 16px; } }
+  /* Shared visual system: navigation, pages, forms, actions and data cards. */
+  .app-content { padding: 28px 32px; }
+  .ui-page { width: 100%; max-width: 1280px; margin-inline: auto; min-width: 0; }
+  .ui-page h2 { font-size: clamp(23px, 2.2vw, 28px); line-height: 1.35; font-weight: 700; letter-spacing: -.035em; }
+  .ui-card { border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); min-width: 0; }
+  .ui-card h3, .ui-card h4 { font-size: 15px; line-height: 1.5; font-weight: 600; }
+  .ui-summary { background: var(--ui-panel); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
+  .ui-highlight { background: #fbbf240d; border-color: #fbbf2440; }
+  .ui-inset { background: var(--ui-bg); border: 1px solid var(--ui-border); border-radius: var(--ui-control-radius); }
+  .app-shell [data-ui-field] { min-height: 40px; max-width: 100%; border: 1px solid var(--ui-border); border-radius: var(--ui-control-radius); background: var(--ui-bg); color: var(--ui-text); padding: 8px 11px; font-size: 13px; line-height: 1.5; }
+  .app-shell [data-ui-field]::placeholder { color: #64748b; }
+  .app-shell [data-ui-field]:focus { border-color: var(--ui-accent); }
+  .app-shell [data-ui-field]:disabled { opacity: .5; cursor: not-allowed; }
+  .app-shell [data-ui-compact] { min-width: 56px; padding-inline: 5px; }
+  .app-shell select[data-ui-compact] { min-width: 64px; }
+  .ui-action { min-height: 40px; border-radius: var(--ui-control-radius); font-size: 13px; line-height: 1.5; font-weight: 600; transition: background-color .15s, border-color .15s, color .15s; }
+  .ui-action:disabled { opacity: .45; cursor: not-allowed; }
+  .ui-tabs { display: flex; flex-wrap: wrap; gap: 4px; width: fit-content; max-width: 100%; padding: 4px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); }
+  .ui-tabs > button { min-height: 40px; padding: 9px 16px; border: 0; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--ui-muted); background: transparent; }
+  .ui-tabs > button:hover { color: var(--ui-text); background: #ffffff08; }
+  .ui-tabs > button[aria-selected=true], .ui-tabs > button[aria-pressed=true] { color: var(--ui-bg); background: var(--ui-accent); }
+  .ui-nav { min-height: 44px; border: 1px solid transparent; border-radius: var(--ui-control-radius); }
+  .ui-nav[aria-current=page] { background: #fbbf2414; border-color: #fbbf242e; color: var(--ui-accent); }
+  .ui-nav:not([aria-current=page]):hover { background: var(--ui-bg); }
+  .app-shell :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 3px; }
+  .app-shell input[type=checkbox], .app-shell input[type=radio] { accent-color: var(--ui-accent); }
+  .ui-page table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .ui-page thead { color: var(--ui-muted); background: #0f172a70; }
+  .ui-page th { font-size: 11px; font-weight: 500; }
+  .ui-page td { font-variant-numeric: tabular-nums; }
+  .ui-page p, .ui-page small { font-size: 12px; line-height: 1.6; }
+  .ui-page a { color: #fcd34d; text-underline-offset: 3px; }
+  .ui-page a:hover { text-decoration: underline; }
+  .app-footer { max-width: 1280px; margin-inline: auto; padding: 8px 32px 24px; color: var(--ui-muted); font-size: 11px; }
+  @media (max-width: 767px) {
+    .app-content { padding: 20px 16px; }
+    .app-shell [data-ui-field] { font-size: 16px; min-height: 44px; }
+    .ui-action, .ui-tabs > button { min-height: 44px; }
+    .ui-tabs > button { padding-inline: 12px; }
+    .app-footer { padding: 4px 16px 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .app-shell *, .app-shell *::before, .app-shell *::after { scroll-behavior: auto; transition: none; animation: none; } }
 </style>
 </head>
 <body>
@@ -783,7 +830,7 @@ const EQ_COL_RIGHT_OUTER = ['cape', 'glove', 'shoes', 'medal', 'heart', 'badge']
 
 const POTENTIAL_GRADES = ['미설정', '레어', '에픽', '유니크', '레전드리'];
 const POTENTIAL_STYLE = {
-  '미설정':   'text-slate-500',
+  '미설정':   'text-slate-400',
   '레어':     'text-sky-300',
   '에픽':     'text-violet-300',
   '유니크':   'text-amber-300',
@@ -2184,7 +2231,7 @@ function App() {
   }, []);
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    <div className="app-shell flex h-full w-full overflow-hidden">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-30 md:hidden"
@@ -2226,22 +2273,22 @@ function App() {
           </h1>
         </header>
 
-        <div className="p-4 md:p-8">
+        <div className="app-content">
           {(storageProblems.length > 0 || storageFeedback) && (
             <section role={storageProblems.length ? 'alert' : 'status'} aria-label="데이터 저장 상태"
               className="mb-6 rounded-xl border border-amber-400/50 bg-amber-950/30 p-4 text-sm text-amber-100">
-              <p className="font-bold">{storageProblems.length ? '이 브라우저에 저장하지 못한 데이터가 있습니다.' : storageFeedback}</p>
-              {storageProblems.length > 0 && <p className="mt-2">탭을 닫기 전에 현재 데이터를 JSON으로 내보내 주세요. 저장을 다시 시도해도 읽기 실패·손상 원문은 자동으로 덮어쓰지 않습니다.</p>}
-              {storageProblems.some(issue => issue.protected) && <p className="mt-2">기존 데이터는 보호 중입니다. 복구 JSON에는 읽을 수 있었던 원문과 현재 변경사항이 포함됩니다. 원문을 보관할 공간이 없거나 읽기 자체가 차단되면 기존 데이터를 유지합니다.</p>}
+              <p className="font-bold">{storageProblems.length ? '저장하지 못한 변경사항이 있습니다.' : storageFeedback}</p>
+              {storageProblems.length > 0 && <p className="mt-2">닫기 전에 데이터를 내보내 주세요.</p>}
+              {storageProblems.some(issue => issue.protected) && <p className="mt-2">기존 원문 보호 중 · 복구 JSON에 원문과 변경사항을 담습니다.</p>}
               {storageProblems.length > 0 && <ul className="mt-3 space-y-1">
                 {storageProblems.map(issue => <li key={issue.key}>{issue.label}: {issue.protected ? '기존 원문 보호 중 · ' : ''}{issue.message}</li>)}
               </ul>}
               {storageProblems.length > 0 && storageFeedback && <p className="mt-2" role="status">{storageFeedback}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={exportData} className="rounded-lg border border-amber-300/50 px-3 py-2 hover:bg-amber-400/10">현재 데이터 내보내기</button>
-                <button type="button" onClick={exportStorageRecovery} className="rounded-lg border border-amber-300/50 px-3 py-2 hover:bg-amber-400/10">복구 JSON 내보내기</button>
-                {storageProblems.length > 0 && <button type="button" onClick={() => retryStorage()} className="rounded-lg border border-amber-300/50 px-3 py-2 hover:bg-amber-400/10">저장 다시 시도</button>}
-                {storageProblems.some(issue => issue.protected) && <button type="button" onClick={() => retryStorage(true)} className="rounded-lg border border-amber-300/50 px-3 py-2 hover:bg-amber-400/10">원문 보관 후 저장</button>}
+                <button type="button" onClick={exportData} className="ui-action rounded-lg border border-amber-300/50 px-3 py-2 hover:bg-amber-400/10">현재 데이터 내보내기</button>
+                <button type="button" onClick={exportStorageRecovery} className="ui-action rounded-lg border border-amber-300/50 px-3 py-2 hover:bg-amber-400/10">복구 JSON 내보내기</button>
+                {storageProblems.length > 0 && <button type="button" onClick={() => retryStorage()} className="ui-action rounded-lg border border-amber-300/50 px-3 py-2 hover:bg-amber-400/10">저장 다시 시도</button>}
+                {storageProblems.some(issue => issue.protected) && <button type="button" onClick={() => retryStorage(true)} className="ui-action rounded-lg border border-amber-300/50 px-3 py-2 hover:bg-amber-400/10">원문 보관 후 저장</button>}
               </div>
             </section>
           )}
@@ -2290,8 +2337,8 @@ function App() {
           )}
         </div>
 
-        <footer className="px-6 py-8 text-center text-xs text-slate-500">
-          메이플 체크 · 데이터는 이 브라우저에만 저장됩니다 · {new Date().getFullYear()}
+        <footer className="app-footer">
+          메이플 체크 · {new Date().getFullYear()}
         </footer>
       </main>
     </div>
@@ -2303,33 +2350,31 @@ function App() {
  * ========================================================= */
 function NotificationCenter({ items, permission, onAskPermission, onSelect }) {
   return (
-    <div className="max-w-4xl mx-auto space-y-5">
+    <div className="ui-page space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div><h2 className="text-2xl font-bold">🔔 알림 센터</h2>
-          <p className="text-sm text-slate-400 mt-2">만료된 항목과 앞으로 30일 이내 만료되는 항목을 모아 볼 수 있어요.</p></div>
+          <p className="text-sm text-slate-400 mt-2">만료됨 · 30일 이내 만료 예정</p></div>
         {permission === 'default' && <button onClick={onAskPermission}
-          className="text-xs bg-maple-panel hover:bg-maple-bg border border-maple-border text-slate-200 px-3 py-2 rounded-lg">브라우저 알림 허용</button>}
+          className="ui-action text-xs bg-maple-panel hover:bg-maple-bg border border-maple-border text-slate-200 px-3 py-2 rounded-lg">브라우저 알림 허용</button>}
       </div>
-      <section aria-label="만료 알림" className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <section aria-label="만료 알림" className="ui-card p-4 md:p-5">
         <div className="flex items-center justify-between mb-4"><h3 className="font-semibold">기간제 만료 알림</h3><span className="text-xs text-slate-400">{items.length}건</span></div>
         {items.length === 0 ? <div className="text-center py-12 text-slate-400"><span className="text-3xl block mb-3" aria-hidden="true">✓</span>30일 이내 만료되는 항목이 없습니다.</div> : (
           <div className="space-y-2">{items.map(item => {
             const tag = item.days < 0 ? '만료됨' : item.days === 0 ? '오늘 만료' : item.days === 1 ? '내일 만료' : `${item.days}일 남음`;
             const tone = item.days <= 1 ? 'text-red-300' : item.days <= 7 ? 'text-amber-300' : 'text-slate-300';
             return <button key={`${item.charId}|${item.type}|${item.date}`} onClick={() => onSelect(item.charId)}
-              className="w-full text-left bg-maple-bg/60 hover:bg-maple-bg rounded-lg px-3 py-3 flex flex-wrap gap-2 items-center justify-between focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400">
-              <div className="min-w-0"><span className="font-medium break-all">{item.charName}</span><span className="text-slate-500 mx-2">·</span><span className="text-slate-300">{item.typeLabel}</span></div>
-              <div className="text-right shrink-0"><div className={`text-sm font-semibold ${tone}`}>{tag}</div><div className="text-xs text-slate-500 mt-0.5">{item.date}</div></div>
+              className="ui-action w-full text-left bg-maple-bg/60 hover:bg-maple-bg rounded-lg px-3 py-3 flex flex-wrap gap-2 items-center justify-between focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400">
+              <div className="min-w-0"><span className="font-medium break-all">{item.charName}</span><span className="text-slate-400 mx-2">·</span><span className="text-slate-300">{item.typeLabel}</span></div>
+              <div className="text-right shrink-0"><div className={`text-sm font-semibold ${tone}`}>{tag}</div><div className="text-xs text-slate-400 mt-0.5">{item.date}</div></div>
             </button>;
           })}</div>
         )}
-        {permission === 'denied' && <p className="text-xs text-slate-500 mt-4">브라우저 알림은 차단되어 있어요. 이 알림 센터에서는 계속 확인할 수 있습니다.</p>}
+        {permission === 'denied' && <p className="text-xs text-slate-400 mt-4">브라우저 알림은 차단되어 있어요. 이 알림 센터에서는 계속 확인할 수 있습니다.</p>}
       </section>
-      <details className="bg-maple-panel border border-maple-border rounded-xl p-4 text-sm">
+      <details className="ui-card p-4 text-sm">
         <summary className="cursor-pointer font-medium">계산 기준 안내</summary>
-        <p className="mt-3 text-slate-400 leading-relaxed"><strong className="text-slate-200">9/17 본서버 확정값</strong> · 결정석 가격·아케인 비용을 공식 업데이트 기준으로 반영했습니다. 노멀 찬란한 흉성·카링의 테스트월드 가격도 정정했습니다.
-          검은 마법사는 <strong className="text-slate-200">10/1부터 새 가격</strong>을 적용하며, 그 전에는 기존 가격으로 계산합니다. 적용일 이후 새로고침하면 자동 반영됩니다.
-          게임 내 캐릭터당 주간 12개 판매 제한은 삭제됐지만, 이 사이트의 12개 선택 제한은 요청하신 계획용 기능으로 유지합니다.
+        <p className="mt-3 text-slate-400 leading-relaxed">주간 12개는 사이트의 계획용 선택 한도입니다. 게임 내 캐릭터당 주간 12개 판매 제한은 해제되었습니다.
           {' '}<a href={REWORK_SOURCE_URL} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline underline-offset-2">공식 공지</a></p>
       </details>
     </div>
@@ -2403,7 +2448,6 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
             {notificationCount > 0 && <span aria-hidden="true" className={`absolute -top-0.5 -right-1 min-w-5 h-5 px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${urgentNotificationCount ? 'bg-red-500 text-white' : 'bg-amber-300 text-slate-900'}`}>{notificationCount > 99 ? '99+' : notificationCount}</span>}
           </button>
         </div>
-        <p className="text-xs text-slate-400 mt-1">보스 수익 & 기간제 통합 관리</p>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
@@ -2411,16 +2455,15 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           active={selected === 'budget_summary'}
           onClick={() => onSelect('budget_summary')}
           label="🧾 총 예산 정리"
-          subtitle="캐릭터별 예산 영수증"
         />
 
-        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-500">
+        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-400">
           캐릭터 ({characters.length})
         </div>
 
         {characters.length === 0 && (
-          <div className="px-2 py-3 text-sm text-slate-500">
-            아직 등록된 캐릭터가 없어요.
+          <div className="px-2 py-3 text-sm text-slate-400">
+            등록된 캐릭터 없음
           </div>
         )}
 
@@ -2436,60 +2479,54 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           />
         ))}
 
-        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-500">
-          설정
+        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-400">
+          도구
         </div>
         <NavItem
           active={selected === 'boss_data'}
           onClick={() => onSelect('boss_data')}
           label="💎 결정석 가격 관리"
-          subtitle="보스/난이도별 가격 수정"
         />
         <NavItem
           active={selected === 'boss_history'}
           onClick={() => onSelect('boss_history')}
           label="📜 결정석의 역사"
-          subtitle="가격 변동 이력 보기"
         />
         <NavItem
           active={selected === 'symbol_price'}
           onClick={() => onSelect('symbol_price')}
           label="🔮 심볼 가격"
-          subtitle="심볼 레벨별 강화비용"
         />
         <NavItem
           active={selected === 'enhance_calc'}
           onClick={() => onSelect('enhance_calc')}
           label="⭐ 강화 기대비용"
-          subtitle="스타포스·잠재 계산기"
         />
         <NavItem
           active={selected === 'mileage_calc'}
           onClick={() => onSelect('mileage_calc')}
-          label="🪙 새 마일리지 계산"
-          subtitle="탐험 코인·메이플크레딧"
+          label="🪙 마일리지 계산"
         />
         <NavItem
           active={selected === 'sunday_maple'}
           onClick={() => onSelect('sunday_maple')}
           label="📅 선데이 메이플"
-          subtitle="역대 기록·다음 혜택 예측"
         />
 
-        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-500">
+        <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-400">
           데이터 백업
         </div>
         <div className="flex gap-2 px-2">
           <button
             type="button"
             onClick={onExport}
-            className="flex-1 text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 rounded-md px-2 py-2 text-slate-200"
+            className="ui-action flex-1 text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 rounded-md px-2 py-2 text-slate-200"
             title="모든 데이터를 JSON 파일로 저장"
           >
             💾 내보내기
           </button>
           <label
-            className="flex-1 text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 rounded-md px-2 py-2 text-slate-200 text-center cursor-pointer"
+            className="ui-action flex-1 text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 rounded-md px-2 py-2 text-slate-200 text-center cursor-pointer"
             title="백업 JSON 파일 불러오기 (현재 데이터 덮어씀)"
           >
             📥 가져오기
@@ -2501,13 +2538,13 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
             />
           </label>
         </div>
-        <p className="px-2 pt-1 text-[10px] text-slate-600 leading-snug">
-          데이터는 이 브라우저에만 저장됩니다. 다른 기기로 옮기거나 백업할 때 사용하세요.
+        <p className="px-2 pt-2 text-xs text-slate-400">
+          이 브라우저에만 저장됩니다.
         </p>
       </nav>
 
       <form onSubmit={handleAdd} className="p-3 border-t border-maple-border space-y-2">
-        <input
+        <input data-ui-field
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
@@ -2530,8 +2567,9 @@ function NavItem({ active, onClick, label, subtitle, secondarySubtitle, subtitle
   return (
     <button
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       className={`
-        w-full text-left px-3 py-2.5 rounded-md transition
+        ui-nav w-full text-left px-3 py-2.5 transition
         ${active ? 'bg-maple-accent/15 text-maple-accent' : 'hover:bg-maple-bg text-slate-200'}
       `}
     >
@@ -2563,12 +2601,12 @@ function RevenueStatsTable({ characters, charTotals, activeId, onSelect, exclude
   const toggleIncluded = (id) => onExcludedChange?.(excludedIds.includes(id)
     ? excludedIds.filter(value => value !== id) : [...excludedIds, id]);
   return (
-    <section aria-label="캐릭터 통합 수익" className="min-w-0 bg-maple-panel border border-maple-border rounded-xl overflow-hidden">
+    <section aria-label="캐릭터 통합 수익" className="min-w-0 ui-card overflow-hidden">
       <div className="px-4 py-3 border-b border-maple-border flex justify-between gap-2 items-center">
         <h3 className="text-sm font-semibold">③ 통합 통계</h3>
-        <span className="text-[11px] text-slate-400">체크한 {included.length}명 합산 · 즉시 반영</span>
+        <span className="text-[11px] text-slate-400">선택한 {included.length}명 합산</span>
       </div>
-      {characters.length === 0 ? <p className="p-5 text-sm text-slate-500">캐릭터를 추가하면 수익이 표시됩니다.</p> : (
+      {characters.length === 0 ? <p className="p-5 text-sm text-slate-400">캐릭터를 추가하면 수익이 표시됩니다.</p> : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-right whitespace-nowrap tabular-nums">
@@ -2607,7 +2645,7 @@ function RevenueStatsTable({ characters, charTotals, activeId, onSelect, exclude
             </table>
           </div>
           <details className="border-t border-maple-border text-xs">
-            <summary className="cursor-pointer px-4 py-3 text-slate-400 hover:text-violet-200">월간 보스 별도 보기 <span className="float-right text-violet-300">{fmtMeso(total.monthly)}</span></summary>
+            <summary className="ui-action cursor-pointer px-4 py-3 text-slate-400 hover:text-violet-200">월간 보스 별도 보기 <span className="float-right text-violet-300">{fmtMeso(total.monthly)}</span></summary>
             <div className="px-4 pb-3 space-y-2">{included.map(character => <div key={character.id} className="flex justify-between gap-3"><span className="text-slate-400 truncate">{character.name}</span><span className="text-violet-200 whitespace-nowrap">{fmtMeso(charTotals[character.id]?.monthly || 0)}</span></div>)}</div>
           </details>
         </>
@@ -2713,12 +2751,12 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
   };
 
   return (
-    <div className={`${tab === 'boss' ? 'max-w-7xl' : 'max-w-5xl'} mx-auto space-y-5 min-w-0`}>
+    <div className="ui-page space-y-5">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           {editName ? (
             <div className="flex gap-2">
-              <input
+              <input data-ui-field
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && saveName()}
@@ -2734,21 +2772,20 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
               title="클릭해서 이름 수정"
             >
               👤 {character.name}
-              <span className="text-xs text-slate-500 font-normal">(클릭해서 수정)</span>
+              <span className="text-xs text-slate-400 font-normal">이름 수정</span>
             </h2>
           )}
-          <p className="text-slate-400 mt-1">보스 수익 & 기간제 아이템 관리</p>
         </div>
         <button
           onClick={onRemove}
-          className="text-sm text-maple-danger hover:bg-red-500/10 px-3 py-1.5 rounded border border-red-500/30"
+          className="ui-action text-sm text-maple-danger hover:bg-red-500/10 px-3 py-1.5 rounded border border-red-500/30"
         >
           캐릭터 삭제
         </button>
       </div>
 
       {/* 탭 전환: 보스 수익 / 예산 플래너 / 기간제 */}
-      <div className="flex items-center gap-1 bg-maple-panel border border-maple-border rounded-lg p-1 w-fit flex-wrap">
+      <div className="ui-tabs">
         <TabBtn active={tab === 'boss'} onClick={() => setTab('boss')}>💎 보스 수익</TabBtn>
         <TabBtn active={tab === 'budget'} onClick={() => setTab('budget')}>🧮 예산 플래너</TabBtn>
         <TabBtn active={tab === 'duration'} onClick={() => setTab('duration')}>📅 기간제</TabBtn>
@@ -2757,7 +2794,7 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
       {tab === 'boss' && (
         <div className="grid xl:grid-cols-[minmax(0,1fr)_390px] gap-4 items-start min-w-0">
           <div className="min-w-0 space-y-4">
-            <section className="bg-maple-panel border border-maple-border rounded-xl p-4">
+            <section className="ui-card p-4">
               <h3 className="text-sm font-semibold mb-3">① 캐릭터</h3>
               <div className="flex gap-2 flex-wrap">{characters.map(c => <button key={c.id} onClick={() => onSelectCharacter(c.id)}
                 className={`text-xs px-3 py-2 rounded-lg border ${c.id === character.id ? 'bg-maple-accent/15 border-maple-accent/60 text-maple-accent' : 'border-maple-border text-slate-400 hover:text-slate-100 hover:bg-maple-bg'}`}>
@@ -2772,27 +2809,27 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
           <aside className="min-w-0 space-y-4 xl:sticky xl:top-4" aria-label="실시간 보스 수익">
             <RevenueStatsTable characters={characters} charTotals={charTotals} activeId={character.id} onSelect={onSelectCharacter}
               excludedIds={excludedIds} onExcludedChange={onExcludedChange} />
-            <div className="bg-maple-panel border border-maple-border rounded-xl overflow-hidden">
+            <div className="ui-card overflow-hidden">
               <div className="p-4 border-b border-maple-border">
                 <div className="text-xs text-slate-400">{character.name} · 이번 주 수익</div>
                 <div className="text-2xl font-bold text-maple-accent mt-1 break-words" aria-live="polite">{fmtMeso(totals.weekly)}</div>
                 <div className="text-xs text-slate-400 mt-2">주간 {totals.weeklyCount || 0}/12개 · 소요 {fmtMinutes(bossTimeSum.weekly)}</div>
                 <div className="text-xs text-violet-300 mt-2">월간 별도 {fmtMeso(totals.monthly)}</div>
               </div>
-              <div className="px-4 py-3 border-b border-maple-border text-sm font-semibold">선택한 보스 <span className="text-xs text-slate-500 font-normal">· 클릭으로 해제</span></div>
+              <div className="px-4 py-3 border-b border-maple-border text-sm font-semibold">선택한 보스 <span className="text-xs text-slate-400 font-normal">· 클릭으로 해제</span></div>
               <div className="divide-y divide-maple-border/60 max-h-96 overflow-y-auto">
                 {validBossRows(character.bosses, bossData).map(row => {
                   const boss = bossData.find(b => b.id === row.bossId);
                   const value = getBossRevenue(boss, row);
                   return <button key={row.bossId} onClick={() => toggleBoss(row.bossId, row.difficulty)}
-                    aria-label={`${boss.name} ${row.difficulty} 선택 해제`} className="w-full flex items-center text-left gap-2 px-4 py-2 hover:bg-maple-bg/50">
+                    aria-label={`${boss.name} ${row.difficulty} 선택 해제`} className="ui-action w-full flex items-center text-left gap-2 px-4 py-2 hover:bg-maple-bg/50">
                     <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
                     <div className="min-w-0"><div className="text-xs font-medium truncate">{boss.name}</div><div className="text-[10px] text-slate-400">{row.difficulty} · {value.members}인{boss.monthly ? ' · 월간' : ''}</div></div>
                     <span className={`ml-auto text-xs whitespace-nowrap ${boss.monthly ? 'text-violet-300' : 'text-slate-200'}`}>{fmtMeso(value.revenue).replace(' 메소', '')}</span>
-                    <span className="text-slate-500 ml-1" aria-hidden="true">×</span>
+                    <span className="text-slate-400 ml-1" aria-hidden="true">×</span>
                   </button>;
                 })}
-                {!(character.bosses || []).length && <div className="p-5 text-center text-xs text-slate-500">난이도를 선택하면 여기에 바로 표시됩니다.</div>}
+                {!(character.bosses || []).length && <div className="p-5 text-center text-xs text-slate-400">보스 난이도를 선택해 주세요.</div>}
               </div>
             </div>
           </aside>
@@ -2811,9 +2848,9 @@ function CharacterView({ character, bossData, totals, onUpdate, onRemove, onCopy
         <>
           <div className="flex items-center justify-end gap-2">
             <button onClick={onCopyBudget}
-              className="text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 px-3 py-1.5 rounded text-slate-200">📋 예산 복사</button>
+              className="ui-action text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 px-3 py-1.5 rounded text-slate-200">📋 예산 복사</button>
             <button onClick={onPasteBudget} disabled={!budgetClip}
-              className="text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 px-3 py-1.5 rounded text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+              className="ui-action text-xs bg-maple-bg border border-maple-border hover:border-maple-accent/60 px-3 py-1.5 rounded text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
               📥 붙여넣기{budgetClip ? ` (${budgetClip.from})` : ''}
             </button>
           </div>
@@ -2836,6 +2873,7 @@ function TabBtn({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={`text-sm px-3 py-1.5 rounded-md transition whitespace-nowrap ${
         active ? 'bg-maple-accent text-slate-900 font-semibold' : 'text-slate-300 hover:bg-maple-bg'
       }`}
@@ -2850,7 +2888,7 @@ function TabBtn({ active, onClick, children }) {
  * ========================================================= */
 function DurationField({ id, label, value, onChange }) {
   const d = daysUntil(value);
-  const tone = d === null ? 'text-slate-500'
+  const tone = d === null ? 'text-slate-400'
     : d < 0 ? 'text-maple-danger'
     : d <= 1 ? 'text-maple-danger'
     : d <= 7 ? 'text-maple-warn'
@@ -2858,7 +2896,7 @@ function DurationField({ id, label, value, onChange }) {
   return (
     <div>
       <label htmlFor={id} className="text-sm text-slate-300 block mb-1.5">{label}</label>
-      <input
+      <input data-ui-field
         id={id}
         type="date"
         value={value}
@@ -2890,7 +2928,7 @@ function DurationsPanel({ durations, setDuration }) {
   ];
 
   return (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-5">
+    <div className="ui-card p-5">
       <h3 className="font-semibold mb-4 flex items-center gap-2">
         <span>📅</span> 기간제 아이템 만료일
       </h3>
@@ -2924,8 +2962,8 @@ function DurationsPanel({ durations, setDuration }) {
         </div>
       </div>
 
-      <p className="text-xs text-slate-500 mt-4">
-        ※ 만료 하루 전과 당일에 브라우저 알림이 표시됩니다 (알림 권한 허용 필요).
+      <p className="text-xs text-slate-400 mt-4">
+        만료 전날·당일 알림 · 브라우저 알림 허용 필요
       </p>
     </div>
   );
@@ -3049,7 +3087,7 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, onToggle, onSetMembe
   const visibleBosses = bossList.filter(({ boss, diffs }) => !selectedOnly
     || (selByBoss[boss.id] && diffs.includes(selByBoss[boss.id].difficulty)));
   return (
-    <section aria-label="보스 선택" className="min-w-0 bg-maple-panel border border-maple-border rounded-xl overflow-hidden">
+    <section aria-label="보스 선택" className="min-w-0 ui-card overflow-hidden">
       <div className="px-4 py-3 border-b border-maple-border space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-semibold text-sm">② 보스 선택</h3>
@@ -3067,18 +3105,18 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, onToggle, onSetMembe
           </div>
         </div>
         <div className="flex gap-3 items-center">
-          <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="보스 이름 검색" aria-label="보스 이름 검색"
+          <input data-ui-field type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="보스 이름 검색" aria-label="보스 이름 검색"
             className="min-w-0 flex-1 bg-maple-bg border border-maple-border rounded-md px-3 py-2 text-xs focus:outline-none focus:border-maple-accent" />
           <label className="text-xs text-slate-400 flex gap-1.5 items-center whitespace-nowrap"><input type="checkbox" checked={selectedOnly}
             onChange={event => setSelectedOnly(event.target.checked)} className="accent-amber-400" />선택만</label>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-400" role="status">
-          {weeklyCount > WEEKLY_BOSS_LIMIT ? '기존 선택이 12개를 초과해 유지 중입니다. 보스를 해제해 12개 이내로 조정해 주세요.'
-            : limitReached ? '주간 12개 선택 완료 · 선택한 보스의 난이도 변경·해제와 월간 보스 선택은 가능합니다.'
-            : '난이도를 누르면 옆 통계에 바로 반영됩니다. 주간 계획은 12개까지, 월간은 별도입니다.'}
+          {weeklyCount > WEEKLY_BOSS_LIMIT ? '기존 선택 12개 초과 · 보스를 해제해 12개 이내로 조정해 주세요.'
+            : limitReached ? '주간 12개 선택 완료 · 난이도 변경·해제, 월간 보스 선택 가능'
+            : '주간 계획 최대 12개 · 월간 별도'}
         </p>
       </div>
-      <div className="grid grid-cols-[108px_minmax(0,1fr)] sm:grid-cols-[110px_minmax(0,1fr)_122px] gap-2 px-4 py-2 border-b border-maple-border text-[10px] text-slate-500">
+      <div className="grid grid-cols-[108px_minmax(0,1fr)] sm:grid-cols-[110px_minmax(0,1fr)_122px] gap-2 px-4 py-2 border-b border-maple-border text-[10px] text-slate-400">
         <span>보스 / 소요시간</span><span>난이도</span><span className="hidden sm:block text-right">파티원 / 수익</span>
       </div>
       <div className="divide-y divide-maple-border/70">
@@ -3094,8 +3132,8 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, onToggle, onSetMembe
                 <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
                 <div className="min-w-0">
                   <div className="text-xs font-medium truncate" title={boss.name}>{boss.name}</div>
-                  <label className="flex items-center text-[9px] text-slate-500 gap-0.5">
-                    <input type="text" inputMode="numeric" value={bossTimes[boss.id] || ''} placeholder="소요"
+                  <label className="flex items-center text-[9px] text-slate-400 gap-0.5">
+                    <input data-ui-field data-ui-compact type="text" inputMode="numeric" value={bossTimes[boss.id] || ''} placeholder="소요"
                       aria-label={`${boss.name} 1회 소요시간(분)`}
                       onChange={event => onSetTime(boss.id, parseInt(String(event.target.value).replace(/[^0-9]/g, '')) || 0)}
                       className="w-8 bg-transparent border-b border-maple-border text-center text-[10px] focus:outline-none focus:border-maple-accent" />분
@@ -3116,7 +3154,7 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, onToggle, onSetMembe
               </div>
               <div className="col-span-2 sm:col-span-1 flex items-center justify-end gap-2 min-w-0">
                 {checked ? <>
-                  <select value={value.members} onChange={event => onSetMembers(boss.id, sel.difficulty, Number(event.target.value))}
+                  <select data-ui-field data-ui-compact value={value.members} onChange={event => onSetMembers(boss.id, sel.difficulty, Number(event.target.value))}
                     aria-label={`${boss.name} ${sel.difficulty} 실제 파티원 수`}
                     className="bg-maple-bg border border-maple-border rounded px-1 py-1 text-[10px] w-12">
                     {Array.from({ length: value.max }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}인</option>)}
@@ -3127,10 +3165,10 @@ function BossRevenueTable({ rows, bossData, bossTimes = {}, onToggle, onSetMembe
             </div>
           );
         })}
-        {!visibleBosses.length && <p className="py-8 text-center text-xs text-slate-500">표시할 보스가 없습니다.</p>}
+        {!visibleBosses.length && <p className="py-8 text-center text-xs text-slate-400">표시할 보스가 없습니다.</p>}
       </div>
-      <div className="px-4 py-3 border-t border-maple-border text-[11px] text-slate-500">
-        주간 선택 한도는 이 플래너의 계획 기준입니다. 수익은 실제 파티원 수로 나누며, 월간 수익은 주간 합계에 포함하지 않습니다.
+      <div className="px-4 py-3 border-t border-maple-border text-[11px] text-slate-400">
+        사이트 계획용 한도 · 수익은 실제 파티원 수로 분배 · 월간 수익 별도
       </div>
     </section>
   );
@@ -3160,27 +3198,27 @@ function BossDataEditor({ bossData, setBossData }) {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="ui-page space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold">💎 결정석 가격 관리</h2>
-          <p className="text-slate-400 mt-1">보스/난이도별 결정석 가격과 입장 인원을 수정하면 모든 캐릭터에 자동 반영됩니다.</p>
+          <p className="text-slate-400 mt-1">변경한 가격·최대 인원은 모든 캐릭터에 적용됩니다.</p>
         </div>
         <button
           onClick={resetAll}
-          className="text-sm text-maple-danger border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded"
+          className="ui-action text-sm text-maple-danger border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded"
         >
           기본값으로 초기화
         </button>
       </div>
 
-      <div className="bg-maple-panel border border-maple-border rounded-xl divide-y divide-maple-border">
+      <div className="ui-card divide-y divide-maple-border">
         {bossData.map(boss => (
           <div key={boss.id} className="p-4 md:p-5">
             <div className="font-semibold mb-3 flex items-center gap-2">
               <BossIcon id={boss.id} name={boss.name} icon={boss.icon} />
               <span>{boss.name}</span>
-              {boss.level && <span className="text-xs text-slate-500 font-normal">Lv.{boss.level}</span>}
+              {boss.level && <span className="text-xs text-slate-400 font-normal">Lv.{boss.level}</span>}
             </div>
             <div className="space-y-3">
               {Object.entries(boss.difficulties).map(([diff, val]) => {
@@ -3189,8 +3227,8 @@ function BossDataEditor({ bossData, setBossData }) {
                   <div key={diff} className="grid grid-cols-12 gap-2 items-center">
                     <div className="col-span-3 md:col-span-2 text-sm text-slate-300">{diff}</div>
                     <div className="col-span-6 md:col-span-7">
-                      <label className="text-[10px] text-slate-500 block mb-0.5">결정석 가격 (메소)</label>
-                      <input
+                      <label className="text-[10px] text-slate-400 block mb-0.5">결정석 가격 (메소)</label>
+                      <input data-ui-field
                         type="text"
                         inputMode="numeric"
                         value={entry.price.toLocaleString()}
@@ -3200,8 +3238,8 @@ function BossDataEditor({ bossData, setBossData }) {
                       />
                     </div>
                     <div className="col-span-3 md:col-span-3">
-                      <label className="text-[10px] text-slate-500 block mb-0.5">최대 입장</label>
-                      <select
+                      <label className="text-[10px] text-slate-400 block mb-0.5">최대 입장</label>
+                      <select data-ui-field
                         value={entry.max}
                         aria-label={`${boss.name} ${diff} 최대 입장 인원`}
                         onChange={(e) => updateField(boss.id, diff, 'max', e.target.value)}
@@ -3240,12 +3278,9 @@ function BossHistoryView() {
   const prevMap = prevEntry ? snapshotPriceMap(prevEntry) : null;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="ui-page space-y-6">
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">📜 결정석의 역사</h2>
-        <p className="text-slate-400 mt-1">
-          결정석 가격이 변동될 때마다 기록됩니다. 기간을 클릭하면 그때의 가격을 볼 수 있어요.
-        </p>
       </div>
 
       {/* 기간 선택 (최신이 위로) */}
@@ -3283,16 +3318,16 @@ function BossHistoryView() {
       </div>
 
       {entry && (
-        <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+        <div className="ui-card p-4 md:p-5">
           <div className="mb-3">
             <div className="font-semibold flex items-center gap-2">
-              <span>💎</span> {entry.title} <span className="text-xs text-slate-500 font-normal">({entry.range})</span>
+              <span>💎</span> {entry.title} <span className="text-xs text-slate-400 font-normal">({entry.range})</span>
             </div>
             {entry.note && <div className="text-xs text-slate-400 mt-1">{entry.note}</div>}
             {entry.source && <a href={entry.source} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 text-xs text-sky-300 underline underline-offset-2">공식 가격 공지</a>}
             {prevEntry && (
-              <div className="text-xs text-slate-500 mt-1">
-                ※ 노란색 항목은 직전 기간(<span className="text-slate-400">{prevEntry.title}</span>) 대비 변동된 가격입니다. 변동률은 직전 가격 기준이며 소수 둘째 자리까지 반올림합니다.
+              <div className="text-xs text-slate-400 mt-1">
+                비교 기준: <span className="text-slate-400">{prevEntry.title}</span> · 노란색은 변동된 가격 · 변동률 소수 둘째 자리 반올림
               </div>
             )}
           </div>
@@ -3372,7 +3407,7 @@ const fmtMesoShort = (n) => {
 function MesoInput({ value, onChange, placeholder, className, ariaLabel, disabled = false }) {
   const inputClassName = className || 'w-full bg-maple-bg border border-maple-border rounded px-2 py-1.5 text-sm text-right focus:outline-none focus:border-maple-accent';
   return (
-    <input
+    <input data-ui-field
       type="text"
       inputMode="numeric"
       value={value ? Number(value).toLocaleString() : ''}
@@ -3401,10 +3436,10 @@ function SetEffectPanel({ equipment }) {
   const { sets, total } = useMemo(() => computeSetEffects(equipment || {}), [equipment]);
   const totalText = fmtSetBonus(total);
   return (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
-      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🧩</span> 세트 효과 <span className="text-xs text-slate-500 font-normal">(착용 장비 자동 인식)</span></h3>
+    <div className="ui-card p-4 md:p-5">
+      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🧩</span> 세트 효과</h3>
       {sets.length === 0 ? (
-        <div className="text-center py-6 text-slate-500 text-sm">인식된 세트가 없습니다. 장비 슬롯에 아이템(앱솔/아케인/에테/보스 장신구 등)을 입력해 보세요.</div>
+        <div className="text-center py-6 text-slate-400 text-sm">인식된 세트가 없습니다. 장비를 선택해 주세요.</div>
       ) : (
         <>
           <div className="space-y-2">
@@ -3415,9 +3450,9 @@ function SetEffectPanel({ equipment }) {
                   <div className="flex items-center justify-between">
                     <div className="font-semibold text-slate-100">
                       {s.name} <span className="text-maple-accent">{s.activeTier}세트</span>
-                      <span className="text-xs text-slate-500 ml-1">(착용 {s.count}{s.count >= s.maxTier ? ' · 최대' : ''})</span>
+                      <span className="text-xs text-slate-400 ml-1">(착용 {s.count}{s.count >= s.maxTier ? ' · 최대' : ''})</span>
                     </div>
-                    <span className="text-[10px] text-slate-500">단계 보기 ⓘ</span>
+                    <span className="text-[10px] text-slate-400">단계 보기 ⓘ</span>
                   </div>
                   <div className="text-xs text-emerald-300 mt-0.5">{fmtSetBonus(s.sum) || '효과 없음(2세트 미만)'}</div>
                   {/* 호버 시 단계별 옵션 (적용=흰색 / 미적용=회색) */}
@@ -3425,7 +3460,7 @@ function SetEffectPanel({ equipment }) {
                     <div className="text-xs font-bold text-slate-200 mb-1.5">{s.name} · 단계별 효과</div>
                     <div className="space-y-1">
                       {tierKeys.map(t => (
-                        <div key={t} className={`text-[11px] leading-snug ${t <= s.count ? 'text-white' : 'text-slate-500'}`}>
+                        <div key={t} className={`text-[11px] leading-snug ${t <= s.count ? 'text-white' : 'text-slate-400'}`}>
                           <span className="font-bold">{t}세트</span>
                           <span className="ml-1">{fmtSetBonus(SET_DATA[s.sid].tiers[t])}</span>
                           {t <= s.count && <span className="ml-1 text-emerald-400">✓</span>}
@@ -3448,9 +3483,9 @@ function SetEffectPanel({ equipment }) {
 }
 
 /* HEXA 스킬 플래너 (6차) — 고정 슬롯, 현재→목표 레벨로 조각/에르다/비용 자동 계산 */
-function HexaLevelInput({ value, onChange }) {
+function HexaLevelInput({ value, onChange, label }) {
   return (
-    <input type="text" inputMode="numeric" value={value} placeholder="0"
+    <input data-ui-field data-ui-compact type="text" inputMode="numeric" value={value} placeholder="0" aria-label={label}
       onChange={(e) => onChange(Math.min(30, Math.max(0, parseNum(e.target.value))) || (e.target.value === '' ? '' : 0))}
       className="w-11 bg-maple-bg border border-maple-border rounded px-1 py-1 text-sm text-center focus:outline-none focus:border-maple-accent" />
   );
@@ -3460,15 +3495,15 @@ function HexaPlannerPanel({ hexa, setHexa, fragPrice, onFragPrice }) {
   const setSlot = (id, v) => setHexa(h => ({ ...h, slots: { ...h.slots, [id]: v } }));
   const sum = calcHexa(hexa, fragPrice);
   return (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
-      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🔷</span> HEXA 스킬 (6차) <span className="text-xs text-slate-500 font-normal">현재→목표 레벨로 조각 비용 자동 계산</span></h3>
+    <div className="ui-card p-4 md:p-5">
+      <h3 className="font-semibold mb-1 flex items-center gap-2"><span>🔷</span> HEXA 스킬 (6차) <span className="text-xs text-slate-400 font-normal">현재 → 목표 레벨</span></h3>
       <div className="flex items-center justify-between flex-wrap gap-2 bg-maple-bg/50 border border-maple-border rounded-lg px-3 py-2 mb-4">
         <label className="text-xs text-slate-400 flex items-center gap-2">솔 에르다 조각 1개 가격
           <MesoInput value={fragPrice || 0} onChange={onFragPrice}
             className="w-32 bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-maple-accent" />
-          <span className="text-slate-500">메소</span>
+          <span className="text-slate-400">메소</span>
         </label>
-        <span className="text-[11px] text-slate-500">비용 = 조각 × 단가</span>
+        <span className="text-[11px] text-slate-400">비용 = 조각 × 단가</span>
       </div>
 
       <div className="grid md:grid-cols-2 gap-3">
@@ -3489,9 +3524,9 @@ function HexaPlannerPanel({ hexa, setHexa, fragPrice, onFragPrice }) {
                       {s.name}
                       {s.badge && <span className="ml-1 text-[9px] font-bold px-1 py-px rounded border text-rose-300 border-rose-400/50 bg-rose-500/10">{s.badge}</span>}
                     </span>
-                    <HexaLevelInput value={v.cur} onChange={(x) => setSlot(s.id, { ...v, cur: x })} />
-                    <span className="text-slate-500">→</span>
-                    <HexaLevelInput value={v.tgt} onChange={(x) => setSlot(s.id, { ...v, tgt: x })} />
+                    <HexaLevelInput label={`${s.name} 현재 레벨`} value={v.cur} onChange={(x) => setSlot(s.id, { ...v, cur: x })} />
+                    <span className="text-slate-400">→</span>
+                    <HexaLevelInput label={`${s.name} 목표 레벨`} value={v.tgt} onChange={(x) => setSlot(s.id, { ...v, tgt: x })} />
                     <span className="ml-auto text-right">
                       {n.frag > 0 ? (
                         <>
@@ -3517,7 +3552,7 @@ function HexaPlannerPanel({ hexa, setHexa, fragPrice, onFragPrice }) {
         </div>
         <div className="font-bold text-emerald-300 text-base md:text-lg">{fmtMeso(sum.cost)}</div>
       </div>
-      <p className="text-[11px] text-slate-500 mt-2">예산의 HEXA 스킬 항목에 자동 반영됩니다.</p>
+      <p className="text-[11px] text-slate-400 mt-2">HEXA 예산에 자동 반영</p>
     </div>
   );
 }
@@ -3711,26 +3746,26 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
   };
 
   const priorityTable = (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+    <div className="ui-card p-4 md:p-5">
       <div className="flex items-center justify-between gap-3">
         <button type="button" onClick={() => setPrioOpen(o => !o)} className="flex-1 flex items-center justify-between text-left min-w-0">
           <h3 className="font-semibold flex items-center gap-2 min-w-0">
             <span>📋</span>
             <span>예산 목표</span>
-            <span className="text-xs text-slate-500 font-normal truncate">({lineItems.length}개 · {fmtMesoShort(totalCost) || '0'})</span>
+            <span className="text-xs text-slate-400 font-normal truncate">({lineItems.length}개 · {fmtMesoShort(totalCost) || '0'})</span>
           </h3>
           <span className="text-slate-400 text-sm flex-shrink-0">{prioOpen ? '▲ 접기' : '▼ 펼치기'}</span>
         </button>
         <button type="button" onClick={addCustomBudgetItem}
-          className="min-h-11 flex-shrink-0 rounded-lg border border-maple-accent/50 bg-maple-accent/10 px-3 py-2 text-xs font-bold text-maple-accent hover:bg-maple-accent/20">
+          className="ui-action min-h-11 flex-shrink-0 rounded-lg border border-maple-accent/50 bg-maple-accent/10 px-3 py-2 text-xs font-bold text-maple-accent hover:bg-maple-accent/20">
           + 직접 목표
         </button>
       </div>
       {!prioOpen ? null : lineItems.length === 0 ? (
-        <div className="text-center py-8 text-slate-500 text-sm space-y-3">
-          <p>목표 장비를 선택하거나 직접 예산 목표를 추가해 보세요.</p>
+        <div className="text-center py-8 text-slate-400 text-sm space-y-3">
+          <p>장비를 선택하거나 예산 목표를 추가해 주세요.</p>
           <button type="button" onClick={addCustomBudgetItem}
-            className="min-h-11 rounded-lg bg-maple-accent px-4 py-2 text-sm font-bold text-slate-900 hover:bg-amber-300">
+            className="ui-action min-h-11 rounded-lg bg-maple-accent px-4 py-2 text-sm font-bold text-slate-900 hover:bg-amber-300">
             + 첫 목표 추가
           </button>
         </div>
@@ -3754,7 +3789,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
                 <div className="flex items-start gap-3">
                   <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
                     <span draggable onDragStart={() => setDragIndex(idx)} onDragEnd={() => setDragIndex(null)}
-                      className="min-h-9 min-w-9 inline-flex items-center justify-center text-slate-500 cursor-grab select-none" title="드래그해서 순서 변경">⠿</span>
+                      className="min-h-9 min-w-9 inline-flex items-center justify-center text-slate-400 cursor-grab select-none" title="드래그해서 순서 변경">⠿</span>
                     <span className="w-5 text-center text-sm font-black text-maple-accent">{idx + 1}</span>
                     <div className="flex flex-col leading-none">
                       <button type="button" aria-label={`${displayName} 우선순위 올리기`} onClick={() => move(idx, -1)} disabled={idx === 0}
@@ -3768,7 +3803,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="rounded-full border border-maple-border bg-maple-bg px-2 py-0.5 text-[10px] font-bold text-slate-400">{it.kindLabel}</span>
                       {it.type === 'custom' ? (
-                        <input type="text" value={it.name} placeholder="목표 이름"
+                        <input data-ui-field type="text" value={it.name} placeholder="목표 이름"
                           aria-label={`예산 목표 ${idx + 1} 이름`} data-budget-name-input
                           onChange={(event) => updateCustomItem(it.customId, { name: event.target.value })}
                           className="min-w-0 flex-1 border-b border-maple-border bg-transparent px-1 py-0.5 font-semibold text-slate-100 focus:border-maple-accent focus:outline-none" />
@@ -3779,11 +3814,11 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
                       )}
                     </div>
                     {it.type === 'custom' ? (
-                      <input type="text" value={it.label || ''} placeholder="메모 (선택)"
+                      <input data-ui-field type="text" value={it.label || ''} placeholder="메모 (선택)"
                         aria-label={`${displayName} 메모`}
                         onChange={(event) => updateCustomItem(it.customId, { memo: event.target.value })}
                         className="mt-1 w-full bg-transparent text-xs text-slate-400 placeholder:text-slate-600 focus:outline-none" />
-                    ) : it.label ? <div className="mt-1 text-xs text-slate-500 break-words">{it.label}</div> : null}
+                    ) : it.label ? <div className="mt-1 text-xs text-slate-400 break-words">{it.label}</div> : null}
                   </div>
 
                   <label className={`flex min-h-11 flex-shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs font-bold ${it.done ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-300' : 'border-maple-border bg-maple-bg text-slate-300'} ${it.required <= 0 && !it.done ? 'cursor-not-allowed opacity-40' : ''}`}>
@@ -3806,7 +3841,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
                     ) : (
                       <>
                         <div className="min-h-9 rounded border border-maple-border/70 bg-maple-bg px-2 py-1.5 text-right text-sm font-bold text-emerald-300">{fmtMeso(it.required)}</div>
-                        <p className="mt-1 text-[10px] text-slate-500">{it.type === 'symbols' ? '아래 심볼 목표에서 변경' : '아래 HEXA 설정에서 변경'}</p>
+                        <p className="mt-1 text-[10px] text-slate-400">{it.type === 'symbols' ? '아래 심볼 목표에서 변경' : '아래 HEXA 설정에서 변경'}</p>
                       </>
                     )}
                   </div>
@@ -3815,11 +3850,11 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
                       <label className="text-xs font-medium text-slate-300">현재 모은 메소</label>
                       <button type="button" disabled={it.required <= 0 || it.done}
                         onClick={() => setItemSaved(it, it.required)}
-                        className="min-h-11 rounded px-2 text-xs font-bold text-sky-300 hover:bg-sky-500/10 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-30">전액 입력</button>
+                        className="ui-action min-h-11 rounded px-2 text-xs font-bold text-sky-300 hover:bg-sky-500/10 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-30">전액 입력</button>
                     </div>
                     <MesoInput value={it.saved} disabled={it.done}
                       onChange={(value) => setItemSaved(it, value)} ariaLabel={`${displayName} 현재 모은 메소`} />
-                    {it.done && it.saved > 0 && <p className="mt-1 text-[10px] text-slate-500">완료 중에는 저장된 모은 금액을 합계에서 제외합니다.</p>}
+                    {it.done && it.saved > 0 && <p className="mt-1 text-[10px] text-slate-400">완료 항목의 모은 금액은 합계에서 제외</p>}
                   </div>
                 </div>
 
@@ -3830,16 +3865,16 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
                   </div>
                   <ProgressBar value={it.pct} tone={statusMeta[2]} label={`${displayName} 메소 준비도`} />
                   <div className="mt-1.5 flex flex-col items-start gap-1 text-[11px] text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                    <span>{it.status === 'empty' ? '필요 메소를 입력하세요.' : it.status === 'done' ? '실제 구매·강화를 완료했습니다.' : it.status === 'funded' ? '필요 메소를 모두 모았습니다. 완료 후 체크하세요.' : `${fmtMeso(it.remaining)} 더 필요`}</span>
+                    <span>{it.status === 'empty' ? '필요 메소를 입력해 주세요.' : it.status === 'done' ? '구매·강화 완료' : it.status === 'funded' ? '구매·강화 후 완료를 체크해 주세요.' : `${fmtMeso(it.remaining)} 더 필요`}</span>
                     <span className="flex-shrink-0">모음 {fmtMeso(it.creditedSaved)} / 필요 {fmtMeso(it.required)}</span>
                   </div>
-                  {it.surplus > 0 && <p className="mt-1 text-[10px] text-amber-300">목표보다 {fmtMeso(it.surplus)} 더 입력되어 진행률에는 제외됩니다.</p>}
+                  {it.surplus > 0 && <p className="mt-1 text-[10px] text-amber-300">초과 입력 {fmtMeso(it.surplus)} · 준비도에서 제외</p>}
                 </div>
 
                 {it.deletable && (
                   <div className="mt-2 text-right">
                     <button type="button" onClick={() => removeCustomBudgetItem(it)}
-                      className="min-h-11 rounded px-3 text-xs text-maple-danger hover:bg-red-500/10">직접 목표 삭제</button>
+                      className="ui-action min-h-11 rounded px-3 text-xs text-maple-danger hover:bg-red-500/10">직접 목표 삭제</button>
                   </div>
                 )}
               </article>
@@ -3853,7 +3888,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
   return (
     <div className="space-y-6">
       {/* 예산 요약 */}
-      <div className="bg-gradient-to-br from-emerald-500/15 to-sky-500/5 border border-emerald-500/30 rounded-xl p-5">
+      <div className="ui-summary p-5">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <div className="text-sm text-slate-300">전체 필요 메소</div>
@@ -3871,7 +3906,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
             <span>{progressPct.toFixed(0)}%</span>
           </div>
           <ProgressBar value={progressPct} tone="bg-sky-400" label="전체 메소 준비도" />
-          <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 mb-1">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 mb-1">
             <span>실제 완료 {summary.doneCount}/{summary.itemCount}개</span>
             <span>완료율 {summary.completionPct.toFixed(0)}%</span>
           </div>
@@ -3915,7 +3950,7 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
         </div>
         {summary.surplus > 0 && (
           <div className="mt-3 bg-amber-500/10 border border-amber-400/30 text-amber-200 text-xs rounded px-3 py-2">
-            목표보다 초과 입력된 모은 메소 {fmtMeso(summary.surplus)}는 준비도 합계에서 제외했습니다.
+            초과 입력 {fmtMeso(summary.surplus)} · 준비도 합계에서 제외
           </div>
         )}
         {overBudget && (
@@ -3928,14 +3963,11 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
       {/* 예산 우선순위 — 요약 바로 아래 */}
       {priorityTable}
 
-      {/* 장비창 - 본게임 EQUIPMENT 창 UI */}
+      {/* 장비 슬롯 */}
       <div>
-        <p className="text-xs text-slate-400 mb-3 text-center">슬롯을 눌러 장비 설정</p>
-        <div className="bg-[#243042] border-2 border-black/40 rounded-xl overflow-hidden max-w-2xl mx-auto shadow-xl">
-          {/* 타이틀 바 */}
-          <div className="bg-[#2c3a4f] px-4 py-2.5 flex items-center justify-between">
-            <span className="font-extrabold tracking-wide text-slate-100">EQUIPMENT</span>
-            <span className="text-xs font-bold text-slate-300 bg-[#3b4a61] border border-slate-500/50 rounded px-3 py-1">치장 ›</span>
+        <div className="ui-card overflow-hidden">
+          <div className="px-4 py-4 border-b border-maple-border">
+            <h3>장비</h3>
           </div>
           {/* 보드 — 인게임 순번: 좌 2열 / 가운데(캐릭터+무기·보조·엠블렘) / 우 2열 */}
           <div className="p-3 md:p-4 overflow-x-auto">
@@ -3951,12 +3983,9 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
               ))}
             </div>
             <div className="flex flex-col items-center self-stretch">
-              <div className="flex-1 w-[110px] md:w-[150px] min-h-[180px] bg-[#0e1726] border border-slate-600/50 rounded-lg flex flex-col items-center justify-center py-3">
-                <svg width="46" height="60" viewBox="0 0 46 60" className="opacity-70">
-                  <circle cx="23" cy="16" r="13" fill="#cbd5e1" />
-                  <path d="M5 56 q18 -30 36 0 z" fill="#94a3b8" />
-                </svg>
-                <div className="text-[10px] text-slate-500 mt-2">캐릭터 미리보기</div>
+              <div className="ui-inset flex-1 w-[110px] md:w-[150px] min-h-[180px] flex flex-col items-center justify-center gap-2 px-2 py-3">
+                <span aria-hidden="true" className="text-2xl">👤</span>
+                <div className="text-xs text-slate-300 text-center break-all">{character.name}</div>
               </div>
               <div className="flex gap-1.5 md:gap-2 mt-1.5 md:mt-2">
                 {EQ_CENTER_BOTTOM.map(id => (
@@ -3975,11 +4004,6 @@ function BudgetPlanner({ character, totals, setEquipSlot, clearEquipSlot, setGoa
               ))}
             </div>
            </div>
-          </div>
-          {/* PRESETS 바 (표시용) */}
-          <div className="bg-[#2c3a4f]/70 border-t border-black/30 px-4 py-2.5 flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 tracking-wide">PRESETS</span>
-            <span className="text-[11px] text-slate-500">장비 프리셋 (게임 내 기능)</span>
           </div>
         </div>
       </div>
@@ -4029,7 +4053,7 @@ function EquipSlotCell({ slot, data, onClick }) {
     >
       {filled ? (
         <>
-          <div className={`text-[8px] md:text-[9px] leading-none mb-0.5 ${d.done ? 'text-emerald-100/80' : 'text-slate-500'}`}>{slot.name}</div>
+          <div className={`text-[8px] md:text-[9px] leading-none mb-0.5 ${d.done ? 'text-emerald-100/80' : 'text-slate-400'}`}>{slot.name}</div>
           <div className={`text-[9px] md:text-[10px] font-medium leading-tight line-clamp-2 px-0.5 ${d.done ? 'text-white' : 'text-slate-100'}`}>{d.item || '—'}</div>
           <div className="flex items-center gap-1 mt-0.5">
             {d.star ? <span className="text-[9px] md:text-[10px] text-amber-300 font-bold">★{d.star}</span> : null}
@@ -4046,7 +4070,7 @@ function EquipSlotCell({ slot, data, onClick }) {
         </>
       ) : (
         <>
-          <div className="text-[9px] md:text-[10px] text-slate-500 leading-tight">{slot.name}</div>
+          <div className="text-[9px] md:text-[10px] text-slate-400 leading-tight">{slot.name}</div>
           <div className="text-slate-600 text-base leading-none mt-0.5">+</div>
         </>
       )}
@@ -4059,7 +4083,7 @@ const INPUT_CLS = 'w-full bg-maple-bg border border-maple-border rounded px-3 py
 function TargetSelect({ targets, value, onChange, ariaLabel }) {
   const has = !value || targets.includes(value);
   return (
-    <select aria-label={ariaLabel} value={value || ''} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS}>
+    <select data-ui-field aria-label={ariaLabel} value={value || ''} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS}>
       <option value="">목표 미설정</option>
       {targets.map(o => <option key={o} value={o}>{o}</option>)}
       {!has && <option value={value}>{value}</option>}
@@ -4125,7 +4149,7 @@ function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
   return (
     <div className="border border-maple-border rounded-lg overflow-hidden">
       <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-maple-bg/60 hover:bg-maple-bg text-sm">
+        className="ui-action w-full flex items-center justify-between px-3 py-2 bg-maple-bg/60 hover:bg-maple-bg text-sm">
         <span className="flex items-center gap-1.5"><span>⚡</span> 필요 메소 자동계산 <span className="text-[10px] text-slate-400">구매 + 강화 기댓값</span></span>
         <span className="text-slate-400">{open ? '▲' : '▼'}</span>
       </button>
@@ -4147,7 +4171,7 @@ function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-slate-400 w-16">아이템 레벨</span>
-            <input type="number" min="1" max="300" value={level} aria-label={`${slot.name} 자동계산 아이템 레벨`} onChange={(e) => setLevel(parseNum(e.target.value))} className={miniSel + ' w-20'} />
+            <input data-ui-field type="number" min="1" max="300" value={level} aria-label={`${slot.name} 자동계산 아이템 레벨`} onChange={(e) => setLevel(parseNum(e.target.value))} className={miniSel + ' w-20'} />
             {levelError && <span className="text-red-300 text-[10px]">1~300만 입력</span>}
             {!partId && cap.pot && <span className="text-amber-400/80 text-[10px]">이 부위는 잠재 확률표 없음</span>}
           </div>
@@ -4156,7 +4180,7 @@ function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
             <div className="flex items-center gap-2">
               <span className="text-slate-400 w-16">스타포스</span>
               <span>현재</span>
-              <input type="number" min="0" max="30" value={sfCur} aria-label={`${slot.name} 현재 스타포스`} onChange={(e) => setSfCur(Math.min(30, Math.max(0, parseNum(e.target.value))))} className={miniSel + ' w-14'} />
+              <input data-ui-field type="number" min="0" max="30" value={sfCur} aria-label={`${slot.name} 현재 스타포스`} onChange={(e) => setSfCur(Math.min(30, Math.max(0, parseNum(e.target.value))))} className={miniSel + ' w-14'} />
               <span>→ 목표 <b className="text-amber-300">{tgtStar || 0}★</b></span>
               <span className="ml-auto text-emerald-300 font-semibold">{sfCost > 0 ? fmtMeso(Math.round(sfCost)) : '-'}</span>
             </div>
@@ -4165,10 +4189,10 @@ function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
           {cap.pot && d.potential !== '미설정' && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-slate-400 w-16">잠재</span>
-              <select aria-label="현재 잠재등급" value={potCur} onChange={(e) => setPotCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
+              <select data-ui-field aria-label="현재 잠재등급" value={potCur} onChange={(e) => setPotCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
               <span>→ <b className="text-amber-300">{d.potential}</b> · {d.potTarget || '등급업만'}</span>
               {cubeGoalNeedsFocus(d.potTarget) && (
-                <select aria-label="잠재 유효옵션 기준" value={potFocus} onChange={(e) => onChange({ potFocus: e.target.value })} className={miniSel}>
+                <select data-ui-field aria-label="잠재 유효옵션 기준" value={potFocus} onChange={(e) => onChange({ potFocus: e.target.value })} className={miniSel}>
                   {CUBE_FOCUS_OPTIONS.map(option => <option key={option}>{option}</option>)}
                 </select>
               )}
@@ -4181,10 +4205,10 @@ function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
           {cap.addpot && d.addPotential !== '미설정' && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-slate-400 w-16">에디</span>
-              <select aria-label="현재 에디셔널 잠재등급" value={addCur} onChange={(e) => setAddCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
+              <select data-ui-field aria-label="현재 에디셔널 잠재등급" value={addCur} onChange={(e) => setAddCur(e.target.value)} className={miniSel}>{gradesUpTo.map(g => <option key={g}>{g}</option>)}</select>
               <span>→ <b className="text-amber-300">{d.addPotential}</b> · {d.addPotTarget || '등급업만'}</span>
               {cubeGoalNeedsFocus(d.addPotTarget) && (
-                <select aria-label="에디셔널 유효옵션 기준" value={addFocus} onChange={(e) => onChange({ addPotFocus: e.target.value })} className={miniSel}>
+                <select data-ui-field aria-label="에디셔널 유효옵션 기준" value={addFocus} onChange={(e) => onChange({ addPotFocus: e.target.value })} className={miniSel}>
                   {CUBE_FOCUS_OPTIONS.map(option => <option key={option}>{option}</option>)}
                 </select>
               )}
@@ -4204,7 +4228,7 @@ function SlotAutoCost({ slot, d, cap, onFill, onChange }) {
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-maple-border">
             <span className="text-slate-300 font-semibold">총 필요 메소 <span className="text-maple-accent">{hasCalcError ? '계산 확인 필요' : fmtMeso(total)}</span></span>
             <button type="button" onClick={() => onFill(total)} disabled={total <= 0 || hasCalcError}
-              className={`px-3 py-1.5 rounded text-xs font-semibold ${total > 0 ? 'bg-maple-accent text-slate-900 hover:bg-amber-300' : 'bg-maple-bg text-slate-500 cursor-not-allowed'}`}>
+              className={`px-3 py-1.5 rounded text-xs font-semibold ${total > 0 ? 'bg-maple-accent text-slate-900 hover:bg-amber-300' : 'bg-maple-bg text-slate-400 cursor-not-allowed'}`}>
               필요 메소에 채우기
             </button>
           </div>
@@ -4271,7 +4295,7 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
         aria-modal="true"
         aria-labelledby="slot-editor-title"
         tabIndex="-1"
-        className="bg-maple-panel border border-maple-border rounded-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto"
+        className="ui-card w-full max-w-md p-5 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -4293,7 +4317,7 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
                 ))}
               </div>
             )}
-            <input
+            <input data-ui-field
               type="text" value={d.item} placeholder="직접 입력도 가능"
               aria-label={`${slot.name} 목표 아이템`}
               onChange={(e) => onChange({ item: e.target.value })}
@@ -4301,13 +4325,13 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             />
           </div>
 
-          <div className="text-[11px] text-slate-500 -mt-1">── 목표 스펙 (이 부위에 적용되는 항목만 표시) ──</div>
+          <div className="text-[11px] text-slate-400 -mt-1">── 목표 스펙 (이 부위에 적용되는 항목만 표시) ──</div>
 
           <div className="grid grid-cols-2 gap-3">
             {cap.star && (
               <div>
                 <label className="text-sm text-slate-300 block mb-1.5">목표 스타포스</label>
-                <input
+                <input data-ui-field
                   type="number" min="0" max="30" value={d.star} placeholder="0"
                   aria-label={`${slot.name} 목표 스타포스`}
                   onChange={(e) => onChange({ star: Math.min(30, Math.max(0, parseNum(e.target.value))) })}
@@ -4318,7 +4342,7 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             {cap.pot && (
               <div>
                 <label className="text-sm text-slate-300 block mb-1.5">목표 잠재등급</label>
-                <select aria-label={`${slot.name} 목표 잠재등급`} value={d.potential} onChange={(e) => onChange({ potential: e.target.value })} className={INPUT_CLS}>
+                <select data-ui-field aria-label={`${slot.name} 목표 잠재등급`} value={d.potential} onChange={(e) => onChange({ potential: e.target.value })} className={INPUT_CLS}>
                   {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
@@ -4338,7 +4362,7 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm text-slate-300 block mb-1.5">에디 잠재등급</label>
-                <select aria-label={`${slot.name} 에디셔널 잠재등급`} value={d.addPotential} onChange={(e) => onChange({ addPotential: e.target.value })} className={INPUT_CLS}>
+                <select data-ui-field aria-label={`${slot.name} 에디셔널 잠재등급`} value={d.addPotential} onChange={(e) => onChange({ addPotential: e.target.value })} className={INPUT_CLS}>
                   {POTENTIAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
@@ -4369,25 +4393,24 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
           {cap.soul && (
             <div>
               <label className="text-sm text-slate-300 block mb-1.5">소울 (무기)</label>
-              <input type="text" value={d.soul} placeholder="예: 위대한 데미안의 소울 · 공격력 +x"
+              <input data-ui-field type="text" value={d.soul} placeholder="예: 위대한 데미안의 소울 · 공격력 +x"
                 aria-label={`${slot.name} 소울`}
                 onChange={(e) => onChange({ soul: e.target.value })} className={INPUT_CLS} />
             </div>
           )}
 
-          <div className="text-[11px] text-slate-500 -mb-1">── 예산 ──</div>
+          <div className="text-[11px] text-slate-400 -mb-1">── 예산 ──</div>
           {(cap.star || cap.pot || cap.addpot) && (
             <SlotAutoCost slot={slot} d={d} cap={cap} onFill={(n) => onChange({ cost: n })} onChange={onChange} />
           )}
           <div>
             <label className="text-sm text-slate-300 block mb-1.5">필요 메소</label>
             <MesoInput value={d.cost || 0} onChange={(n) => onChange({ cost: n })} ariaLabel={`${slot.name} 필요 메소`} />
-            <p className="text-[11px] text-slate-500 mt-1">※ 우선순위는 예산 우선순위 표에서 ▲▼로 조절합니다.</p>
           </div>
 
           <div>
             <label className="text-sm text-slate-300 block mb-1.5">메모</label>
-            <input type="text" value={d.memo} placeholder="예: 보스 잠재 / 추옵 후 강화"
+            <input data-ui-field type="text" value={d.memo} placeholder="예: 보스 잠재 / 추옵 후 강화"
               aria-label={`${slot.name} 메모`}
               onChange={(e) => onChange({ memo: e.target.value })} className={INPUT_CLS} />
           </div>
@@ -4399,8 +4422,8 @@ function SlotEditorModal({ slot, data, onChange, onClear, onClose }) {
         </div>
 
         <div className="flex items-center justify-between mt-6 pt-4 border-t border-maple-border">
-          <button type="button" onClick={onClear} className="text-sm text-maple-danger border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded">슬롯 비우기</button>
-          <button type="button" onClick={onClose} className="bg-maple-accent text-slate-900 font-semibold px-4 py-1.5 rounded hover:bg-amber-300">완료</button>
+          <button type="button" onClick={onClear} className="ui-action text-sm text-maple-danger border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded">슬롯 비우기</button>
+          <button type="button" onClick={onClose} className="ui-action bg-maple-accent text-slate-900 font-semibold px-4 py-1.5 rounded hover:bg-amber-300">완료</button>
         </div>
       </div>
     </div>
@@ -4413,11 +4436,11 @@ function SymbolRow({ name, value, max, kind, onChange }) {
     <div>
       <div className="flex items-center gap-2">
         <div className="w-20 md:w-24 text-xs text-slate-300 truncate flex-shrink-0">{name}</div>
-        <input type="number" min="0" max={max} value={value.cur} placeholder="현재"
+        <input data-ui-field type="number" min="0" max={max} value={value.cur} placeholder="현재"
           onChange={(e) => onChange({ ...value, cur: Math.min(max, Math.max(0, parseNum(e.target.value))) })}
           className="w-14 bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-center focus:outline-none focus:border-maple-accent" />
-        <span className="text-slate-500 text-xs">→</span>
-        <input type="number" min="0" max={max} value={value.tgt} placeholder="목표"
+        <span className="text-slate-400 text-xs">→</span>
+        <input data-ui-field type="number" min="0" max={max} value={value.tgt} placeholder="목표"
           onChange={(e) => onChange({ ...value, tgt: Math.min(max, Math.max(0, parseNum(e.target.value))) })}
           className="w-14 bg-maple-bg border border-maple-border rounded px-2 py-1 text-sm text-center focus:outline-none focus:border-maple-accent" />
       </div>
@@ -4444,24 +4467,24 @@ function GoalsPanel({ goals, setGoals }) {
   const symbolCost = calcSymbolCost(goals.symbols);
 
   return (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-6">
+    <div className="ui-card p-4 md:p-5 space-y-6">
       <h3 className="font-semibold flex items-center gap-2"><span>🎯</span> 목표치</h3>
 
       {/* 레벨 */}
       <div>
-        <div className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2"><span>⬆️</span> 레벨 <span className="text-xs text-slate-500 font-normal">({lvlPct.toFixed(1)}% 달성)</span></div>
+        <div className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2"><span>⬆️</span> 레벨 <span className="text-xs text-slate-400 font-normal">({lvlPct.toFixed(1)}% 달성)</span></div>
         <div className="flex items-center gap-2 flex-wrap">
-          <input type="number" min="1" max="300" value={lvl.current} placeholder="현재"
+          <input data-ui-field type="number" min="1" max="300" value={lvl.current} placeholder="현재"
             onChange={(e) => setGoals(g => ({ ...g, level: { ...g.level, current: parseNum(e.target.value) } }))}
             className="w-20 bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-maple-accent" />
           <div className="relative">
-            <input type="number" min="0" max="100" value={lvl.percent} placeholder="경험치"
+            <input data-ui-field type="number" min="0" max="100" value={lvl.percent} placeholder="경험치"
               onChange={(e) => setGoals(g => ({ ...g, level: { ...g.level, percent: Math.min(100, Math.max(0, parseNum(e.target.value))) } }))}
               className="w-20 bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-maple-accent" />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">%</span>
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">%</span>
           </div>
-          <span className="text-slate-500">→</span>
-          <input type="number" min="1" max="300" value={lvl.target} placeholder="목표"
+          <span className="text-slate-400">→</span>
+          <input data-ui-field type="number" min="1" max="300" value={lvl.target} placeholder="목표"
             onChange={(e) => setGoals(g => ({ ...g, level: { ...g.level, target: parseNum(e.target.value) } }))}
             className="w-20 bg-maple-bg border border-maple-border rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-maple-accent" />
           <div className="flex-1 min-w-[80px]"><ProgressBar value={lvlPct} tone="bg-amber-400" /></div>
@@ -4507,7 +4530,7 @@ function GoalsPanel({ goals, setGoals }) {
           </div>
         </div>
         <div className="mt-4 bg-maple-bg/50 border border-maple-border rounded-lg px-4 py-2.5 flex items-center justify-between">
-          <div className="text-[11px] text-slate-400">심볼 강화 예상 비용 (현재→목표 자동계산)</div>
+          <div className="text-[11px] text-slate-400">심볼 강화비용</div>
           <div className="text-base font-bold text-emerald-300">{fmtMeso(symbolCost)}</div>
         </div>
       </div>
@@ -4522,7 +4545,7 @@ function SymbolCostTable({ title, accent, regions, table, maxLevel }) {
   const levels = [];
   for (let L = 2; L <= maxLevel; L++) levels.push(L);
   return (
-    <div className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+    <div className="ui-card p-4 md:p-5">
       <h3 className={`font-semibold mb-3 ${accent}`}>{title}</h3>
       <div className="overflow-x-auto">
         <table className="w-full text-[11px] md:text-xs border-collapse min-w-[640px]">
@@ -4562,14 +4585,13 @@ function SymbolPriceView() {
   const authTotal = AUTHENTIC_REGIONS.reduce((a, r) => a + (AUTHENTIC_COST[r.id]?.[AUTHENTIC_MAX] || 0), 0);
   const grandTotal = GRAND_REGIONS.reduce((a, r) => a + (GRAND_COST[r.id]?.[GRAND_MAX] || 0), 0);
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="ui-page space-y-6">
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">🔮 심볼 가격</h2>
-        <p className="text-slate-400 mt-1">심볼 레벨별 강화비용 기록 (도달 레벨까지 단계별 비용 · 단위 메소)</p>
-        <p className="text-sm text-sky-300 mt-2">9/17 본서버 기준 아케인 전 지역 비용 30% 인하 적용 · 어센틱·그랜드 어센틱 비용과 필요 심볼 개수는 기존과 동일합니다.</p>
+        <p className="text-slate-400 mt-1">단계별 강화비용 · 단위: 메소</p>
       </div>
 
-      <div className="bg-gradient-to-br from-violet-500/15 to-sky-500/5 border border-violet-500/30 rounded-xl p-5 grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="ui-summary p-5 grid grid-cols-2 md:grid-cols-4 gap-3">
         <div><div className="text-xs text-slate-400">아케인 6종</div><div className="text-base md:text-lg font-bold text-sky-300 break-all">{fmtMeso(arcaneTotal)}</div></div>
         <div><div className="text-xs text-slate-400">어센틱 6종</div><div className="text-base md:text-lg font-bold text-violet-300 break-all">{fmtMeso(authTotal)}</div></div>
         <div><div className="text-xs text-slate-400">그랜드 어센틱 2종</div><div className="text-base md:text-lg font-bold text-rose-300 break-all">{fmtMeso(grandTotal)}</div></div>
@@ -4603,17 +4625,16 @@ function BudgetSummaryView({ characters, charTotals, onSelect }) {
   const grandPct = grand.total > 0 ? Math.min(100, (grandPrepared / grand.total) * 100) : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="ui-page space-y-6">
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">🧾 총 예산 정리</h2>
-        <p className="text-slate-400 mt-1">캐릭터별 목표 예산을 영수증처럼 한눈에 (옆으로 스크롤)</p>
       </div>
 
       {characters.length === 0 ? (
-        <div className="text-center py-12 text-slate-500">캐릭터를 먼저 추가해 주세요.</div>
+        <div className="text-center py-12 text-slate-400">캐릭터를 먼저 추가해 주세요.</div>
       ) : (
         <>
-          <div className="bg-gradient-to-br from-emerald-500/15 to-sky-500/5 border border-emerald-500/30 rounded-xl p-5 max-w-4xl">
+          <div className="ui-summary p-5 max-w-4xl">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div><div className="text-xs text-slate-400">전체 필요 메소</div><div className="text-base md:text-xl font-bold text-emerald-300 break-all">{fmtMeso(grand.total)}</div></div>
               <div><div className="text-xs text-slate-400">완료 금액</div><div className="text-base md:text-xl font-bold text-emerald-300 break-all">{fmtMeso(grand.completed)}</div></div>
@@ -4629,17 +4650,17 @@ function BudgetSummaryView({ characters, charTotals, onSelect }) {
 
           <div className="flex gap-4 overflow-x-auto pb-3">
             {cards.map(({ c, s }) => (
-                <div key={c.id} className="flex-shrink-0 w-[280px] bg-[#0b1220] border border-maple-border rounded-xl p-4 font-mono">
+                <div key={c.id} className="ui-card flex-shrink-0 w-[280px] p-4">
                   <button onClick={() => onSelect(c.id)} className="w-full text-center border-b border-dashed border-slate-600 pb-2 mb-2 hover:text-maple-accent">
                     <div className="font-bold text-base">🧾 {c.name}</div>
-                    <div className="text-[10px] text-slate-500">예산 영수증 · 클릭해서 편집</div>
+                    <div className="text-[10px] text-slate-400">예산 편집</div>
                   </button>
                   {s.items.length === 0 ? (
                     <div className="text-center text-slate-600 text-xs py-6">입력된 예산 없음</div>
                   ) : (
                     <div className="space-y-1 text-xs">
                       {s.items.map(it => (
-                        <div key={it.key} className={`flex justify-between gap-2 ${it.done ? 'text-slate-500' : 'text-slate-300'}`}>
+                        <div key={it.key} className={`flex justify-between gap-2 ${it.done ? 'text-slate-400' : 'text-slate-300'}`}>
                           <span className={`truncate ${it.done ? 'line-through' : ''}`}>{it.done ? '✓ ' : it.status === 'funded' ? '◎ ' : ''}{it.name || '이름 없는 목표'}{it.type === 'equip' && it.star ? `★${it.star}` : ''}</span>
                           <span className="text-right whitespace-nowrap">
                             <span className="block text-emerald-300">{fmtMesoShort(it.required) || '0'}</span>
@@ -4718,31 +4739,31 @@ function StarforceCalc() {
   const resultRef = useRef(null);
   return (
     <div className="lab-layout" aria-label="스타포스 계산기">
-      <section className="lab-card lab-config">
+      <section className="ui-card lab-card lab-config">
       <h3>장비 설정</h3>
 
       <div className="lab-fields grid grid-cols-2 gap-3">
-        <CalcField label="장비 레벨"><input type="number" min="1" max="300" step="1" value={c.level} onChange={(e) => set('level', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
-        <CalcField label="시작 성"><input type="number" min="0" max={maxStar - 1} step="1" value={c.from} onChange={(e) => set('from', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
-        <CalcField label="목표 성"><input type="number" min={c.from + 1} max={maxStar} step="1" value={c.to} onChange={(e) => set('to', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="장비 레벨"><input data-ui-field type="number" min="1" max="300" step="1" value={c.level} onChange={(e) => set('level', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="시작 성"><input data-ui-field type="number" min="0" max={maxStar - 1} step="1" value={c.from} onChange={(e) => set('from', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+        <CalcField label="목표 성"><input data-ui-field type="number" min={c.from + 1} max={maxStar} step="1" value={c.to} onChange={(e) => set('to', Number(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
         <CalcField label="동일 장비(스페어) 1개 가격"><MesoInput value={c.spare} onChange={(n) => set('spare', n)} ariaLabel="동일 장비 스페어 한 개 가격" /></CalcField>
       </div>
       <h3 className="mt-6">세부 설정</h3>
       <div className="lab-fields grid grid-cols-2 gap-3">
         <CalcField label="MVP 등급 (17성 도달까지)">
-          <select value={c.mvp} onChange={(e) => set('mvp', Number(e.target.value))} className={SEL_CLS + ' w-full'}>
+          <select data-ui-field value={c.mvp} onChange={(e) => set('mvp', Number(e.target.value))} className={SEL_CLS + ' w-full'}>
             <option value={0}>없음</option><option value={0.03}>실버 (3%)</option><option value={0.05}>골드 (5%)</option><option value={0.1}>다이아/레드/블랙 (10%)</option>
           </select>
         </CalcField>
         <CalcField label="파괴 후 복구 방식">
-          <select value={displayedRecover} onChange={(e) => set('recover', e.target.value)} className={SEL_CLS + ' w-full'}>
+          <select data-ui-field value={displayedRecover} onChange={(e) => set('recover', e.target.value)} className={SEL_CLS + ' w-full'}>
             <option value="spare12">12성 복구 (스페어)</option>
             <option value="restore" disabled={!hasRestore}>흔적 복구 (최대 22성 유지)</option>
             <option value="auto">자동 (최저비용)</option>
           </select>
         </CalcField>
         <CalcField label="파괴방지 (15~17성)">
-          <select value={c.guard} onChange={(e) => set('guard', e.target.value)} className={SEL_CLS + ' w-full'}>
+          <select data-ui-field value={c.guard} onChange={(e) => set('guard', e.target.value)} className={SEL_CLS + ' w-full'}>
             <option value="none">사용 안 함</option>
             <option value="all1517">15~17성 모두</option>
             <option value="auto">최적 자동</option>
@@ -4768,7 +4789,7 @@ function StarforceCalc() {
               );
             })}
           </div>
-          <p className="mt-1 text-[10px] text-slate-500">이벤트 비교용 · 파괴방지 추가금 할인 제외</p>
+          <p className="mt-1 text-[10px] text-slate-400">이벤트 비교용 · 파괴방지 추가금 할인 제외</p>
         </fieldset>
         <fieldset className="col-span-2 mt-3">
           <legend className="sr-only">스타포스 할인 및 이벤트 직접 선택</legend>
@@ -4787,25 +4808,22 @@ function StarforceCalc() {
       </section>
 
       {err ? (
-        <section className="lab-card lab-results" ref={resultRef} tabIndex={-1}><h3>계산 결과</h3><div role="alert" className="lab-empty">{err}</div></section>
+        <section className="ui-card lab-card lab-results" ref={resultRef} tabIndex={-1}><h3>계산 결과</h3><div role="alert" className="lab-empty">{err}</div></section>
       ) : (
-        <section className="lab-card lab-results" ref={resultRef} tabIndex={-1} aria-label="스타포스 계산 결과">
-          <div className="flex items-center justify-between gap-2"><h3>계산 결과</h3><span className="lab-badge">실시간 반영</span></div>
-          <div className="text-xs text-slate-500 mb-1">{c.from}성 → {c.to}성 · {c.level}제{hasRestore ? '' : ' · 12성 복구 기준'}</div>
+        <section className="ui-card lab-card lab-results" ref={resultRef} tabIndex={-1} aria-label="스타포스 계산 결과">
+          <h3>계산 결과</h3>
+          <div className="text-xs text-slate-400 mb-1">{c.from}성 → {c.to}성 · {c.level}제{hasRestore ? '' : ' · 12성 복구 기준'}</div>
           <div className="lab-metric"><span>총 기대비용 · 스페어 포함</span><strong>{fmtMeso(Math.round(r.total))}</strong></div>
           <ResultRow label="순수 기대 메소" value={fmtMeso(Math.round(r.meso))} />
           <ResultRow label="기대 스페어 소모" value={num(r.equips) + '개'} />
           <ResultRow label="기대 시도 횟수" value={num(r.tries) + '회'} />
           <ResultRow label="기대 파괴 횟수" value={num(r.booms) + '회'} />
-          <div className="mt-6"><h4>목표까지의 평균 시도</h4>
-            <div className="lab-percentiles"><div><small className="text-slate-500">강화 시도</small><strong>{num(r.tries)}회</strong></div><div><small className="text-slate-500">파괴 횟수</small><strong>{num(r.booms)}회</strong></div></div>
-          </div>
         </section>
       )}
 
       {!err && (
         <div className="lab-details grid gap-4">
-          <section className="lab-card lab-table-card overflow-hidden">
+          <section className="ui-card lab-card lab-table-card overflow-hidden">
             <div className="px-4 py-3 border-b border-maple-border">
               <h4 className="text-sm font-semibold">파괴 복구 방식 가성비</h4>
             </div>
@@ -4831,13 +4849,13 @@ function StarforceCalc() {
                 </tbody>
               </table>
             </div>
-            {!hasRestore && <p className="px-4 py-2.5 border-t border-maple-border text-[11px] text-slate-500">흔적 복구: 140·160·200·250제만 지원</p>}
+            {!hasRestore && <p className="px-4 py-2.5 border-t border-maple-border text-[11px] text-slate-400">흔적 복구: 140·160·200·250제만 지원</p>}
           </section>
 
-          <section className="lab-card lab-table-card overflow-hidden">
+          <section className="ui-card lab-card lab-table-card overflow-hidden">
             <div className="px-4 py-3 border-b border-maple-border">
               <h4 className="text-sm font-semibold">파괴방지 성급별 손익 비교</h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">자동 복구 기준 · 스페어가 손익분기 이상이면 파괴방지가 유리합니다.</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">자동 복구 기준 · 스페어가 손익분기 이상이면 파괴방지가 유리합니다.</p>
             </div>
             {safeguardRows.length ? (
               <div className="overflow-x-auto">
@@ -4868,7 +4886,7 @@ function StarforceCalc() {
                 </table>
               </div>
             ) : (
-              <p className="px-4 py-4 text-xs text-slate-500">이 장비는 15~17성 파괴방지 구간을 지원하지 않습니다.</p>
+              <p className="px-4 py-4 text-xs text-slate-400">이 장비는 15~17성 파괴방지 구간을 지원하지 않습니다.</p>
             )}
           </section>
         </div>
@@ -4971,31 +4989,31 @@ function PotentialCalc() {
 
   return (
     <div className="lab-layout" aria-label="잠재능력 계산기">
-      <section className="lab-card lab-config">
+      <section className="ui-card lab-card lab-config">
         <h3>장비 설정</h3>
 
         <div className="lab-fields grid grid-cols-2 gap-3">
           <CalcField label="잠재 종류">
-            <select value={c.method} onChange={(e) => set('method', e.target.value)} className={SEL_CLS + ' w-full'}>
+            <select data-ui-field value={c.method} onChange={(e) => set('method', e.target.value)} className={SEL_CLS + ' w-full'}>
               <option value="black">일반/블랙 (메소)</option><option value="addi">에디셔널 (메소)</option>
             </select>
           </CalcField>
           <CalcField label="장비 부위">
-            <select value={c.partId} onChange={(e) => set('partId', Number(e.target.value))} className={SEL_CLS + ' w-full'} disabled={!cube}>
+            <select data-ui-field value={c.partId} onChange={(e) => set('partId', Number(e.target.value))} className={SEL_CLS + ' w-full'} disabled={!cube}>
               {cube ? cube.parts.map(([nm, id]) => <option key={id} value={id}>{nm}</option>) : <option value={c.partId}>로딩…</option>}
             </select>
           </CalcField>
-          <CalcField label="장비 레벨"><input type="number" min="1" max="300" step="1" value={c.level} onChange={(e) => set('level', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
+          <CalcField label="장비 레벨"><input data-ui-field type="number" min="1" max="300" step="1" value={c.level} onChange={(e) => set('level', parseNum(e.target.value))} className={SEL_CLS + ' w-full'} /></CalcField>
           <CalcField label="현재 등급">
-            <select value={c.curGrade} onChange={(e) => set('curGrade', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.map(x => <option key={x}>{x}</option>)}</select>
+            <select data-ui-field value={c.curGrade} onChange={(e) => set('curGrade', e.target.value)} className={SEL_CLS + ' w-full'}>{GRADES.map(x => <option key={x}>{x}</option>)}</select>
           </CalcField>
           <CalcField label="목표 등급"><div className="bg-maple-bg/60 border border-maple-border rounded px-2 py-1.5 text-sm text-amber-300 font-semibold">레전드리</div></CalcField>
         </div>
 
         {upgrading && !levelErr && (
           <div className="lab-fields grid grid-cols-2 gap-3 mt-3">
-            {gi(c.curGrade) <= 0 && <CalcField label="레어→에픽 연속 실패"><input type="number" min="0" max={tierRules.r2e[1] - 1} step="1" value={cubeFailureCount(fails.r2e, tierRules.r2e[1])} onChange={(e) => setFails(f => ({ ...f, r2e: cubeFailureCount(Number(e.target.value), tierRules.r2e[1]) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
-            {gi(c.curGrade) <= 1 && <CalcField label="에픽→유니크 연속 실패"><input type="number" min="0" max={tierRules.e2u[1] - 1} step="1" value={cubeFailureCount(fails.e2u, tierRules.e2u[1])} onChange={(e) => setFails(f => ({ ...f, e2u: cubeFailureCount(Number(e.target.value), tierRules.e2u[1]) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
+            {gi(c.curGrade) <= 0 && <CalcField label="레어→에픽 연속 실패"><input data-ui-field type="number" min="0" max={tierRules.r2e[1] - 1} step="1" value={cubeFailureCount(fails.r2e, tierRules.r2e[1])} onChange={(e) => setFails(f => ({ ...f, r2e: cubeFailureCount(Number(e.target.value), tierRules.r2e[1]) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
+            {gi(c.curGrade) <= 1 && <CalcField label="에픽→유니크 연속 실패"><input data-ui-field type="number" min="0" max={tierRules.e2u[1] - 1} step="1" value={cubeFailureCount(fails.e2u, tierRules.e2u[1])} onChange={(e) => setFails(f => ({ ...f, e2u: cubeFailureCount(Number(e.target.value), tierRules.e2u[1]) }))} className={SEL_CLS + ' w-full'} /></CalcField>}
             {u2lStep && <CalcField label="유니크→레전드리 천장 가격"><div className="bg-maple-bg/60 border border-maple-border rounded px-2 py-1.5 text-sm text-amber-300 font-semibold">{fmtMeso(u2lStep.ceilingMeso)}</div></CalcField>}
           </div>
         )}
@@ -5004,17 +5022,17 @@ function PotentialCalc() {
       </section>
 
       {cubeErr ? (
-        <section className="lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">확률표 로드 실패. 네트워크 확인 후 새로고침해 주세요.</div></section>
+        <section className="ui-card lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">확률표 로드 실패. 네트워크 확인 후 새로고침해 주세요.</div></section>
       ) : !cube ? (
-        <section className="lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="status">확률표 불러오는 중…</div></section>
+        <section className="ui-card lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="status">확률표 불러오는 중…</div></section>
       ) : levelErr ? (
-        <section className="lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">장비 레벨은 1~300 범위로 입력하세요. (현재 {c.level || 0})</div></section>
+        <section className="ui-card lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">장비 레벨은 1~300 범위로 입력하세요. (현재 {c.level || 0})</div></section>
       ) : lineOpts.missing ? (
-        <section className="lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">이 부위·레벨의 공식 확률표가 없습니다.</div></section>
+        <section className="ui-card lab-card lab-results"><h3>계산 결과</h3><div className="lab-empty" role="alert">이 부위·레벨의 공식 확률표가 없습니다.</div></section>
       ) : (
         <>
           {/* 목표 옵션 3줄 선택 */}
-          <section className="lab-card lab-options">
+          <section className="ui-card lab-card lab-options">
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
               <h3>목표 옵션 설정</h3>
               <div className="flex flex-wrap gap-1 bg-maple-bg/60 border border-maple-border rounded-lg p-1" role="group" aria-label="잠재 목표 계산 방식">
@@ -5046,13 +5064,13 @@ function PotentialCalc() {
                   <div key={li} className="lab-option-row">
                     <span className="text-xs text-slate-300">{ordered ? LINE_LABEL[li] : TARGET_LABEL[li]}</span>
                     {category ? (
-                      <select value={cur} onChange={(e) => setCategoryPick(li, e.target.value)} aria-label={`${TARGET_LABEL[li]} 종류`}
+                      <select data-ui-field value={cur} onChange={(e) => setCategoryPick(li, e.target.value)} aria-label={`${TARGET_LABEL[li]} 종류`}
                         className={SEL_CLS + ' w-full'}>
                         <option value="any">— 아무거나 (무시) —</option>
                         {CUBE_CATEGORY_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label} · 수치 무관</option>)}
                       </select>
                     ) : (
-                      <select value={displayedOption === 'any' ? 'any' : String(displayedOption)} onChange={(e) => setPick(li, e.target.value)} aria-label={`${ordered ? LINE_LABEL[li] : TARGET_LABEL[li]} 옵션`}
+                      <select data-ui-field value={displayedOption === 'any' ? 'any' : String(displayedOption)} onChange={(e) => setPick(li, e.target.value)} aria-label={`${ordered ? LINE_LABEL[li] : TARGET_LABEL[li]} 옵션`}
                         className={SEL_CLS + ' w-full'}>
                         <option value="any">— 아무거나 (무시) —</option>
                         {unavailable && <option value="__unavailable__" disabled>{cube.options[cur]?.[0] || '선택 옵션'} · 이 줄에 등장하지 않음</option>}
@@ -5064,7 +5082,7 @@ function PotentialCalc() {
                       </select>
                     )}
                     <span className="text-xs">
-                      {cur === 'any' ? <span className="text-slate-500">100%</span>
+                      {cur === 'any' ? <span className="text-slate-400">100%</span>
                         : !ordered ? <span className="text-sky-300">전체 순열 합산</span>
                         : info && info.p == null ? <span className="text-slate-400">전체 경우 합산</span>
                         : info && info.p > 0 ? <span className="text-emerald-300 font-semibold">{fmtPct(info.p)}</span>
@@ -5075,15 +5093,15 @@ function PotentialCalc() {
               })}
             </div>
             {targetMode === 'ordered' && roll && roll.lines.some(l => l.excl > 0) && (
-              <p className="text-[10px] text-slate-500 mt-1.5">앞줄의 중복 옵션 제한 반영</p>
+              <p className="text-[10px] text-slate-400 mt-1.5">앞줄의 중복 옵션 제한 반영</p>
             )}
             <button type="button" className="lab-primary" onClick={() => { resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); resultRef.current?.focus({ preventScroll: true }); }}>계산 결과 보기</button>
           </section>
 
           {/* 결과 */}
-          <section className="lab-card lab-results" ref={resultRef} tabIndex={-1} aria-label="잠재능력 계산 결과">
-            <div className="flex items-center justify-between gap-2"><h3>계산 결과</h3><span className="lab-badge">실시간 반영</span></div>
-            <div className="text-xs text-slate-500 mb-1">{partName} · Lv.{c.level} · {c.method === 'black' ? '일반/블랙' : '에디셔널'} · {c.curGrade} → 레전드리 · {modeLabel}</div>
+          <section className="ui-card lab-card lab-results" ref={resultRef} tabIndex={-1} aria-label="잠재능력 계산 결과">
+            <h3>계산 결과</h3>
+            <div className="text-xs text-slate-400 mb-1">{partName} · Lv.{c.level} · {c.method === 'black' ? '일반/블랙' : '에디셔널'} · {c.curGrade} → 레전드리 · {modeLabel}</div>
             <div className="lab-metric"><span>총 기대 메소 · 등급업 + 목표 옵션</span><strong>{H4 > 0 ? fmtMeso(Math.round(totalMeso)) : '목표 도달 불가'}</strong></div>
 
             {gup.rows.length > 0 && (
@@ -5102,7 +5120,6 @@ function PotentialCalc() {
             {gup.rows.length > 0 && <ResultRow label="등급업 기대 메소" value={fmtMeso(Math.round(gup.meso))} />}
             <div className="border-t border-maple-border mt-1.5 pt-1.5">
               <ResultRow label="총 기대 유료 재설정 (통합)" value={H4 > 0 ? Math.round(totalTries).toLocaleString() + '회' : '-'} />
-              <ResultRow label="총 기대 메소 (통합)" value={H4 > 0 ? fmtMeso(Math.round(totalMeso)) : '목표 도달 불가'} strong />
             </div>
 
             {H4 > 0 && H4 < 1 && (
@@ -5115,11 +5132,11 @@ function PotentialCalc() {
                   return <div key={index} style={{ height: `${chance * 100}%` }} title={`${tries.toLocaleString()}회 이내 ${(chance * 100).toFixed(1)}%`} />;
                 })}
               </div>
-              <div className="flex justify-between text-xs text-slate-500 mb-4"><span>0회</span><span>{q(0.9).toLocaleString()}회</span></div>
+              <div className="flex justify-between text-xs text-slate-400 mb-4"><span>0회</span><span>{q(0.9).toLocaleString()}회</span></div>
               <div className="lab-percentiles">
                 {[[0.5, '50%'], [0.9, '90%'], [0.95, '95%'], [0.99, '99%']].map(([v, lbl]) => (
                   <div key={lbl}>
-                    <small className="text-slate-500">{lbl} 달성까지</small>
+                    <small className="text-slate-400">{lbl} 달성까지</small>
                     <strong>{q(v).toLocaleString()}회</strong>
                   </div>
                 ))}
@@ -5721,7 +5738,7 @@ function SundayMapleView() {
 
   if (err) {
     return (
-      <div className="max-w-6xl mx-auto">
+      <div className="ui-page">
         <div className="bg-red-500/10 border border-red-500/40 text-red-200 rounded-xl p-5">
           선데이 메이플 기록을 불러오지 못했습니다. 새로고침 후 다시 확인해 주세요.
         </div>
@@ -5729,7 +5746,7 @@ function SundayMapleView() {
     );
   }
   if (!data) {
-    return <div className="max-w-6xl mx-auto py-16 text-center text-slate-400">역대 선데이 메이플 기록을 불러오는 중…</div>;
+    return <div className="ui-page py-16 text-center text-slate-400">역대 선데이 메이플 기록을 불러오는 중…</div>;
   }
 
   const sundayRecords = data.records.filter(record => record.kind === 'sunday');
@@ -5759,13 +5776,13 @@ function SundayMapleView() {
   });
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="ui-page space-y-6">
       <div>
         <h2 className="text-2xl md:text-3xl font-bold">📅 선데이 메이플 기록·예측</h2>
       </div>
 
       {knownUpcoming && (
-        <section className="bg-gradient-to-br from-emerald-500/15 to-sky-500/10 border border-emerald-400/40 rounded-xl p-4 md:p-5">
+        <section className="ui-summary ui-highlight p-4 md:p-5">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <div className="text-xs font-bold text-emerald-300">공식 일정 · {knownUpcoming.date === today ? '오늘 진행' : '진행 예정'}</div>
@@ -5773,7 +5790,7 @@ function SundayMapleView() {
             </div>
             {knownUpcoming.officialUrl && (
               <a href={knownUpcoming.officialUrl} target="_blank" rel="noreferrer"
-                className="text-xs border border-emerald-400/40 bg-emerald-400/10 hover:bg-emerald-400/20 rounded px-3 py-2 text-emerald-200">
+                className="ui-action text-xs border border-emerald-400/40 bg-emerald-400/10 hover:bg-emerald-400/20 rounded px-3 py-2 text-emerald-200">
                 넥슨 공식 공지 ↗
               </a>
             )}
@@ -5793,21 +5810,21 @@ function SundayMapleView() {
         </section>
       )}
 
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+      <section className="ui-card p-4 md:p-5 space-y-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="text-xs text-sky-300 font-bold">다음 혜택 예측</div>
+            <div className="text-xs text-maple-accent font-semibold">다음 혜택 예측</div>
             <h3 className="text-xl font-bold mt-1">{sundayFormatDate(forecastDate)} 후보</h3>
-            <p className="text-xs text-slate-500 mt-1">통계 추정 · 공식 일정 아님</p>
+            <p className="text-xs text-slate-400 mt-1">통계 추정 · 공식 일정 아님</p>
           </div>
           <div className="text-right">
             {backtest ? (
               <>
-                <div className="text-[10px] text-slate-500">최근 {backtest.weeks}주 검증</div>
+                <div className="text-[10px] text-slate-400">최근 {backtest.weeks}주 검증</div>
                 <div className="text-sm font-semibold text-amber-300">1순위 적중률 {(backtest.top1Rate * 100).toFixed(0)}%</div>
               </>
             ) : (
-              <div className="text-[10px] text-slate-500">백그라운드 재현 검증 계산 중…</div>
+              <div className="text-[10px] text-slate-400">백그라운드 재현 검증 계산 중…</div>
             )}
           </div>
         </div>
@@ -5815,18 +5832,16 @@ function SundayMapleView() {
         <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="예측할 선데이 날짜">
           {forecastDates.map((date, index) => (
             <button key={date} type="button" onClick={() => setForecastOffset(index)}
-              className={`shrink-0 rounded-lg border px-3 py-2 text-xs ${forecastOffset === index ? 'border-sky-400 bg-sky-400/15 text-sky-200 font-semibold' : 'border-maple-border bg-maple-bg/60 text-slate-400 hover:text-slate-200'}`}>
+              aria-pressed={forecastOffset === index}
+              className={`ui-action shrink-0 border px-3 py-2 ${forecastOffset === index ? 'border-maple-accent/50 bg-maple-accent/10 text-maple-accent' : 'border-maple-border bg-maple-bg/60 text-slate-400 hover:text-slate-200'}`}>
               {sundayFormatDate(date)}
               {index === 0 && <span className="ml-1 text-[9px]">다음</span>}
             </button>
           ))}
         </div>
-        {forecastOffset > 0 && (
-          <p className="text-[10px] text-amber-300/80">먼 일정일수록 불확실성이 큽니다.</p>
-        )}
 
         {finalPick && (
-          <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-sky-500/10 border border-amber-400/45 rounded-xl p-4">
+          <div className="ui-summary ui-highlight p-4">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <div className="text-[10px] font-bold text-amber-300">몬파·샤타 예상</div>
@@ -5836,7 +5851,7 @@ function SundayMapleView() {
               </div>
               <div className="text-left md:text-right">
                 <div className="text-3xl font-black text-amber-300">{sundayFmtProbability(finalPick.probability)}</div>
-                <div className="text-[10px] text-slate-500">출현 추정</div>
+                <div className="text-[10px] text-slate-400">출현 추정</div>
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-amber-400/20 text-xs text-slate-400 flex gap-x-5 gap-y-1 flex-wrap">
@@ -5854,20 +5869,20 @@ function SundayMapleView() {
             <div key={item.benefit} className="bg-maple-bg/55 border border-maple-border rounded-lg p-3.5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-2.5">
-                  <span className="w-7 h-7 rounded-full bg-sky-500/15 text-sky-300 flex items-center justify-center text-xs font-bold">{index + 1}</span>
+                  <span className="w-7 h-7 rounded-lg bg-maple-accent/10 text-maple-accent flex items-center justify-center text-xs font-semibold">{index + 1}</span>
                   <div>
                     <div className="font-semibold">{SUNDAY_BENEFIT_INFO[item.benefit]?.[0] || '•'} {item.benefit}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">
+                    <div className="text-[10px] text-slate-400 mt-0.5">
                       전체 {item.count}/{item.weeks}회 · 최근 52주 {item.recentCount}/{item.recentWeeks}회
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xl font-black text-sky-300">{sundayFmtProbability(item.probability)}</div>
-                  <div className="text-[9px] text-slate-500">신뢰도 {item.confidence}</div>
+                  <div className="text-xl font-semibold text-maple-accent">{sundayFmtProbability(item.probability)}</div>
+                  <div className="text-[9px] text-slate-400">신뢰도 {item.confidence}</div>
                 </div>
               </div>
-              <div className="mt-2 pt-2 border-t border-maple-border/70 flex justify-between text-[10px] text-slate-500">
+              <div className="mt-2 pt-2 border-t border-maple-border/70 flex justify-between text-[10px] text-slate-400">
                 <span>마지막 {item.lastDate ? sundayFormatDate(item.lastDate) : '-'}</span>
                 <span>{item.currentGap == null ? '-' : `${item.currentGap}주 경과`} · 중앙 간격 {item.medianGap == null ? '-' : `${item.medianGap}주`}</span>
               </div>
@@ -5877,20 +5892,20 @@ function SundayMapleView() {
 
       </section>
 
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <section className="ui-card p-4 md:p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
           <div>
             <h3 className="font-bold text-xl mt-1">샤타·미라클 다음 예상일</h3>
           </div>
-          <span className="text-[10px] text-slate-500 border border-maple-border rounded-full px-2.5 py-1">향후 104주 후보 비교</span>
+          <span className="text-[10px] text-slate-400 border border-maple-border rounded-full px-2.5 py-1">향후 104주 후보 비교</span>
         </div>
         <div className="grid md:grid-cols-2 gap-3">
           {rareEventForecasts.map(item => (
-            <article key={item.benefit} className="bg-gradient-to-br from-fuchsia-500/10 to-maple-bg/60 border border-fuchsia-400/25 rounded-xl p-4">
+            <article key={item.benefit} className="ui-inset p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-bold">{SUNDAY_BENEFIT_INFO[item.benefit]?.[0]} {SUNDAY_RARE_EVENT_LABELS[item.benefit]}</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">역대 {item.historyCount}회 · 완료 간격 {item.completedGaps}개</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">역대 {item.historyCount}회 · 완료 간격 {item.completedGaps}개</div>
                 </div>
                 <span className={`text-[10px] font-bold rounded-full px-2 py-1 ${item.confidence === '보통' ? 'bg-sky-500/15 text-sky-300' : 'bg-slate-700/60 text-slate-400'}`}>
                   신뢰도 {item.confidence}
@@ -5902,30 +5917,30 @@ function SundayMapleView() {
                 <div className="text-xs text-slate-400 mt-1">
                   과거 간격 핵심구간 {sundayFormatDate(item.coreRangeStart)} ~ {sundayFormatDate(item.coreRangeEnd)}
                 </div>
-                <div className="text-[10px] text-slate-500 mt-1">
+                <div className="text-[10px] text-slate-400 mt-1">
                   상위 후보 {item.topCandidateDates.map(row => `${sundayFormatMonthDay(row.date)} ${sundayFmtProbability(row.probability)}`).join(' · ')}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
                 <div className="bg-maple-bg/60 border border-maple-border rounded-lg p-2.5">
-                  <div className="text-slate-500 text-[10px]">날짜 후보 비중</div>
+                  <div className="text-slate-400 text-[10px]">날짜 후보 비중</div>
                   <div className="font-bold text-fuchsia-300">{sundayFmtProbability(item.pointProbability)}</div>
                 </div>
                 <div className="bg-maple-bg/60 border border-maple-border rounded-lg p-2.5">
-                  <div className="text-slate-500 text-[10px]">해당 주 출현 추정</div>
+                  <div className="text-slate-400 text-[10px]">해당 주 출현 추정</div>
                   <div className="font-bold">{sundayFmtProbability(item.weeklyProbabilityAtPredictedDate)}</div>
                 </div>
               </div>
-              <div className="text-[10px] text-slate-500 mt-1.5">최근 등장 {sundayFormatDate(item.lastDate)} → 최빈 예상 간격 {item.predictedGapWeeks}주</div>
+              <div className="text-[10px] text-slate-400 mt-1.5">최근 등장 {sundayFormatDate(item.lastDate)} → 최빈 예상 간격 {item.predictedGapWeeks}주</div>
               <div className="mt-3 space-y-2 text-xs">
                 <div className="bg-maple-bg/45 border border-maple-border rounded-lg p-2.5">
-                  <div className="text-[10px] text-slate-500">전년도 {item.previousYear}년 실제 개최</div>
+                  <div className="text-[10px] text-slate-400">전년도 {item.previousYear}년 실제 개최</div>
                   <div className="font-semibold mt-0.5">
                     {item.previousYearDates.length
                       ? item.previousYearDates.map(sundayFormatMonthDay).join(', ')
                       : '확인 기록 없음'}
                   </div>
-                  <div className="text-[10px] text-slate-500 mt-1">
+                  <div className="text-[10px] text-slate-400 mt-1">
                     같은 주차 환산 {item.previousYearProjectedDates.length
                       ? item.previousYearProjectedDates.map(sundayFormatMonthDay).join(', ')
                       : '향후 후보 없음'}
@@ -5933,22 +5948,22 @@ function SundayMapleView() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="bg-maple-bg/45 border border-maple-border rounded-lg p-2.5">
-                    <div className="text-[10px] text-slate-500">최근 8개 완료 간격</div>
+                    <div className="text-[10px] text-slate-400">최근 8개 완료 간격</div>
                     <div className="font-semibold">중앙 {item.recentGapMedian}주 · 평균 {item.recentGapMean.toFixed(1)}주</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">최근 5개 {item.recentGaps.map(gap => `${gap}주`).join(' → ')}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">최근 5개 {item.recentGaps.map(gap => `${gap}주`).join(' → ')}</div>
                   </div>
                   <div className="bg-maple-bg/45 border border-maple-border rounded-lg p-2.5">
-                    <div className="text-[10px] text-slate-500">최근 3년 집중 월</div>
+                    <div className="text-[10px] text-slate-400">최근 3년 집중 월</div>
                     <div className="font-semibold">{item.recentPeakMonths.map(row => `${row.month}월 ${row.count}회`).join(' · ')}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">역대 중앙 {item.medianGap}주 · 가중 중앙 {item.weightedMedianGap}주</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">역대 중앙 {item.medianGap}주 · 가중 중앙 {item.weightedMedianGap}주</div>
                   </div>
                 </div>
-                <div className="text-[10px] text-slate-500">
+                <div className="text-[10px] text-slate-400">
                   최근 6회 {item.recentDates.map(sundayFormatDate).join(' · ')}
                 </div>
                 <details className="bg-maple-bg/35 border border-maple-border rounded-lg px-2.5 py-2">
                   <summary className="cursor-pointer text-[11px] font-semibold text-slate-300">연도별 개최 기록 보기</summary>
-                  <div className="mt-2 space-y-1 text-[10px] text-slate-500">
+                  <div className="mt-2 space-y-1 text-[10px] text-slate-400">
                     {item.yearlyHistory.map(row => (
                       <div key={row.year} className="flex gap-2">
                         <span className="w-14 shrink-0 text-slate-300">{row.year}{row.year === item.currentYear ? ' YTD' : ''}</span>
@@ -5963,18 +5978,18 @@ function SundayMapleView() {
         </div>
       </section>
 
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <section className="ui-card p-4 md:p-5">
         <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
           <div>
             <h3 className="font-bold text-lg">혜택별 기록·발표 빈도</h3>
-            <p className="text-xs text-slate-500">공식 예정 포함 · 누락 주 제외</p>
+            <p className="text-xs text-slate-400">공식 예정 포함 · 누락 주 제외</p>
           </div>
           <span className="text-xs text-slate-400">현재 후보 {SUNDAY_ACTIVE_BENEFITS.length}종 · 전체 기록 명칭 {data.meta.benefitCount}종</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[720px]">
             <thead>
-              <tr className="text-left text-slate-500 border-b border-maple-border">
+              <tr className="text-left text-slate-400 border-b border-maple-border">
                 <th className="py-2 pr-3">혜택</th>
                 <th className="py-2 px-3 text-right">등장</th>
                 <th className="py-2 px-3 text-right">확인 주간 빈도</th>
@@ -6002,21 +6017,21 @@ function SundayMapleView() {
         </div>
       </section>
 
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5">
+      <section className="ui-card p-4 md:p-5">
         <div className="flex items-end justify-between gap-3 flex-wrap mb-4">
           <div>
             <h3 className="font-bold text-lg">역대 기록·예정 공지 {data.meta.recordCount}건</h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-400">
               {sundayFormatDate(data.meta.coverageStart)} ~ {sundayFormatDate(data.meta.coverageEnd)} · 일요일 {data.meta.sundayCount}건 + 특별 진행일 {data.meta.specialDayCount}건
               {data.meta.missingSundayCount > 0 && ` · 달력 ${data.meta.calendarSundayCount}주 중 ${data.meta.missingSundayCount}주는 수집 범위 밖·미확인`}
             </p>
           </div>
           <div className="flex gap-2">
-            <select value={historyYear} onChange={(event) => setHistoryYear(event.target.value)} className={SEL_CLS + ' text-xs'}>
+            <select data-ui-field value={historyYear} onChange={(event) => setHistoryYear(event.target.value)} className={SEL_CLS + ' text-xs'}>
               <option value="all">전체 연도</option>
               {years.map(year => <option key={year} value={year}>{year}년</option>)}
             </select>
-            <input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)}
+            <input data-ui-field value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)}
               placeholder="혜택 검색" aria-label="선데이 혜택 검색" className={SEL_CLS + ' text-xs w-36'} />
           </div>
         </div>
@@ -6030,9 +6045,8 @@ function SundayMapleView() {
                     {record.date > today && <span className="text-[9px] bg-sky-500/10 text-sky-300 rounded px-1.5 py-0.5">진행 예정</span>}
                     {record.date === today && <span className="text-[9px] bg-amber-500/10 text-amber-300 rounded px-1.5 py-0.5">오늘 진행</span>}
                     {record.kind !== 'sunday' && <span className="text-[9px] bg-amber-500/10 text-amber-300 rounded px-1.5 py-0.5">특별 진행일</span>}
-                    {record.officialUrl && <span className="text-[9px] bg-emerald-500/10 text-emerald-300 rounded px-1.5 py-0.5">공식 링크 확인</span>}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">{record.mainEvent}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{record.mainEvent}</div>
                 </div>
                 {record.officialUrl && (
                   <a href={record.officialUrl} target="_blank" rel="noreferrer" className="text-[10px] text-emerald-300 hover:underline">공지 ↗</a>
@@ -6045,7 +6059,7 @@ function SundayMapleView() {
               </div>
             </article>
           ))}
-          {!filteredHistory.length && <div className="text-center text-sm text-slate-500 py-8">조건에 맞는 기록이 없습니다.</div>}
+          {!filteredHistory.length && <div className="text-center text-sm text-slate-400 py-8">조건에 맞는 기록이 없습니다.</div>}
         </div>
         {historyLimit < filteredHistory.length && (
           <button type="button" onClick={() => setHistoryLimit(limit => limit + 30)}
@@ -6055,7 +6069,7 @@ function SundayMapleView() {
         )}
       </section>
 
-      <section className="text-[11px] text-slate-500 leading-relaxed">
+      <section className="text-[11px] text-slate-400 leading-relaxed">
         <span>업데이트 {data.meta.retrieved} · 과거 기록 일부 미검증</span>
         <a href="docs/sunday-verification.md" target="_blank" rel="noreferrer" className="ml-3 text-sky-300 hover:underline">출처 ↗</a>
       </section>
@@ -6075,14 +6089,13 @@ function EnhanceCalcView() {
     tabRefs.current[next]?.focus();
   };
   return (
-    <div className="enhance-lab max-w-7xl mx-auto">
+    <div className="enhance-lab ui-page">
       <div className="lab-heading">
         <div>
           <h2><span aria-hidden="true">🧮 </span>강화 기댓값 계산기</h2>
         </div>
-          <span className="lab-badge">KMS</span>
       </div>
-      <div className="lab-tabs" role="tablist" aria-label="강화 계산기 종류">
+      <div className="lab-tabs ui-tabs" role="tablist" aria-label="강화 계산기 종류">
         <button type="button" id="sf-tab" role="tab" aria-controls="sf-panel" aria-selected={active === 'starforce'} tabIndex={active === 'starforce' ? 0 : -1}
           ref={element => { tabRefs.current.starforce = element; }} onKeyDown={navigateTab} onClick={() => setActive('starforce')}>★ 스타포스</button>
         <button type="button" id="potential-tab" role="tab" aria-controls="potential-panel" aria-selected={active === 'potential'} tabIndex={active === 'potential' ? 0 : -1}
@@ -6098,7 +6111,7 @@ function MileageNumber({ label, value, onChange, max = 1000000000, hint, placeho
   return (
     <label className="block min-w-0 text-sm text-slate-300">
       <span className="block mb-1.5">{label}</span>
-      <input type="number" min="0" max={max} step="1" inputMode="numeric"
+      <input data-ui-field type="number" min="0" max={max} step="1" inputMode="numeric"
         value={value ?? ''} placeholder={placeholder}
         onChange={event => onChange(event.target.value === '' ? '' : mileageInt(event.target.value, max))}
         className="w-full bg-maple-bg border border-maple-border rounded-lg px-3 py-2.5 text-base text-right text-slate-100 focus:outline-none focus:border-maple-accent" />
@@ -6131,12 +6144,12 @@ function ExplorationCoinCalc({ characters, value, onChange }) {
           <div className="text-2xl font-bold text-maple-accent mt-2">{fmt(result.total)} <span className="text-sm font-normal">개</span></div>
           <div className="text-xs text-slate-400 mt-1">한도 적용 {fmt(result.capped)} + 한도 제외 {fmt(result.exempt)}</div>
         </div>
-        <div className="rounded-xl border border-maple-border bg-maple-panel p-4">
+        <div className="ui-card p-4">
           <div className="text-sm text-slate-300">현재 월간 한도 잔여</div>
           <div className="text-2xl font-bold mt-2">{fmt(result.remaining)} <span className="text-sm font-normal">개</span></div>
           <div className="text-xs text-slate-400 mt-1">계획 반영 후 잔여 {fmt(100000 - result.monthEarned)}개</div>
         </div>
-        <div className="rounded-xl border border-maple-border bg-maple-panel p-4">
+        <div className="ui-card p-4">
           <div className="text-sm text-slate-300">계획 후 예상 보유량</div>
           <div className="text-2xl font-bold text-emerald-300 mt-2">{fmt(result.balance)} <span className="text-sm font-normal">개</span></div>
         </div>
@@ -6148,25 +6161,25 @@ function ExplorationCoinCalc({ characters, value, onChange }) {
         월간 한도 초과분 {fmt(result.overflow)}개는 획득 합계에서 제외했습니다.
       </p>}
 
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+      <section className="ui-card p-4 md:p-5 space-y-4">
         <h3 className="text-lg font-semibold">이번 달 남은 계획</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <MileageNumber label="현재 코인 보유량" value={value.balance} onChange={next => set('balance', next)} />
           <MileageNumber label="이번 달 한도 포함 누적 획득량" value={value.earned} max={100000} onChange={next => set('earned', next)} hint="사용한 코인도 포함" />
-          <MileageNumber label="남은 활동 일수" value={value.days} max={31} onChange={next => set('days', next)} hint="같은 달 안에서 코인을 얻을 예정인 날만 입력" />
+          <MileageNumber label="이번 달 남은 활동 일수" value={value.days} max={31} onChange={next => set('days', next)} />
           <MileageNumber label="남은 주간 보상 회차" value={value.weeks} max={6} onChange={next => set('weeks', next)} hint="월간 보스는 1회차" />
         </div>
       </section>
 
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+      <section className="ui-card p-4 md:p-5 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-lg font-semibold">보스 탐험 코인</h3>
           <button type="button" onClick={loadCharacters} disabled={!characters.length}
-            className="text-sm border border-maple-border rounded-lg px-3 py-2 hover:border-maple-accent disabled:opacity-40">내 캐릭터 보스 목록 불러오기</button>
+            className="ui-action text-sm border border-maple-border rounded-lg px-3 py-2 hover:border-maple-accent disabled:opacity-40">내 캐릭터 보스 목록 불러오기</button>
         </div>
         <p className="text-xs text-slate-400">넥슨ID 기준 · 보스·난이도별 최대 6회 · 1인 수령량 입력</p>
         <div className="flex flex-wrap gap-2">
-          <select aria-label="추가할 보스와 난이도" value={addingKey} onChange={event => setAddingKey(event.target.value)}
+          <select data-ui-field aria-label="추가할 보스와 난이도" value={addingKey} onChange={event => setAddingKey(event.target.value)}
             className="flex-1 min-w-0 bg-maple-bg border border-maple-border rounded-lg px-3 py-2 text-sm">
             {MILEAGE_BOSS_OPTIONS.map(option => <option key={option.key} value={option.key} disabled={value.bosses.some(row => row.key === option.key)}>
               {option.name} · {option.difficulty}{option.monthly ? ' (월간)' : ''}
@@ -6175,7 +6188,7 @@ function ExplorationCoinCalc({ characters, value, onChange }) {
           <button type="button" onClick={addBoss} disabled={value.bosses.some(row => row.key === addingKey)}
             className="bg-maple-accent text-slate-900 rounded-lg px-4 py-2 text-sm font-bold disabled:opacity-40">추가</button>
         </div>
-        {!result.rows.length && <p className="text-sm text-slate-400 border border-dashed border-slate-600 rounded-lg p-4">보스를 추가하거나 등록된 캐릭터의 선택을 불러오세요. 일간 보스는 코인을 지급하지 않습니다.</p>}
+        {!result.rows.length && <p className="text-sm text-slate-400 border border-dashed border-maple-border rounded-lg p-4">보스를 추가해 주세요. 일간 보스 제외.</p>}
         <div className="space-y-3">
           {result.rows.map(row => <div key={row.key} className="bg-maple-bg/60 border border-maple-border rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
@@ -6183,7 +6196,7 @@ function ExplorationCoinCalc({ characters, value, onChange }) {
               <span className="text-xs text-violet-300">{row.monthly ? '월간' : '주간'}</span>
               <button type="button" aria-label={`${row.name} ${row.difficulty} 코인 계획 삭제`}
                 onClick={() => set('bosses', value.bosses.filter(item => item.key !== row.key))}
-                className="ml-auto text-sm text-slate-400 hover:text-red-300 px-2 py-1">삭제</button>
+                className="ui-action ml-auto text-sm text-slate-400 hover:text-red-300 px-2 py-1">삭제</button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <MileageNumber label={`${row.name} ${row.difficulty} 1회 수령 코인`} value={row.amount} placeholder="게임에서 확인 후 입력" onChange={next => setBoss(row.key, 'amount', next)} />
@@ -6199,16 +6212,16 @@ function ExplorationCoinCalc({ characters, value, onChange }) {
         <p className="text-xs text-slate-400">월이 바뀌면 누적 획득량·수령 횟수를 갱신해 주세요.</p>
       </section>
 
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+      <section className="ui-card p-4 md:p-5 space-y-4">
         <div className="flex justify-between gap-3 flex-wrap items-center">
           <h3 className="text-lg font-semibold">그 밖의 획득처</h3>
           <button type="button" onClick={() => onChange({ ...value, elite: 5, mapleM: 700 })}
-            className="text-sm border border-maple-border rounded-lg px-3 py-2 hover:border-maple-accent">엘몬·M 일일 최대치 적용</button>
+            className="ui-action text-sm border border-maple-border rounded-lg px-3 py-2 hover:border-maple-accent">엘몬·M 일일 최대치 적용</button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <MileageNumber label="엘리트 몬스터 하루 수령 횟수" value={value.elite} max={5} onChange={next => set('elite', next)} hint={`1회 60개 · 하루 최대 5회 → 계획 합계 ${fmt(result.eliteCoins)}개`} />
           <MileageNumber label="메이플스토리M 하루 수령 코인" value={value.mapleM} max={700} onChange={next => set('mapleM', next)} hint={`하루 최대 700개 → 계획 합계 ${fmt(result.mapleMCoins)}개`} />
-          <MileageNumber label="몬스터 컬렉션 예정 코인 합계" value={value.collection} onChange={next => set('collection', next)} hint="위 활동 기간의 총 수령 예상량" />
+          <MileageNumber label="몬스터 컬렉션 예정 코인 합계" value={value.collection} onChange={next => set('collection', next)} />
           <MileageNumber label="데일리 기프트 예정 코인 합계" value={value.gift} onChange={next => set('gift', next)} hint="월간 10만 개 한도에서 제외" />
           <MileageNumber label="PC방 보상 예정 코인 합계" value={value.pc} onChange={next => set('pc', next)} hint="월간 10만 개 한도에서 제외" />
         </div>
@@ -6238,12 +6251,12 @@ function MapleCreditCalc({ value, onChange }) {
           ['구매 시 적립 예상', result.expected, 'text-maple-accent'],
           ['구매 확정 반영 잔액', result.available, 'text-emerald-300'],
           ['목표까지 부족한 크레딧', result.shortage, 'text-sky-300'],
-        ].map(([label, amount, tone]) => <div key={label} className="rounded-xl border border-maple-border bg-maple-panel p-4">
+        ].map(([label, amount, tone]) => <div key={label} className="ui-card p-4">
           <div className="text-sm text-slate-300">{label}</div>
           <div className={`text-2xl font-bold mt-2 ${tone}`}>{fmt(amount)} <span className="text-sm font-normal">크레딧</span></div>
         </div>)}
       </div>
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+      <section className="ui-card p-4 md:p-5 space-y-4">
         <h3 className="text-lg font-semibold">넥슨캐시 구매액의 5% 적립</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <MileageNumber label="상품 1개 가격 (캐시)" value={value.price} onChange={next => onChange({ ...value, price: next, cashPaid: next })} />
@@ -6256,13 +6269,13 @@ function MapleCreditCalc({ value, onChange }) {
           <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={value.confirmed} onChange={event => set('confirmed', event.target.checked)} className="w-4 h-4 accent-amber-400" />구매 확정 반영</label>
         </div>
         <p className="text-sm text-slate-300 leading-relaxed">넥슨캐시 결제 합계 {fmt(result.cashTotal)}캐시 · {value.gift ? '선물은 발신·수신 모두 적립 제외' : mileageInt(value.price) < 10 ? '10캐시 미만 상품은 적립 제외' : `5% 적립 ${fmt(result.expected)}크레딧`}</p>
-        {!value.confirmed && <p className="text-sm text-amber-200">구매 확정 전 예정 적립 {fmt(result.pending)}크레딧은 잔액에 포함하지 않았습니다.</p>}
+        {!value.confirmed && <p className="text-sm text-amber-200">미확정 {fmt(result.pending)}크레딧 · 잔액 제외</p>}
         <p className="text-xs text-slate-400">구매 확정 시 적립 · 소수점 절사 미적용 예상값</p>
       </section>
-      <section className="bg-maple-panel border border-maple-border rounded-xl p-4 md:p-5 space-y-4">
+      <section className="ui-card p-4 md:p-5 space-y-4">
         <h3 className="text-lg font-semibold">목표 상품까지 계산</h3>
         <label className="block text-sm text-slate-300">크레딧샵 상품 가격 불러오기
-          <select aria-label="크레딧샵 목표 상품" defaultValue="" onChange={event => { if (event.target.value !== '') set('target', Number(event.target.value)); }}
+          <select data-ui-field aria-label="크레딧샵 목표 상품" defaultValue="" onChange={event => { if (event.target.value !== '') set('target', Number(event.target.value)); }}
             className="block w-full mt-1.5 bg-maple-bg border border-maple-border rounded-lg px-3 py-2.5">
             <option value="">상품 선택</option>
             {CREDIT_SHOP_TARGETS.map(([name, price]) => <option key={name} value={price}>{name} · {fmt(price)}크레딧</option>)}
@@ -6270,11 +6283,11 @@ function MapleCreditCalc({ value, onChange }) {
         </label>
         <MileageNumber label="목표 가격 또는 장바구니 총액 (크레딧)" value={value.target} onChange={next => set('target', next)} />
         <div className="rounded-lg bg-maple-bg border border-maple-border p-4">
-          <div className="text-sm text-slate-300">부족분을 적립하는 데 필요한 추가 넥슨캐시 구매액</div>
+          <div className="text-sm text-slate-300">추가 구매액</div>
           <div className="text-xl font-bold text-sky-300 mt-2">{fmt(result.extraCash)}캐시</div>
           <p className="text-xs text-slate-400 mt-1">적립 대상 상품 구매 기준 · 충전만으로 적립 불가</p>
         </div>
-        <p className="text-sm text-slate-400 leading-relaxed">크레딧은 넥슨ID 단위로 공유하며 적립일로부터 1년간 유효합니다. 프라임 큐브·프라임 에디셔널 큐브 판매는 2026년 11월 18일 23:59까지로 공지되었습니다.</p>
+        <p className="text-xs text-slate-400">넥슨ID 공유 · 유효기간 1년 · 프라임 큐브 판매 ~2026.11.18 23:59</p>
       </section>
     </div>
   );
@@ -6283,11 +6296,11 @@ function MapleCreditCalc({ value, onChange }) {
 function MileageView({ characters, value, onChange }) {
   const [tab, setTab] = useState('coins');
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
+    <div className="ui-page space-y-5">
       <div>
-        <h2 className="text-2xl md:text-3xl font-bold">🪙 새 마일리지 계산</h2>
+        <h2 className="text-2xl md:text-3xl font-bold">🪙 마일리지 계산</h2>
       </div>
-      <div className="flex gap-2 flex-wrap" role="group" aria-label="마일리지 계산 종류">
+      <div className="ui-tabs" role="group" aria-label="마일리지 계산 종류">
         {[['coins', '탐험 코인'], ['credit', '메이플크레딧']].map(([id, label]) => <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)}
           className={`px-5 py-3 rounded-lg border text-sm font-semibold ${tab === id ? 'bg-maple-accent text-slate-900 border-maple-accent' : 'bg-maple-panel text-slate-300 border-maple-border hover:border-maple-accent'}`}>{label}</button>)}
       </div>
