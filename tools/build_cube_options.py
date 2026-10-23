@@ -1,9 +1,10 @@
-"""Refresh high-level cube option distributions from MapleStory's official page.
+"""Refresh and audit cube option distributions against MapleStory's official API.
 
 The app maps level 121-200 items to the level-120 probability table and level
 201+ items to the level-201 table.  Existing lower-level legendary contexts are
-kept; this script adds every grade for the two high-level buckets used by the
-equipment budget calculator.
+refreshed as well; this script also requests every grade for the two high-level
+buckets used by the equipment budget calculator. A missing/invalid response
+fails the run instead of silently certifying an old context as current.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import concurrent.futures
 import argparse
 import datetime as dt
 import html
+import hashlib
 import http.cookiejar
 import json
 import pathlib
@@ -73,7 +75,14 @@ def parse_tables(source: str) -> list[list[tuple[str, float, int]]] | None:
         if rows:
             tables[int(line_no)] = rows
     if len(tables) != 3:
-        return None
+        if not tables and "장비 분류 및 장비 레벨에 해당하는 장비 아이템이 없습니다." in source:
+            return None
+        raise ValueError("official response does not contain three probability tables or an explicit no-equipment result")
+    for line_no, rows in tables.items():
+        if any(not 0 <= probability <= 1 for _, probability in rows):
+            raise ValueError(f"invalid probability on line {line_no}")
+        if abs(sum(probability for _, probability in rows) - 1) > 0.0001:
+            raise ValueError(f"probabilities do not sum to one on line {line_no}")
     # 2·3번째 줄은 하위 등급 블록 뒤에 현재 등급(이탈) 블록이 첫 줄과
     # 같은 순서로 붙는다. 문구만 비교하면 두 등급에 같은 옵션명이 있을 때
     # 하위 등급까지 이탈로 잘못 표시되므로, 공식 표의 블록 경계로 구분한다.
@@ -175,12 +184,26 @@ def compact_data(data: dict) -> None:
             entry[0] = option_remap[entry[0]]
 
 
+def same_probabilities(previous, current) -> bool:
+    """Ignore binary float serialization noise, not published precision changes."""
+    return len(previous) == len(current) and all(
+        len(old_line) == len(new_line) and all(
+            old[0] == new[0] and abs(old[1] - new[1]) <= 1e-12
+            for old, new in zip(old_line, new_line)
+        )
+        for old_line, new_line in zip(previous, current)
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stdout", action="store_true", help="write generated JSON to stdout")
     parser.add_argument("--output", type=pathlib.Path, help="write generated JSON to this path")
     parser.add_argument("--chunk-index", type=int, help="emit one deterministic apply-patch chunk")
     parser.add_argument("--chunk-size", type=int, default=18_000)
+    parser.add_argument("--verify-only", action="store_true", help="compare every requested context without overwriting data")
+    parser.add_argument("--report", type=pathlib.Path, help="write machine-readable comparison evidence")
+    parser.add_argument("--verified-on", type=dt.date.fromisoformat, help="verification date (default: Asia/Seoul today)")
     args = parser.parse_args()
     data = None
     for candidate in (OUTPUT, LEGACY_INPUT):
@@ -201,13 +224,20 @@ def main() -> None:
     contexts = data["ctx"]
 
     cookies = {method: open_session(config["page"]) for method, config in METHODS.items()}
-    tasks = [
+    tasks = {
         (method, grade, part, level)
         for method in METHODS
         for grade in GRADES
         for part in range(1, 21)
         for level in LEVELS
-    ]
+    }
+    # Existing lower-level contexts must not inherit a fresh date without being fetched.
+    for key in contexts:
+        numeric = int(key)
+        method = "addi" if numeric >= 10_000_000 else "black"
+        remainder = numeric - METHODS[method]["offset"]
+        tasks.add((method, remainder // 1_000_000, (remainder % 1_000_000) // 10_000, remainder % 10_000))
+    tasks = sorted(tasks)
     completed = 0
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
@@ -217,9 +247,24 @@ def main() -> None:
             completed += 1
             if completed % 40 == 0:
                 print(f"fetched {completed}/{len(tasks)}", file=sys.stderr)
+    verified_on = (args.verified_on or dt.datetime.now(dt.timezone(dt.timedelta(hours=9))).date()).isoformat()
+    report = {"verifiedOn": verified_on, "api": API,
+              "pages": [BASE + config["page"] for config in METHODS.values()],
+              "requested": len(tasks), "matched": [], "changed": [], "added": [], "removed": [], "unavailable": [], "provenanceRefreshed": [], "tablesSha256": {}}
     for (method, grade, part, level), tables in sorted(results, key=lambda result: result[0]):
+            key = str(METHODS[method]["offset"] + GRADE_OFFSET[grade] + part * 10_000 + level)
             if not tables:
+                report["removed" if key in contexts else "unavailable"].append(key)
+                contexts.pop(key, None)
                 continue
+            previous = None
+            if key in contexts:
+                previous = [[(options[entry[0]][0], entry[1], entry[2] if len(entry) > 2 else None)
+                             for entry in dists[index]] for index in contexts[key]]
+            report["added" if previous is None else "matched" if same_probabilities(previous, tables) else "changed"].append(key)
+            if previous and any(row[2] is None for line in previous for row in line):
+                report["provenanceRefreshed"].append(key)
+            report["tablesSha256"][key] = hashlib.sha256(json.dumps(tables, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
             dist_indices = []
             for table in tables:
                 packed = []
@@ -239,16 +284,25 @@ def main() -> None:
                     dist_map[dist_key] = dist_index
                     dists.append(packed)
                 dist_indices.append(dist_index)
-            key = METHODS[method]["offset"] + GRADE_OFFSET[grade] + part * 10_000 + level
-            contexts[str(key)] = dist_indices
+            contexts[key] = dist_indices
+
+    report["counts"] = {key: len(report[key]) for key in ("matched", "changed", "added", "removed", "unavailable", "provenanceRefreshed")}
+    report["combinedTablesSha256"] = hashlib.sha256(json.dumps(report["tablesSha256"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if args.report:
+        args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"verifiedOn": verified_on, "requested": len(tasks), **report["counts"], "combinedTablesSha256": report["combinedTablesSha256"]}), file=sys.stderr)
+    if args.verify_only:
+        return
 
     compact_data(data)
 
     data["meta"] = {
         "source": "KMS official cube probability API",
-        "retrieved": dt.date.today().isoformat(),
-        "grades": "all grades for official level-120/201 contexts; legacy legendary contexts retained for lower levels",
+        "retrieved": verified_on,
+        "grades": "all grades for official level-120/201 contexts; existing lower-level legendary contexts re-fetched",
         "note": "per-line displayed probabilities, explicit refreshed-context option-grade provenance, sequential restriction renormalization",
+        "verification": {"date": verified_on, "api": API, "requested": len(tasks), "available": len(report["tablesSha256"]),
+                         "unavailable": len(report["unavailable"]) + len(report["removed"]), "tablesSha256": report["combinedTablesSha256"]},
     }
     if args.chunk_index is not None:
         pretty = linewise_json(data)
@@ -271,7 +325,7 @@ def main() -> None:
         print("__CUBE_CHUNK_END__")
         payload = ""
     else:
-        payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n"
+        payload = linewise_json(data)
     if args.stdout and payload:
         sys.stdout.write(payload)
     elif args.chunk_index is None:

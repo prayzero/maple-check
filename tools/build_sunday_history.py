@@ -26,7 +26,11 @@ OFFICIAL_ARCHIVE = (
     "?search=%EC%8D%AC%EB%8D%B0%EC%9D%B4"
 )
 OFFICIAL_FIRST = "https://archive.maplestory.nexon.com/News/Update/478?p=27"
-OFFICIAL_LATEST = "https://maplestory.nexon.com/News/Event/1379"
+OFFICIAL_LATEST = "https://maplestory.nexon.com/News/Event/1405"
+OFFICIAL_VERIFIED_AT = "2026-10-23"
+OFFICIAL_CONTINUOUS_FROM = "2026-07-26"
+OFFICIAL_CONTINUOUS_THROUGH = "2026-10-25"
+OFFICIAL_SAMPLE_DATES = ["2017-03-12", "2017-03-26"]
 FIRST_EVENT = dt.date(2017, 3, 12)
 CONTINUOUS_START = dt.date(2023, 2, 19)
 OFFICIAL_CONFIRMATIONS = {
@@ -34,12 +38,31 @@ OFFICIAL_CONFIRMATIONS = {
         "officialUrl": OFFICIAL_FIRST,
         "officialVerified": True,
         "officialTitle": "썬데이 메이플 최초 시행",
-        "extraBenefits": ["리부트 드롭률 2배"],
+        "extraBenefits": ["주문의 흔적 30%", "돌발미션", "리부트 드롭률 2배"],
+        "benefitsComplete": True,
+        "officialDetails": [
+            "일반 월드 주문의 흔적 강화 비용 30% 할인",
+            "리부트·리부트2 월드 드롭률 2배",
+            "돌발 미션 일일 클리어 횟수와 클리어 경험치 2배",
+        ],
+    },
+    "2017-03-26": {
+        "officialUrl": OFFICIAL_FIRST,
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플",
+        "extraBenefits": ["룬", "스타포스 5/10/15성"],
+        "benefitsComplete": True,
+        "officialDetails": [
+            "5·10·15성에서 스타포스 강화 성공 확률 100%",
+            "룬 경험치 버프 효과 +100%, 지속시간 2배",
+        ],
     },
     "2026-07-26": {
         "officialUrl": "https://maplestory.nexon.com/News/Event/1365",
         "officialVerified": True,
         "officialTitle": "스페셜 썬데이 메이플",
+        "extraBenefits": ["솔에르다 2배", "트레저 헌터", "룬/콤보킬", "몬스터파크"],
+        "benefitsComplete": True,
         "officialDetails": [
             "트레저 헌터 경험치 3배",
             "룬 재등장·재사용 대기시간 15분 → 10분, 룬 경험치 +100%",
@@ -123,7 +146,7 @@ OFFICIAL_CONFIRMATIONS = {
         "benefitsComplete": True,
     },
     "2026-09-13": {
-        "officialUrl": OFFICIAL_LATEST,
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1379",
         "officialVerified": True,
         "officialTitle": "썬데이 메이플",
         "officialDetails": [
@@ -136,7 +159,103 @@ OFFICIAL_CONFIRMATIONS = {
         "extraBenefits": ["룬/콤보킬", "몬컬", "엘몹"],
         "benefitsComplete": True,
     },
+    "2026-09-20": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1390",
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플",
+        "officialDetails": [
+            "소울 조각 사용 시 위대한 소울 확률 1% → 5%",
+            "주문의 흔적 강화 비용 50% 할인 (메소 주문서 강화 제외)",
+            "몬스터파크 클리어 경험치 +250% (총 400%, 익스트림 제외)",
+        ],
+        "extraBenefits": ["소울 확률", "주문의 흔적 반값", "몬스터파크"],
+        "benefitsComplete": True,
+    },
+    "2026-09-27": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1391",
+        "officialVerified": True,
+        "officialTitle": "스페셜 썬데이 메이플",
+        "officialDetails": [
+            "잠재능력·에디셔널 잠재능력 재설정 및 큐브 사용 시 등급 상승 확률 2배",
+            "소울 잠재능력 재설정 시 등급 상승 확률 2배",
+            "등급 상승 보장 횟수는 평소와 같이 1회씩 증가",
+        ],
+        "extraBenefits": ["미라클 타임"],
+        "benefitsComplete": True,
+    },
+    "2026-10-04": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1396",
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플",
+        "officialDetails": [
+            "룬 재등장·재사용 대기시간 15분 → 10분",
+            "룬 경험치 버프 +100%, 콤보킬 경험치 +300%",
+            "트레저 헌터 경험치 3배 (하루 최대 10회)",
+        ],
+        "extraBenefits": ["룬/콤보킬", "트레저 헌터"],
+        "benefitsComplete": True,
+    },
+    "2026-10-11": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1397",
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플",
+        "officialDetails": [
+            "어빌리티 재설정 명성치 비용 50% 할인 (고급 재설정 메소 제외)",
+            "21성 이하 스타포스 강화 파괴 확률 30% 감소 (슈페리얼 장비 제외)",
+        ],
+        "extraBenefits": ["어빌리티 반값", "스타포스 파괴감소"],
+        "benefitsComplete": True,
+    },
+    "2026-10-18": {
+        "officialUrl": "https://maplestory.nexon.com/News/Event/1399",
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플",
+        "officialDetails": [
+            "트레저 헌터 경험치 3배 (하루 최대 10회)",
+            "사냥으로 얻는 솔 에르다 2배 (보스·아이템 등 다른 획득 경로 제외)",
+            "몬스터파크 클리어 경험치 +250% (총 400%, 익스트림 제외)",
+        ],
+        "extraBenefits": ["트레저 헌터", "솔에르다 2배", "몬스터파크"],
+        "benefitsComplete": True,
+    },
+    "2026-10-25": {
+        "officialUrl": OFFICIAL_LATEST,
+        "officialVerified": True,
+        "officialTitle": "썬데이 메이플 (룬 수치 정정)",
+        "officialDetails": [
+            "HEXA 메인 스탯 5레벨 이상에서 메인 스탯 강화 확률 20% 증가 (기존 확률에 곱적용)",
+            "룬 기본 지속시간 50% 증가 (룬 퍼시스턴스와 중복, 기본 지속시간에 곱적용)",
+            "룬 경험치 버프 +100% (일반 룬 총 300%, 축복의 룬 총 400%)",
+            "콤보킬 경험치 +300%",
+        ],
+        "officialCorrection": "2026-10-23 14:40 KST: 룬 경험치 버프 혜택 표기를 200%에서 100%로 정정",
+        "extraBenefits": ["헥사 스텟", "룬/콤보킬"],
+        "benefitsComplete": True,
+    },
 }
+# Images were opened and read together with their official event pages on this
+# date. This verification date is deliberate evidence, not the build date.
+OFFICIAL_IMAGES = {
+    "2026-07-26": "2026/0723_board/260726_V70371421KGB3XA0.png",
+    "2026-08-02": "2026/0723_board/260802_G8E2WSBB7F14QWLK.png",
+    "2026-08-09": "2026/0723_board/260809_3805XUHQ13Y7NIM7.png",
+    "2026-08-16": "2026/0723_board/260816_4WJ06J411R04F7PE.png",
+    "2026-08-23": "2026/0820_board/260823_F435F96D0AD66E18.png",
+    "2026-08-30": "2026/0820_board/260830_2683C81CC5BA49C8.png",
+    "2026-09-06": "2026/0820_board/290906_6A29969365697B3F.png",
+    "2026-09-13": "2026/0820_board/260913_9D6ED3873D30DB8A.png",
+    "2026-09-20": "2026/0917_sundaymaple/260917_26FB6F59BAEA3A9E.png",
+    "2026-09-27": "2026/0917_sundaymaple/260917_E4C8046683EF8E06K.png",
+    "2026-10-04": "2026/0917_sundaymaple/260917_721930F0BA9F628F.png",
+    "2026-10-11": "2026/0917_sundaymaple/260917_314E6BBB49668935.png",
+    "2026-10-18": "2026/0917_sundaymaple/261018_RVCKF3CJ30JST03B.png",
+    "2026-10-25": "2026/1022_board/261025_1K16FRPBN1G02THG.png",
+}
+for date_text, confirmation in OFFICIAL_CONFIRMATIONS.items():
+    confirmation["officialVerifiedAt"] = OFFICIAL_VERIFIED_AT
+    if date_text in OFFICIAL_IMAGES:
+        confirmation["officialImageUrl"] = "https://lwi.nexon.com/maplestory/" + OFFICIAL_IMAGES[date_text]
+
 DATE_CORRECTIONS = {
     # The community API has this Monday date; the official grouped notice lists
     # the corresponding Sunday benefit on 2024-03-31.
@@ -374,14 +493,24 @@ def build_backtest(records: list[dict], cutoff: dt.date) -> dict:
     }
 
 
-def build_snapshot(source: dict) -> dict:
+def korea_today() -> dt.date:
+    return dt.datetime.now(dt.timezone(dt.timedelta(hours=9))).date()
+
+
+def build_snapshot(source: dict, as_of: dt.date | None = None) -> dict:
     raw_history = source.get("history")
+    if raw_history is None and isinstance(source.get("records"), list):
+        raw_history = [
+            {"date": row["date"], "mainEvent": row.get("mainEvent", ""),
+             "eventSummary": ",".join(row["benefits"])}
+            for row in source["records"]
+        ]
     if not isinstance(raw_history, list) or not raw_history:
         raise ValueError("history must be a non-empty list")
 
     seen_dates: set[str] = set()
     records: list[dict] = []
-    today = dt.date.today()
+    today = as_of or korea_today()
     for raw in raw_history:
         if not isinstance(raw, dict):
             raise ValueError("history row must be an object")
@@ -389,8 +518,8 @@ def build_snapshot(source: dict) -> dict:
         date_text = DATE_CORRECTIONS.get(original_date, original_date)
         event_date = dt.date.fromisoformat(date_text)
         confirmation = OFFICIAL_CONFIRMATIONS.get(date_text)
-        # Future community rows are not treated as observations until an
-        # official source has been manually attached and verified.
+        # A future community row must never become an announced event without
+        # a manually checked official source.
         if event_date > today and not confirmation:
             continue
         if event_date < FIRST_EVENT:
@@ -448,6 +577,16 @@ def build_snapshot(source: dict) -> dict:
         seen_dates.add(date_text)
 
     records.sort(key=lambda row: row["date"], reverse=True)
+    for record in records:
+        record["status"] = (
+            "announced" if record["date"] > today.isoformat()
+            else "ongoing" if record["date"] == today.isoformat()
+            else "observed"
+        )
+    observed = [row for row in records if row["status"] == "observed"]
+    announced = [row for row in records if row["status"] != "observed"]
+    if not observed:
+        raise ValueError("snapshot must have completed historical observations")
     benefit_names = sorted({
         benefit
         for row in records
@@ -468,12 +607,18 @@ def build_snapshot(source: dict) -> dict:
             raise ValueError(f"continuous model window has a missing Sunday: {cursor}")
         cursor += dt.timedelta(days=7)
 
-    retrieved = dt.date.today()
+    observed_through = observed[0]["date"]
+    official_count = sum(row.get("officialVerified") is True for row in records)
     return {
         "meta": {
-            "retrieved": retrieved.isoformat(),
+            "retrieved": today.isoformat(),
+            "asOf": today.isoformat(),
             "coverageStart": records[-1]["date"],
             "coverageEnd": records[0]["date"],
+            "observedThrough": observed_through,
+            "announcedThrough": announced[0]["date"] if announced else None,
+            "observedRecordCount": len(observed),
+            "announcedRecordCount": len(announced),
             "recordCount": len(records),
             "sundayCount": sunday_count,
             "specialDayCount": special_count,
@@ -488,13 +633,25 @@ def build_snapshot(source: dict) -> dict:
             "officialArchive": OFFICIAL_ARCHIVE,
             "officialFirst": OFFICIAL_FIRST,
             "officialLatest": OFFICIAL_LATEST,
+            "officialVerifiedAt": OFFICIAL_VERIFIED_AT,
+            "officialContinuousFrom": OFFICIAL_CONTINUOUS_FROM,
+            "officialContinuousThrough": OFFICIAL_CONTINUOUS_THROUGH,
+            "officialSampleDates": OFFICIAL_SAMPLE_DATES,
+            "officialVerifiedRecordCount": official_count,
+            "unverifiedRecordCount": len(records) - official_count,
+            "officialVerificationScope": (
+                "2026-07-26..2026-10-25 weekly notices and images, plus "
+                "2017-03-12/2017-03-26 original update notice; other rows "
+                "remain community-derived and have not been individually verified."
+            ),
             "note": (
                 "Community-maintained snapshot of publicly announced Nexon events. "
                 "It does not claim complete official coverage; missing calendar weeks "
-                "are unknown, not negative observations."
+                "are unknown, not negative observations. Announced/current-day events "
+                "are included for display but excluded from completed-history backtesting."
             ),
         },
-        "backtest": build_backtest(records, retrieved),
+        "backtest": build_backtest(records, dt.date.fromisoformat(observed_through)),
         "benefits": benefit_names,
         "records": records,
     }
@@ -504,6 +661,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=pathlib.Path, default=OUTPUT)
     parser.add_argument(
+        "--as-of", type=dt.date.fromisoformat,
+        help="snapshot date in Korea (YYYY-MM-DD); fixes metadata and the observation cutoff for reproducible builds",
+    )
+    parser.add_argument(
         "--input",
         type=pathlib.Path,
         help="read a downloaded API response or existing local snapshot without using the network",
@@ -512,15 +673,9 @@ def main() -> None:
 
     if args.input:
         source = json.loads(args.input.read_text(encoding="utf-8"))
-        if "records" in source and "history" not in source:
-            source = {"history": [
-                {"date": row["date"], "mainEvent": row.get("mainEvent", ""),
-                 "eventSummary": ",".join(row["benefits"])}
-                for row in source["records"]
-            ]}
     else:
         source = fetch_json(SOURCE_API)
-    snapshot = build_snapshot(source)
+    snapshot = build_snapshot(source, args.as_of)
     args.output.write_text(
         json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")) + "\n",
         encoding="utf-8",

@@ -51,6 +51,9 @@ jobs:
           node tools/test_service_worker.js
           node tools/test_equipment_budget.js
           node tools/test_backup_docs.js
+          node tools/test_sunday_official.js
+          node tools/test_starforce_official.js
+          node tools/test_potential_official.js
 
   package:
     name: Package Pages artifact
