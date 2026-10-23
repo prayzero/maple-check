@@ -239,7 +239,7 @@ assert(potentialCalcSource.includes('유니크→레전드리 천장 가격'),
   'unique-to-legendary ceiling price must be rendered');
 assert(potentialCalcSource.includes("targetMode === 'category-unordered'"),
   'potential calculator must render the any-value unordered target mode');
-assert(html.includes("selected === 'sunday_maple'") && html.includes('역대 기록·다음 혜택 예측'),
+assert(html.includes("selected === 'sunday_maple'") && html.includes('label="📅 선데이 메이플"'),
   'Sunday Maple must be routed from a dedicated sidebar menu');
 assert(!html.includes('useEffect(() => window.scrollTo'),
   'menu scroll effect must not implicitly return a non-function cleanup value');

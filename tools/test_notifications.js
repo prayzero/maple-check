@@ -142,7 +142,7 @@ if (dependencyDir) {
     else saved.set(api.LS_KEYS.SELECTED, JSON.stringify(previousView));
     const page = render(api.App);
     assert.match(page, /👤 알림 테스트 본캐/, 'new or obsolete saved destinations must open the first character');
-    assert.match(page, /보스 수익 &amp; 기간제 아이템 관리/,
+    assert.match(page, /💎 보스 수익[\s\S]*🧮 예산 플래너[\s\S]*📅 기간제/,
       'fallback navigation must render the character page rather than a blank screen');
     noTopNotifications(page, `saved destination ${previousView}`);
   }
