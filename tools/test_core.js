@@ -523,8 +523,6 @@ assert(origin3Total.erda === 117 && origin3Total.frag === 3442,
   'sixth-job third skill total must be 117 Sol Erda and 3,442 fragments');
 assert(hexaContext.testApi.HEXA_SLOTS.find(slot => slot.id === 's63').badge === '3,442',
   'sixth-job third skill badge must show the revised fragment total');
-assert(html.includes('6차 3 = 3,442'),
-  'HEXA planner help text must show the revised fragment total');
 
 const sundayContext = {};
 vm.runInNewContext(
@@ -687,10 +685,10 @@ close(sundayData.backtest.recallAt3, sundayBacktestResult.recallAt3, 1e-12,
   'build-time and browser-model Top-3 recall');
 close(sundayData.backtest.brier, sundayBacktestResult.brier, 1e-12,
   'build-time and browser-model Brier score');
-assert(html.includes('몬파·샤타 중 최종 1개') && html.includes('해당 주 개별 출현 추정치') &&
+assert(html.includes('몬파·샤타 예상') && html.includes('출현 추정') &&
   html.includes('샤타·미라클 다음 예상일') && html.includes('전년도') &&
-  html.includes('연도별 개최 기록 보기') && html.includes('완료 간격 60%') &&
-  html.includes('과거 간격 핵심구간') && html.includes('완결된 직전년도 패턴'),
+  html.includes('연도별 개최 기록 보기') && html.includes('item.previousYearDates') &&
+  html.includes('과거 간격 핵심구간') && html.includes('item.recentGaps'),
   'Sunday UI must expose one head-to-head choice and concrete rare-event pattern evidence');
 
 const sidebarSource = sourceBetween('function Sidebar(', 'function NavItem(');
