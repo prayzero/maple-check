@@ -861,6 +861,43 @@ const GRAND_REGIONS = [
   { id: 'geardrak',  name: '기어드락' },
 ];
 
+const DAILY_QUEST_GROUPS = [
+  { name: '아케인리버', regions: ARCANE_REGIONS },
+  { name: '테네브리스', regions: [
+    { id: 'moonbridge', name: '문브릿지' },
+    { id: 'labyrinth', name: '고통의 미궁' },
+    { id: 'limen', name: '리멘' },
+  ] },
+  { name: '그란디스', regions: [...AUTHENTIC_REGIONS, ...GRAND_REGIONS] },
+];
+const DAILY_QUEST_IDS = DAILY_QUEST_GROUPS.flatMap(group => group.regions.map(region => region.id));
+const CHARACTER_BACKUP_LIMIT = 200;
+const DAILY_QUEST_DAY_MS = 24 * 60 * 60 * 1000;
+const DAILY_QUEST_KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const dailyQuestDate = (now = Date.now()) => new Date(now + DAILY_QUEST_KST_OFFSET_MS).toISOString().slice(0, 10);
+
+function normalizeDailyQuests(value) {
+  const validDay = typeof value?.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.day) &&
+    new Date(`${value.day}T00:00:00Z`).toJSON()?.slice(0, 10) === value.day;
+  const assigned = Array.isArray(value?.assigned) ? DAILY_QUEST_IDS.filter(id => value.assigned.includes(id)) : [];
+  const done = validDay && Array.isArray(value.done) ? DAILY_QUEST_IDS.filter(id => value.done.includes(id)) : [];
+  return { assigned, day: validDay ? value.day : '', done };
+}
+
+const dailyQuestDone = (value, day) => value.day === day ? value.done : [];
+
+function updateDailyQuest(value, id, field, checked, day = dailyQuestDate()) {
+  if (!DAILY_QUEST_IDS.includes(id)) return value;
+  if (field === 'assigned') {
+    const assigned = checked ? [...new Set([...value.assigned, id])] : value.assigned.filter(item => item !== id);
+    return { ...value, assigned };
+  }
+  if (field !== 'done' || !value.assigned.includes(id)) return value;
+  const todayDone = dailyQuestDone(value, day);
+  const done = checked ? [...new Set([...todayDone, id])] : todayDone.filter(item => item !== id);
+  return { ...value, day, done };
+}
+
 /* =========================================================
  * 심볼 강화 누적비용 표 (도달 레벨까지 1→L 누적, 단위 메소)
  * index = 도달 레벨. arr[1]=0(기본), arr[L]=1레벨부터 L레벨까지 누적비용.
@@ -1703,6 +1740,7 @@ const normalizeChar = (c) => ({
     setMemo: c.goals.setMemo || '',
   } : emptyGoals(),
   budget: normalizeBudget(c.budget),
+  dailyQuests: normalizeDailyQuests(c.dailyQuests),
   bossTimes: isPlainObject(c.bossTimes) ? c.bossTimes : {},
   hexaSkills: isPlainObject(c.hexaSkills) ? {
     slots: { ...emptyHexa().slots, ...(c.hexaSkills.slots || {}) },
@@ -1719,7 +1757,7 @@ const validateBackupData = (value) => {
   if (!Array.isArray(value.characters) || !Array.isArray(value.bossData)) {
     fail('캐릭터 또는 보스 데이터 배열이 없습니다.');
   }
-  if (value.characters.length > 200 || value.bossData.length > 100) fail('백업 데이터가 허용 범위를 초과했습니다.');
+  if (value.characters.length > CHARACTER_BACKUP_LIMIT || value.bossData.length > 100) fail('백업 데이터가 허용 범위를 초과했습니다.');
 
   const knownBossIds = new Set(DEFAULT_BOSSES.map(boss => boss.id));
   const seenBossIds = new Set();
@@ -1749,6 +1787,14 @@ const validateBackupData = (value) => {
     const objectFields = ['durations', 'equipment', 'goals', 'budget', 'bossTimes', 'hexaSkills'];
     for (const field of objectFields) {
       if (raw[field] != null && !isPlainObject(raw[field])) fail(`${raw.name}의 ${field} 구조가 올바르지 않습니다.`);
+    }
+    const dailyQuests = normalizeDailyQuests(raw.dailyQuests);
+    if (raw.dailyQuests != null) {
+      const saved = raw.dailyQuests;
+      if (!isPlainObject(saved) || !Array.isArray(saved.assigned) || !Array.isArray(saved.done) ||
+        dailyQuests.assigned.length !== saved.assigned.length || dailyQuests.done.length !== saved.done.length || saved.day !== dailyQuests.day) {
+        fail(`${raw.name}의 일퀘 데이터가 올바르지 않습니다.`);
+      }
     }
     if (raw.goals?.level != null && !isPlainObject(raw.goals.level)) fail(`${raw.name}의 레벨 목표가 올바르지 않습니다.`);
     if (raw.goals?.symbols != null && !isPlainObject(raw.goals.symbols)) fail(`${raw.name}의 심볼 목표가 올바르지 않습니다.`);
@@ -1848,6 +1894,7 @@ const validateBackupData = (value) => {
       budget: raw.budget ? cloneJson(raw.budget) : emptyBudget(),
       bossTimes: raw.bossTimes ? cloneJson(raw.bossTimes) : {},
       hexaSkills: raw.hexaSkills ? cloneJson(raw.hexaSkills) : undefined,
+      dailyQuests,
     });
   });
   return { characters: nextCharacters, bossData: nextBossData, mileage: normalizeMileageState(value.mileage) };
@@ -1887,7 +1934,7 @@ const collectExpiryItems = (characters, withinDays = 30) => {
 };
 const resolveAppView = (saved, characters) => {
   const pages = ['notifications', 'budget_summary', 'boss_data', 'boss_history', 'symbol_price',
-    'enhance_calc', 'mileage_calc', 'sunday_maple'];
+    'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests'];
   return pages.includes(saved) || characters.some(character => character.id === saved)
     ? saved : characters[0]?.id || 'budget_summary';
 };
@@ -2030,6 +2077,12 @@ const calculateMapleCredit = (raw) => {
     extraCash: shortageCash > 0 ? Math.max(10, shortageCash) : 0 };
 };
 
+function createCharacter(name) {
+  return normalizeChar({ id: uid(), name, durations: {
+    pet: '', label_hat: '', label_clothes: '', label_shoes: '', label_cape: '', label_weapon: '', specialCore: '',
+  } });
+}
+
 function App() {
   const [characters, setCharacters] = useState(() => {
     const saved = loadLS(LS_KEYS.CHARS, []);
@@ -2042,6 +2095,7 @@ function App() {
   const [excludedRevenueIds, setExcludedRevenueIds] = useState([]);
   const [durationTarget, setDurationTarget] = useState(null);
   const menuButtonRef = useRef(null);
+  const mainRef = useRef(null);
   const sidebarWasOpen = useRef(false);
   const [storageProblems, setStorageProblems] = useState(getStorageIssues);
   const [storageFeedback, setStorageFeedback] = useState('');
@@ -2057,7 +2111,7 @@ function App() {
   useEffect(() => { saveLS(LS_KEYS.SELECTED, selected); }, [selected]);
   useEffect(() => { saveLS(LS_KEYS.MILEAGE, mileage); }, [mileage]);
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
   }, [selected]);
 
   // 최대 인원 보정과 함께 구버전/손상 데이터의 중복·알 수 없는 보스도 정리한다.
@@ -2123,23 +2177,16 @@ function App() {
   }, [characters, bossData]);
 
   const addCharacter = useCallback((name) => {
-    const newChar = {
-      id: uid(),
-      name: name?.trim() || `캐릭터${characters.length + 1}`,
-      durations: {
-        pet: '',
-        label_hat: '', label_clothes: '', label_shoes: '', label_cape: '', label_weapon: '',
-        specialCore: '',
-      },
-      bosses: [],
-      equipment: {},
-      goals: emptyGoals(),
-      budget: emptyBudget(),
-    };
+    const newChar = createCharacter(name?.trim() || `캐릭터${characters.length + 1}`);
     setCharacters(prev => [...prev, newChar]);
     setSelected(newChar.id);
     setSidebarOpen(false);
   }, [characters]);
+
+  const addDailyQuestCharacters = (names) => {
+    const newCharacters = names.map(createCharacter);
+    setCharacters(prev => [...prev, ...newCharacters]);
+  };
 
   const removeCharacter = useCallback((id) => {
     if (!confirm('이 캐릭터를 삭제할까요? 되돌릴 수 없습니다.')) return;
@@ -2254,7 +2301,7 @@ function App() {
         urgentNotificationCount={pending.length}
       />
 
-      <main className="flex-1 min-w-0 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 min-w-0 overflow-y-auto">
         <header className="sticky top-0 z-20 bg-maple-bg/80 backdrop-blur border-b border-maple-border px-4 py-3 flex items-center gap-3 md:hidden">
           <button
             ref={menuButtonRef}
@@ -2310,6 +2357,9 @@ function App() {
           )}
           {selected === 'mileage_calc' && (
             <MileageView characters={characters} value={mileage} onChange={setMileage} />
+          )}
+          {selected === 'daily_quests' && (
+            <DailyQuestView characters={characters} onAddCharacters={addDailyQuestCharacters} onUpdate={updateCharacter} />
           )}
           {selected === 'sunday_maple' && (
             <SundayMapleView />
@@ -2456,6 +2506,11 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           onClick={() => onSelect('budget_summary')}
           label="🧾 총 예산 정리"
         />
+        <NavItem
+          active={selected === 'daily_quests'}
+          onClick={() => onSelect('daily_quests')}
+          label="✅ 일퀘 배분"
+        />
 
         <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-400">
           캐릭터 ({characters.length})
@@ -2586,6 +2641,168 @@ function NavItem({ active, onClick, label, subtitle, secondarySubtitle, subtitle
       )}
     </button>
   );
+}
+
+function useDailyQuestDate() {
+  const [date, setDate] = useState(dailyQuestDate);
+  useEffect(() => {
+    let timer;
+    const refresh = () => {
+      clearTimeout(timer);
+      const now = Date.now();
+      setDate(dailyQuestDate(now));
+      timer = setTimeout(refresh, DAILY_QUEST_DAY_MS - (now + DAILY_QUEST_KST_OFFSET_MS) % DAILY_QUEST_DAY_MS);
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
+  return [date, setDate];
+}
+
+function DailyQuestCheck({ character, region, byRegion, done, onCheck }) {
+  return <label className={`ui-inset flex min-h-11 cursor-pointer items-center gap-2 px-3 py-2 text-sm ${done ? 'border-emerald-400/40 text-emerald-200' : 'text-slate-200'}`}>
+    <input type="checkbox" className="h-4 w-4 shrink-0" checked={done}
+      aria-label={`${character.name} ${region.name} 완료`} onChange={event => onCheck(character.id, region.id, event.target.checked)} />
+    <span className="min-w-0 break-words">{byRegion ? character.name : region.name}</span>
+  </label>;
+}
+
+function DailyQuestView({ characters, onAddCharacters, onUpdate }) {
+  const [date, setDate] = useDailyQuestDate();
+  const [view, setView] = useState('character');
+  const [query, setQuery] = useState('');
+  const [pendingOnly, setPendingOnly] = useState(false);
+  const [newNames, setNewNames] = useState('');
+  const [addMessage, setAddMessage] = useState('');
+
+  const rows = characters.map(character => {
+    const { assigned } = character.dailyQuests;
+    const done = dailyQuestDone(character.dailyQuests, date).filter(id => assigned.includes(id));
+    return { character, assigned, done };
+  });
+  const total = rows.reduce((sum, row) => sum + row.assigned.length, 0);
+  const completed = rows.reduce((sum, row) => sum + row.done.length, 0);
+  const filtered = rows.filter(row => row.character.name.toLowerCase().includes(query.trim().toLowerCase()) &&
+    (!pendingOnly || row.done.length < row.assigned.length));
+  const showTask = (row, id) => row.assigned.includes(id) && (!pendingOnly || !row.done.includes(id));
+  const changeQuest = (charId, regionId, field, checked, day) => onUpdate(charId, character => ({
+    ...character,
+    dailyQuests: updateDailyQuest(character.dailyQuests, regionId, field, checked, day),
+  }));
+  const onCheck = (charId, regionId, checked) => {
+    const today = dailyQuestDate();
+    setDate(today);
+    changeQuest(charId, regionId, 'done', checked, today);
+  };
+  const submitNames = event => {
+    event.preventDefault();
+    const known = new Set(characters.map(character => character.name.trim()));
+    const names = [...new Set(newNames.split(/\r?\n/).map(name => name.trim()).filter(Boolean))];
+    const additions = names.filter(name => !known.has(name));
+    if (!additions.length) return setAddMessage(names.length ? '이미 등록된 이름입니다.' : '캐릭터 이름을 입력해 주세요.');
+    if (additions.some(name => name.length > 100)) return setAddMessage('이름은 100자 이내로 입력해 주세요.');
+    if (characters.length + additions.length > CHARACTER_BACKUP_LIMIT) return setAddMessage(`최대 ${CHARACTER_BACKUP_LIMIT}명까지 등록할 수 있습니다.`);
+    onAddCharacters(additions);
+    setAddMessage(`${additions.length}명 추가${additions.length < names.length ? ` · 등록된 이름 ${names.length - additions.length}개 제외` : ''}`);
+    setNewNames('');
+    setQuery('');
+    setPendingOnly(false);
+    setView('character');
+  };
+
+  const renderCheck = (row, region, byRegion = false) => <DailyQuestCheck
+    key={byRegion ? row.character.id : region.id} character={row.character} region={region}
+    byRegion={byRegion} done={row.done.includes(region.id)} onCheck={onCheck} />;
+
+  return <div className="ui-page space-y-5">
+    <header className="flex flex-wrap items-end justify-between gap-2">
+      <h2>✅ 일퀘 배분</h2>
+      <span className="text-xs text-slate-400"><time dateTime={date}>{date}</time> · 한국시간 자정 초기화</span>
+    </header>
+    <div className="ui-summary ui-highlight space-y-3 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm" aria-live="polite">
+        <span className="font-semibold text-maple-accent">오늘 완료 {completed} / {total}</span>
+        <span className="text-slate-300">남은 일퀘 {total - completed}개</span>
+      </div>
+      <ProgressBar value={total ? completed / total * 100 : 0} label="오늘 일퀘 진행률" />
+    </div>
+
+    <details className="ui-card p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-maple-accent">캐릭터 추가</summary>
+      <form onSubmit={submitNames} className="mt-3 space-y-2">
+        <label className="block text-sm" htmlFor="daily-quest-names">이름 (한 줄에 하나)</label>
+        <textarea id="daily-quest-names" data-ui-field className="block w-full resize-y" rows={3} value={newNames}
+          onChange={event => { setNewNames(event.target.value); setAddMessage(''); }} />
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className="ui-action bg-maple-accent px-4 text-slate-900 hover:bg-amber-300">목록에 추가</button>
+          <span role="status" className="text-sm text-slate-300">{addMessage}</span>
+        </div>
+      </form>
+    </details>
+
+    {characters.length > 0 && <div className="flex flex-wrap items-center gap-3">
+      <div className="ui-tabs" role="group" aria-label="일퀘 보기">
+        <button type="button" aria-pressed={view === 'character'} onClick={() => setView('character')}>캐릭터별</button>
+        <button type="button" aria-pressed={view === 'region'} onClick={() => setView('region')}>지역별</button>
+      </div>
+      <input data-ui-field type="search" aria-label="일퀘 캐릭터 검색" placeholder="캐릭터 검색"
+        value={query} onChange={event => setQuery(event.target.value)} className="w-full sm:w-48" />
+      <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-300">
+        <input type="checkbox" checked={pendingOnly} onChange={event => setPendingOnly(event.target.checked)} /> 미완료만
+      </label>
+    </div>}
+
+    {!characters.length ? <p className="ui-card p-4 text-slate-300">캐릭터를 추가해 주세요.</p> :
+      !filtered.length ? <p className="ui-card p-4 text-slate-300">{pendingOnly && !query.trim() ? '남은 일퀘가 없습니다.' : '표시할 캐릭터가 없습니다.'}</p> :
+      view === 'character' ? <div className="grid items-start gap-4 2xl:grid-cols-2">
+        {filtered.map(row => <section key={row.character.id} className="ui-card min-w-0 space-y-3 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="min-w-0 break-words">{row.character.name}</h3>
+            <span className="text-xs text-slate-300">완료 {row.done.length} / {row.assigned.length}</span>
+          </div>
+          {DAILY_QUEST_GROUPS.map(group => {
+            const regions = group.regions.filter(region => showTask(row, region.id));
+            return regions.length > 0 && <div key={group.name}>
+              <h4 className="mb-2 text-slate-300">{group.name}</h4>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{regions.map(region => renderCheck(row, region))}</div>
+            </div>;
+          })}
+          <details className="border-t border-maple-border pt-3">
+            <summary className="cursor-pointer text-sm font-semibold text-maple-accent" aria-label={`${row.character.name} 지역 배정`}>지역 배정</summary>
+            <div className="mt-3 space-y-3">
+              {DAILY_QUEST_GROUPS.map(group => <fieldset key={group.name}>
+                <legend className="mb-2 text-sm text-slate-300">{group.name}</legend>
+                <div className="flex flex-wrap gap-2">
+                  {group.regions.map(region => <label key={region.id} className="ui-inset flex min-h-11 cursor-pointer items-center gap-2 px-3 py-2 text-sm">
+                    <input type="checkbox" className="h-4 w-4 shrink-0" checked={row.assigned.includes(region.id)}
+                      aria-label={`${row.character.name} ${region.name} 배정`}
+                      onChange={event => changeQuest(row.character.id, region.id, 'assigned', event.target.checked)} /> {region.name}
+                  </label>)}
+                </div>
+              </fieldset>)}
+            </div>
+          </details>
+        </section>)}
+      </div> : <div className="grid items-start gap-4 lg:grid-cols-3">
+        {DAILY_QUEST_GROUPS.map(group => <section key={group.name} className="ui-card space-y-3 p-4 sm:p-5">
+          <h3>{group.name}</h3>
+          {group.regions.every(region => !filtered.some(row => showTask(row, region.id))) && <p className="text-slate-400">{pendingOnly ? '남은 일퀘 없음' : '배정 없음'}</p>}
+          {group.regions.map(region => {
+            const assignees = filtered.filter(row => showTask(row, region.id));
+            return assignees.length > 0 && <div key={region.id}>
+              <h4 className="mb-2 text-slate-300">{region.name}</h4>
+              <div className="grid gap-2">{assignees.map(row => renderCheck(row, region, true))}</div>
+            </div>;
+          })}
+        </section>)}
+      </div>}
+  </div>;
 }
 
 /* =========================================================
