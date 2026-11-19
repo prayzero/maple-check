@@ -9,11 +9,13 @@ const fixture = {
   characters: [{ id: 'test', name: '백업 검사', equipment: { weapon: { item: '테스트 무기', cost: 123 } }, budget: { total: 456 } }],
   bossData: [{ id: 'zakum', difficulties: { Chaos: { price: 4040000 } } }],
   mileage: { mode: 'credit', credit: { balance: 321 }, coins: { balance: 654 } },
+  dailyBoard: { limen: [null, { cardId: 'job:레테', doneDay: '2026-11-19' }] },
 };
 const storage = new Map([
   ['maple_check_characters_v2', JSON.stringify(fixture.characters)],
   ['maple_check_boss_data_v5', JSON.stringify(fixture.bossData)],
   ['maple_check_mileage_v1', JSON.stringify(fixture.mileage)],
+  ['maple_check_daily_board_v1', JSON.stringify(fixture.dailyBoard)],
 ]);
 let copied;
 const context = { localStorage: { getItem: key => storage.get(key) ?? null }, copy: value => { copied = value; } };
@@ -22,7 +24,7 @@ const backup = JSON.parse(copied);
 assert.equal(backup.app, 'maple-check');
 assert.equal(backup.version, 1);
 assert.match(backup.exportedAt, /^\d{4}-\d{2}-\d{2}$/);
-for (const key of ['characters', 'bossData', 'mileage']) {
+for (const key of ['characters', 'bossData', 'mileage', 'dailyBoard']) {
   assert.deepEqual(backup[key], fixture[key], `console backup must preserve ${key}`);
 }
 storage.clear();
@@ -31,6 +33,7 @@ const empty = JSON.parse(copied);
 assert.deepEqual(empty.characters, []);
 assert.deepEqual(empty.bossData, []);
 assert.equal(empty.mileage, null);
+assert.ok(!Object.hasOwn(empty, 'dailyBoard'), 'missing board must allow legacy assignment migration');
 for (const invalid of ['{broken', '']) {
   storage.set('maple_check_mileage_v1', invalid);
   copied = undefined;

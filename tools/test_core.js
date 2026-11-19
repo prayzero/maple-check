@@ -258,7 +258,7 @@ assert(duplicateIed.length === 2 && duplicateIed[0][2] === 0 && duplicateIed[1][
 const backupContext = {};
 vm.runInNewContext(
   sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
-    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys, dailyQuestDate, dailyQuestDone, updateDailyQuest };',
+    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys, dailyQuestDate, DAILY_JOB_NAMES, DAILY_QUEST_IDS, migrateDailyBoard, validateDailyBoard, updateDailySlot, checkDailySlot, placeDailyOverflow, removeDailyOverflow, removeDailyCharacter };',
   backupContext,
 );
 const backupApi = backupContext.testApi;
@@ -333,28 +333,130 @@ const validBackup = {
 const normalizedBackup = backupApi.validateBackupData(validBackup);
 {
   const assert = require('node:assert/strict');
-  const { dailyQuestDate, dailyQuestDone, updateDailyQuest, validateBackupData } = backupApi;
+  const { dailyQuestDate, validateBackupData } = backupApi;
   const plain = value => JSON.parse(JSON.stringify(value));
   const empty = normalizedBackup.characters[0].dailyQuests;
   assert.deepStrictEqual(plain(empty), { assigned: [], day: '', done: [] });
   assert.strictEqual(dailyQuestDate(Date.UTC(2026, 11, 31, 14, 59, 59, 999)), '2026-12-31');
   assert.strictEqual(dailyQuestDate(Date.UTC(2026, 11, 31, 15)), '2027-01-01');
-  const assigned = updateDailyQuest(updateDailyQuest(empty, 'yeoro', 'assigned', true), 'geardrak', 'assigned', true);
-  const yesterday = updateDailyQuest(assigned, 'yeoro', 'done', true, '2026-12-31');
-  assert.deepStrictEqual(plain(dailyQuestDone(yesterday, '2026-12-31')), ['yeoro']);
-  assert.deepStrictEqual(plain(dailyQuestDone(yesterday, '2027-01-01')), []);
-  assert.strictEqual(updateDailyQuest(yesterday, 'limen', 'done', true, '2027-01-01'), yesterday);
-  const today = updateDailyQuest(yesterday, 'geardrak', 'done', true, '2027-01-01');
-  assert.deepStrictEqual(plain(today), { assigned: ['yeoro', 'geardrak'], day: '2027-01-01', done: ['geardrak'] });
+  const legacy = { assigned: ['yeoro', 'geardrak'], day: '2027-01-01', done: ['geardrak'] };
   const restored = validateBackupData({ ...validBackup, characters: [
-    { ...validBackup.characters[0], dailyQuests: plain(today) },
+    { ...validBackup.characters[0], dailyQuests: legacy },
     { id: 'c_alt', name: '부캐', bosses: [], dailyQuests: { assigned: ['yeoro'], day: '', done: [] } },
-  ] }).characters;
-  assert.deepStrictEqual(plain(restored[0].dailyQuests), plain(today));
-  assert.deepStrictEqual(plain(restored[1].dailyQuests), { assigned: ['yeoro'], day: '', done: [] });
-  for (const badDailyQuests of [{ ...today, assigned: ['unknown'] }, { ...today, day: '2026-02-30' }, { ...today, done: ['geardrak', 'geardrak'] }]) {
+  ] });
+  assert.deepStrictEqual(plain(restored.characters[0].dailyQuests), legacy);
+  assert.deepStrictEqual(plain(restored.characters[1].dailyQuests), { assigned: ['yeoro'], day: '', done: [] });
+  assert.deepStrictEqual(plain(restored.dailyBoard), {
+    yeoro: [{ cardId: 'char:c_test', doneDay: '' }, { cardId: 'char:c_alt', doneDay: '' }],
+    geardrak: [{ cardId: 'char:c_test', doneDay: '2027-01-01' }, null],
+  }, 'legacy backups must migrate assignments and their original completion dates');
+  const leapDay = validateBackupData({ ...validBackup, characters: [{ ...validBackup.characters[0], dailyQuests: { ...legacy, day: '2028-02-29' } }] });
+  assert.strictEqual(leapDay.dailyBoard.geardrak[0].doneDay, '2028-02-29');
+  for (const badDailyQuests of [{ ...legacy, assigned: ['unknown'] }, { ...legacy, day: '2026-02-30' },
+    { ...legacy, day: '2027-02-29' }, { ...legacy, done: ['geardrak', 'geardrak'] }]) {
     assert.throws(() => validateBackupData({ ...validBackup, characters: [{ ...validBackup.characters[0], dailyQuests: badDailyQuests }] }), /일퀘 데이터/);
   }
+}
+{
+  const assert = require('node:assert/strict');
+  const { DAILY_JOB_NAMES, DAILY_QUEST_IDS, migrateDailyBoard, validateDailyBoard, validateBackupData,
+    updateDailySlot, checkDailySlot, placeDailyOverflow, removeDailyOverflow, removeDailyCharacter } = backupApi;
+  const plain = value => JSON.parse(JSON.stringify(value));
+  const jobA = `job:${DAILY_JOB_NAMES[0]}`, jobB = `job:${DAILY_JOB_NAMES[1]}`;
+  const legacyCharacters = ['a', 'b', 'c', 'd'].map((id, index) => ({
+    id, name: id, bosses: [], dailyQuests: { assigned: ['yeoro', 'geardrak'],
+      day: '2026-11-19', done: index % 2 === 0 ? ['yeoro', 'geardrak'] : [] },
+  }));
+  const originalCharacters = JSON.stringify(legacyCharacters);
+  const migrated = migrateDailyBoard(legacyCharacters);
+  assert.deepStrictEqual(plain(migrated.yeoro), [
+    { cardId: 'char:a', doneDay: '2026-11-19' }, { cardId: 'char:b', doneDay: '' },
+  ]);
+  assert.deepStrictEqual(plain(migrated.overflow), [
+    { regionId: 'yeoro', cardId: 'char:c', doneDay: '2026-11-19' },
+    { regionId: 'geardrak', cardId: 'char:c', doneDay: '2026-11-19' },
+    { regionId: 'yeoro', cardId: 'char:d', doneDay: '' },
+    { regionId: 'geardrak', cardId: 'char:d', doneDay: '' },
+  ], 'every legacy assignment beyond two slots must remain recoverable');
+  assert.strictEqual(JSON.stringify(legacyCharacters), originalCharacters, 'migration must not mutate legacy characters');
+  assert.deepStrictEqual(plain(validateDailyBoard(migrated, legacyCharacters)), plain(migrated));
+  assert.deepStrictEqual(plain(validateBackupData({ ...validBackup, characters: legacyCharacters }).dailyBoard), plain(migrated));
+  assert.deepStrictEqual(plain(validateBackupData({ ...validBackup, characters: legacyCharacters, dailyBoard: {} }).dailyBoard), {},
+    'explicit empty boards must not resurrect old character assignments');
+
+  let board = updateDailySlot({}, 'yeoro', 0, jobA);
+  const assigned = JSON.stringify(board);
+  board = checkDailySlot(board, 'yeoro', 0, jobA, true, '2026-11-19');
+  assert.strictEqual(board.yeoro[0].doneDay, '2026-11-19');
+  assert.strictEqual(updateDailySlot(board, 'yeoro', 0, jobA), board, 'same-card placement must preserve completion');
+  assert.strictEqual(updateDailySlot(board, 'yeoro', 1, jobA), board, 'same-region duplicate cards must be rejected');
+  assert.strictEqual(checkDailySlot(board, 'yeoro', 0, jobB, false, '2026-11-19'), board,
+    'a stale checkbox event must not alter a replacement card');
+  assert.strictEqual(checkDailySlot(board, 'yeoro', 0, jobA, true, '2026-02-30'), board);
+  assert.strictEqual(checkDailySlot(board, 'yeoro', 0, jobA, 'yes', '2026-11-19'), board);
+  for (const [region, index, card] of [['unknown', 0, jobA], ['yeoro', -1, jobA], ['yeoro', 2, jobA], ['yeoro', 0, 'job:unknown'], ['yeoro', 0, 'char:']]) {
+    assert.strictEqual(updateDailySlot(board, region, index, card), board, 'invalid placement must leave state unchanged');
+  }
+  assert.strictEqual(checkDailySlot(board, 'yeoro', 1, jobA, true, '2026-11-19'), board);
+  const tomorrow = checkDailySlot(board, 'yeoro', 0, jobA, true, '2026-11-20');
+  assert.strictEqual(tomorrow.yeoro[0].doneDay, '2026-11-20');
+  assert.strictEqual(board.yeoro[0].doneDay, '2026-11-19', 'checkbox updates must not mutate prior state');
+  assert.strictEqual(checkDailySlot(tomorrow, 'yeoro', 0, jobA, false, '2026-11-20').yeoro[0].doneDay, '');
+  const replaced = updateDailySlot(board, 'yeoro', 0, jobB);
+  assert.deepStrictEqual(plain(replaced.yeoro[0]), { cardId: jobB, doneDay: '' });
+  assert.strictEqual(checkDailySlot(replaced, 'yeoro', 0, jobA, true, '2026-11-19'), replaced);
+  assert.strictEqual(updateDailySlot(replaced, 'yeoro', 0, null).yeoro[0], null);
+  assert.strictEqual(updateDailySlot(board, 'geardrak', 1, jobA).geardrak[1].cardId, jobA,
+    'the same card may be assigned to different regions');
+  assert.strictEqual(assigned, JSON.stringify({ yeoro: [{ cardId: jobA, doneDay: '' }, null] }));
+
+  const originalMigrated = JSON.stringify(migrated);
+  assert.strictEqual(updateDailySlot(migrated, 'yeoro', 0, 'char:c'), migrated,
+    'overflow cards require an explicit lossless move');
+  const swapped = placeDailyOverflow(migrated, 'yeoro', 'char:c', 0);
+  assert.deepStrictEqual(plain(swapped.yeoro[0]), { cardId: 'char:c', doneDay: '2026-11-19' });
+  assert.deepStrictEqual(plain(swapped.overflow.at(-1)), { regionId: 'yeoro', cardId: 'char:a', doneDay: '2026-11-19' });
+  assert.strictEqual(swapped.overflow.length, migrated.overflow.length, 'swapping an occupied slot must preserve both cards');
+  assert.strictEqual(JSON.stringify(migrated), originalMigrated, 'overflow moves must not mutate the old board');
+  const freed = updateDailySlot(migrated, 'yeoro', 1, null);
+  const placed = placeDailyOverflow(freed, 'yeoro', 'char:c', 1);
+  assert.strictEqual(placed.overflow.length, migrated.overflow.length - 1);
+  assert.strictEqual(placed.yeoro[1].doneDay, '2026-11-19');
+  assert.strictEqual(placeDailyOverflow(placed, 'yeoro', 'char:c', 0), placed, 'repeated old overflow actions must be harmless');
+  assert.strictEqual(placeDailyOverflow(migrated, 'yeoro', 'char:c', 2), migrated);
+  const removed = removeDailyOverflow(migrated, 'yeoro', 'char:c');
+  assert.ok(removed.overflow.some(slot => slot.regionId === 'geardrak' && slot.cardId === 'char:c'));
+  assert.strictEqual(removeDailyOverflow(removed, 'yeoro', 'char:c'), removed);
+  const mixed = updateDailySlot(swapped, 'limen', 0, jobA);
+  const withoutC = removeDailyCharacter(mixed, 'c');
+  assert.strictEqual(withoutC.yeoro[0], null);
+  assert.strictEqual(withoutC.yeoro[1].cardId, 'char:b', 'deleting a character must retain the other numbered slot');
+  assert.ok(withoutC.overflow.every(slot => slot.cardId !== 'char:c'));
+  assert.strictEqual(withoutC.limen[0].cardId, jobA, 'deleting a character must preserve job cards');
+  assert.strictEqual(removeDailyCharacter(withoutC, 'missing'), withoutC);
+
+  const restored = validateBackupData({ ...validBackup, characters: legacyCharacters, dailyBoard: mixed });
+  assert.deepStrictEqual(plain(restored.dailyBoard), plain(mixed), 'backup round trips must preserve slots, completion days, and overflow');
+  assert.strictEqual(restored.characters.length, legacyCharacters.length, 'job cards must not create character records');
+  assert.deepStrictEqual(plain(validateBackupData({ ...validBackup, dailyBoard: { yeoro: [null, null] } }).dailyBoard), { yeoro: [null, null] });
+  for (const badBoard of [null, [], { unknown: [null, null] }, { yeoro: [] }, { yeoro: [null] },
+    { yeoro: [null, null, null] }, { yeoro: [{ cardId: jobA, doneDay: '2026-02-30' }, null] },
+    { yeoro: [{ cardId: jobA }, null] }, { yeoro: [{ cardId: 'job:unknown', doneDay: '' }, null] },
+    { yeoro: [{ cardId: 'char:missing', doneDay: '' }, null] },
+    { yeoro: [{ cardId: jobA, doneDay: '' }, { cardId: jobA, doneDay: '' }] },
+    { overflow: null }, { overflow: [{ regionId: 'unknown', cardId: jobA, doneDay: '' }] },
+    { yeoro: [{ cardId: jobA, doneDay: '' }, null], overflow: [{ regionId: 'yeoro', cardId: jobA, doneDay: '' }] },
+    { overflow: [{ regionId: 'yeoro', cardId: jobA, doneDay: '' }, { regionId: 'yeoro', cardId: jobA, doneDay: '' }] },
+  ]) {
+    assert.throws(() => validateBackupData({ ...validBackup, dailyBoard: badBoard }), /일퀘 배치 데이터/);
+  }
+  const manyCharacters = Array.from({ length: 200 }, (_, index) => ({ id: `full_${index}`, name: `캐릭터 ${index}`, bosses: [],
+    dailyQuests: { assigned: [...DAILY_QUEST_IDS], day: '2026-11-19', done: [...DAILY_QUEST_IDS] } }));
+  const full = validateBackupData({ ...validBackup, characters: manyCharacters });
+  assert.strictEqual(full.dailyBoard.overflow.length, (200 - 2) * DAILY_QUEST_IDS.length,
+    'the largest accepted legacy backup must retain all excess assignments');
+  assert.deepStrictEqual(plain(validateBackupData({ ...validBackup, characters: manyCharacters, dailyBoard: full.dailyBoard }).dailyBoard), plain(full.dailyBoard));
+  console.log('Daily board: migration, two slots, overflow recovery, completion, deletion, and backup validation passed');
 }
 assert(normalizedBackup.characters[0].bosses[0].partyMembers === 3,
   'backup import must clamp actual party size to the boss maximum');

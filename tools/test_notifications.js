@@ -127,7 +127,12 @@ if (dependencyDir) {
   assert.match(firstUse, /aria-label="알림 센터 · 만료 알림 0건"/, 'the sidebar must expose an accessible bell button');
   noTopNotifications(firstUse, 'new-user landing');
   saved.set(api.LS_KEYS.SELECTED, JSON.stringify('daily_quests'));
-  assert.match(render(api.App), /캐릭터를 추가해 주세요/, 'the checklist must support an empty roster');
+  const firstBoard = render(api.App);
+  assert.equal((firstBoard.match(/class="quest-card ui-inset"/g) || []).length, 48, 'show every job card before character registration');
+  assert.equal((firstBoard.match(/class="quest-slot"/g) || []).length, 34, 'each of the 17 regions has two independent slots');
+  for (const label of ['히어로 카드', '렌 카드', '레테 카드', '제논 카드', '문브릿지 1회차 카드 넣기', '고통의 미궁 2회차 카드 넣기', '리멘 2회차 카드 넣기', '기어드락 2회차 카드 넣기']) {
+    assert.ok(firstBoard.includes('aria-label="' + label + '"'), label);
+  }
   saved.set(api.LS_KEYS.SELECTED, JSON.stringify('dashboard'));
   assert.match(render(api.App), /캐릭터를 먼저 추가해 주세요/,
     'a legacy dashboard destination without characters must safely use the empty budget summary');
@@ -156,8 +161,8 @@ if (dependencyDir) {
   }
   saved.set(api.LS_KEYS.SELECTED, JSON.stringify('daily_quests'));
   const questPage = render(api.App);
-  assert.match(questPage, /aria-label="알림 테스트 본캐 소멸의 여로 배정"/);
-  assert.match(questPage, /aria-label="알림 테스트 부캐 기어드락 배정"/);
+  assert.match(questPage, /aria-label="알림 테스트 본캐 카드 \(내 캐릭터\)"/);
+  assert.match(questPage, /aria-label="알림 테스트 부캐 카드 \(내 캐릭터\)"/);
   saved.set(api.LS_KEYS.SELECTED, JSON.stringify('notifications'));
   const notificationPage = render(api.App);
   assert.match(notificationPage, /🔔 알림 센터/, 'the saved bell destination must render the notification center');

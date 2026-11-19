@@ -153,6 +153,44 @@
     .app-footer { padding: 4px 16px 20px; }
   }
   @media (prefers-reduced-motion: reduce) { .app-shell *, .app-shell *::before, .app-shell *::after { scroll-behavior: auto; transition: none; animation: none; } }
+  .quest-layout { display: grid; gap: 16px; align-items: start; }
+  .quest-library { padding: 16px; }
+  .quest-deck { display: grid; grid-template-columns: repeat(auto-fill, minmax(82px, 1fr)); gap: 6px; align-content: start; }
+  .quest-library .quest-deck { max-height: 250px; overflow-y: auto; scrollbar-gutter: stable; padding: 4px; margin: -4px; }
+  .quest-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 82px; padding: 5px 3px; font-size: 12px; font-weight: 600; line-height: 1.3; text-align: center; overflow-wrap: anywhere; }
+  .quest-card:hover:enabled, .quest-pick:hover, .quest-slot[data-over=true] { border-color: var(--ui-accent); background: #2b2b2a; }
+  .quest-card:disabled, .quest-target:disabled { opacity: .42; cursor: default; }
+  .quest-face { width: 42px; height: 42px; border-radius: 8px; flex-shrink: 0; background-color: #2d3b50; background-image: url("./icons/daily-jobs.webp"); background-size: 700% 700%; }
+  .quest-initial { display: inline-grid; place-items: center; background-image: none; color: #cbd5e1; }
+  .quest-regions { display: grid; gap: 14px; }
+  .quest-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; gap: 6px; border-top: 1px solid var(--ui-border); padding: 8px 0; }
+  .quest-row:first-of-type { margin-top: 8px; }
+  .quest-row:last-child { padding-bottom: 0; }
+  .quest-row > h4 { grid-column: 1 / -1; align-self: center; font-size: 13px; }
+  .quest-slot { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; border-radius: var(--ui-control-radius); border: 1px solid var(--ui-border); background: var(--ui-bg); }
+  .quest-slot[data-empty=true] { border-style: dashed; }
+  .quest-slot[data-done=true] { border-color: #437665; }
+  .quest-pick { display: flex; align-items: center; gap: 7px; min-height: 44px; min-width: 0; width: 100%; border-radius: inherit; padding: 5px 7px; text-align: left; }
+  .quest-pick .quest-face { width: 30px; height: 30px; border-radius: 5px; }
+  .quest-slot-tools { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 0 4px 2px 7px; font-size: 12px; color: #cbd5e1; }
+  .quest-slot-tools > * { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; cursor: pointer; }
+  .quest-dialog { width: min(620px, calc(100% - 24px)); max-height: min(82dvh, 720px); padding: 0; margin: auto; color: var(--ui-text); background: var(--ui-panel); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
+  .quest-dialog::backdrop { background: rgb(2 6 23 / 78%); }
+  .quest-dialog-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--ui-border); background: var(--ui-panel); }
+  .quest-target { min-height: 42px; padding: 6px; font-size: 12px; overflow-wrap: anywhere; }
+  @media (pointer: coarse) {
+    .quest-slot-tools > *, .quest-target { min-height: 44px; }
+  }
+  @media (min-width: 680px) {
+    .quest-row { grid-template-columns: minmax(94px, .72fr) repeat(2, minmax(0, 1fr)); }
+    .quest-row > h4 { grid-column: auto; }
+  }
+  @media (min-width: 1140px) {
+    .quest-layout { grid-template-columns: minmax(0, 1fr) minmax(270px, .62fr); }
+    .quest-library { grid-column: 2; grid-row: 1; position: sticky; top: 8px; }
+    .quest-library .quest-deck { max-height: clamp(270px, 62vh, 660px); }
+    .quest-regions { grid-column: 1; grid-row: 1; }
+  }
 </style>
 </head>
 <body>
@@ -503,6 +541,7 @@ const LS_KEYS = {
   SELECTED: 'maple_check_selected_v2',
   NOTIF_SHOWN: 'maple_check_notif_shown_v2',
   MILEAGE: 'maple_check_mileage_v1',
+  DAILY_BOARD: 'maple_check_daily_board_v1',
 };
 
 // 읽지 못한 키는 명시적으로 복구하기 전까지 자동 저장하지 않는다.
@@ -516,7 +555,7 @@ let storageRecoverySequence = 0;
 const STORAGE_LABELS = {
   [LS_KEYS.CHARS]: '캐릭터', [LS_KEYS.BOSS_DATA]: '결정석 가격',
   [LS_KEYS.SELECTED]: '마지막 화면', [LS_KEYS.NOTIF_SHOWN]: '알림 기록',
-  [LS_KEYS.MILEAGE]: '마일리지', maple_budget_clip: '복사한 예산',
+  [LS_KEYS.MILEAGE]: '마일리지', [LS_KEYS.DAILY_BOARD]: '일퀘 배치', maple_budget_clip: '복사한 예산',
 };
 const getStorageIssues = () => [...storageIssues.values()];
 const notifyStorageListeners = () => storageListeners.forEach(listener => listener());
@@ -539,14 +578,17 @@ const validStoredShape = (key, value) => {
   if (key === LS_KEYS.SELECTED) return value === null || typeof value === 'string';
   if (key === LS_KEYS.NOTIF_SHOWN) return Array.isArray(value) || (object(value) && Array.isArray(value.keys));
   if (key === LS_KEYS.MILEAGE || key === 'maple_budget_clip') return value === null || object(value);
+  if (key === LS_KEYS.DAILY_BOARD) return isValidDailyBoard(value);
   return true;
 };
-const loadLS = (key, fallback) => {
+const loadLS = (key, fallback, validateValue) => {
   let raw;
   try {
     raw = localStorage.getItem(key);
     const value = raw === null ? fallback : JSON.parse(raw);
-    if (raw !== null && !validStoredShape(key, value)) throw new Error('저장된 데이터의 구조가 올바르지 않습니다.');
+    if (raw !== null && (!validStoredShape(key, value) || (validateValue && !validateValue(value)))) {
+      throw new Error('저장된 데이터의 구조가 올바르지 않습니다.');
+    }
     return value;
   } catch (error) {
     // raw가 undefined이면 읽기 자체가 실패한 것이므로 기존 값의 존재도 추측하지 않는다.
@@ -871,31 +913,147 @@ const DAILY_QUEST_GROUPS = [
   { name: '그란디스', regions: [...AUTHENTIC_REGIONS, ...GRAND_REGIONS] },
 ];
 const DAILY_QUEST_IDS = DAILY_QUEST_GROUPS.flatMap(group => group.regions.map(region => region.id));
+// 넥슨 직업소개 번호는 로컬 초상화 시트의 칸 번호와 같다.
+const DAILY_JOB_GROUPS = [
+  ['전사', [[1,'히어로'],[2,'팔라딘'],[3,'다크나이트'],[4,'소울마스터'],[5,'미하일'],[6,'블래스터'],[7,'데몬 슬레이어'],[8,'데몬 어벤져'],[9,'아란'],[10,'카이저'],[11,'아델'],[48,'렌'],[12,'제로']]],
+  ['마법사', [[13,'아크메이지(불,독)'],[14,'아크메이지(썬,콜)'],[15,'비숍'],[16,'플레임위자드'],[17,'배틀메이지'],[18,'에반'],[19,'루미너스'],[20,'일리움'],[21,'라라'],[22,'키네시스'],[49,'레테']]],
+  ['궁수', [[23,'보우마스터'],[24,'신궁'],[25,'패스파인더'],[26,'윈드브레이커'],[27,'와일드헌터'],[28,'메르세데스'],[29,'카인']]],
+  ['도적', [[30,'나이트로드'],[31,'섀도어'],[32,'듀얼블레이드'],[33,'나이트워커'],[35,'팬텀'],[36,'카데나'],[37,'칼리'],[38,'호영']]],
+  ['해적', [[39,'바이퍼'],[40,'캡틴'],[41,'캐논슈터'],[42,'스트라이커'],[43,'메카닉'],[45,'은월'],[46,'엔젤릭버스터'],[47,'아크']]],
+  ['하이브리드', [[34,'제논']]],
+];
+const DAILY_JOB_CARDS = DAILY_JOB_GROUPS.flatMap(([group, jobs]) =>
+  jobs.map(([portrait, name]) => ({ id: 'job:' + name, name, group, portrait })));
+const DAILY_JOB_NAMES = DAILY_JOB_CARDS.map(card => card.name);
 const CHARACTER_BACKUP_LIMIT = 200;
 const DAILY_QUEST_DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_QUEST_KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const dailyQuestDate = (now = Date.now()) => new Date(now + DAILY_QUEST_KST_OFFSET_MS).toISOString().slice(0, 10);
+const isDailyDay = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  new Date(`${value}T00:00:00Z`).toJSON()?.slice(0, 10) === value;
 
 function normalizeDailyQuests(value) {
-  const validDay = typeof value?.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.day) &&
-    new Date(`${value.day}T00:00:00Z`).toJSON()?.slice(0, 10) === value.day;
+  const validDay = isDailyDay(value?.day);
   const assigned = Array.isArray(value?.assigned) ? DAILY_QUEST_IDS.filter(id => value.assigned.includes(id)) : [];
   const done = validDay && Array.isArray(value.done) ? DAILY_QUEST_IDS.filter(id => value.done.includes(id)) : [];
   return { assigned, day: validDay ? value.day : '', done };
 }
 
-const dailyQuestDone = (value, day) => value.day === day ? value.done : [];
+const isDailyCardId = cardId => typeof cardId === 'string' &&
+  (cardId.startsWith('job:') ? DAILY_JOB_NAMES.includes(cardId.slice(4)) :
+    cardId.startsWith('char:') && cardId.slice(5).trim().length > 0);
 
-function updateDailyQuest(value, id, field, checked, day = dailyQuestDate()) {
-  if (!DAILY_QUEST_IDS.includes(id)) return value;
-  if (field === 'assigned') {
-    const assigned = checked ? [...new Set([...value.assigned, id])] : value.assigned.filter(item => item !== id);
-    return { ...value, assigned };
+// 두 슬롯은 순서를 유지한다. 구버전의 세 번째 이후 배치는 overflow에 원래 완료일까지 보관한다.
+function migrateDailyBoard(characters) {
+  const board = {};
+  for (const character of characters) {
+    const daily = normalizeDailyQuests(character.dailyQuests);
+    const cardId = `char:${character.id}`;
+    if (!isDailyCardId(cardId)) continue;
+    for (const regionId of daily.assigned) {
+      const slots = board[regionId] || (board[regionId] = [null, null]);
+      if (slots.some(slot => slot?.cardId === cardId) || board.overflow?.some(slot => slot.regionId === regionId && slot.cardId === cardId)) continue;
+      const slot = { cardId, doneDay: daily.done.includes(regionId) ? daily.day : '' };
+      const index = slots.indexOf(null);
+      if (index >= 0) slots[index] = slot;
+      else (board.overflow || (board.overflow = [])).push({ regionId, ...slot });
+    }
   }
-  if (field !== 'done' || !value.assigned.includes(id)) return value;
-  const todayDone = dailyQuestDone(value, day);
-  const done = checked ? [...new Set([...todayDone, id])] : todayDone.filter(item => item !== id);
-  return { ...value, day, done };
+  return board;
+}
+
+function validateDailyBoard(value, characters) {
+  const fail = () => { throw new Error('일퀘 배치 데이터가 올바르지 않습니다.'); };
+  if (!isPlainObject(value)) fail();
+  const knownCharacters = characters ? new Set(characters.map(character => `char:${character.id}`)) : null;
+  const seen = new Set();
+  const validateSlot = (slot, regionId) => {
+    if (!isPlainObject(slot) || !isDailyCardId(slot.cardId) || (slot.doneDay !== '' && !isDailyDay(slot.doneDay)) ||
+      (knownCharacters && slot.cardId.startsWith('char:') && !knownCharacters.has(slot.cardId))) fail();
+    const key = `${regionId}|${slot.cardId}`;
+    if (seen.has(key)) fail();
+    seen.add(key);
+    return { cardId: slot.cardId, doneDay: slot.doneDay };
+  };
+  const board = {};
+  for (const [regionId, slots] of Object.entries(value)) {
+    if (regionId === 'overflow') continue;
+    if (!DAILY_QUEST_IDS.includes(regionId) || !Array.isArray(slots) || slots.length !== 2 || !(0 in slots) || !(1 in slots)) fail();
+    board[regionId] = slots.map(slot => slot === null ? null : validateSlot(slot, regionId));
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'overflow')) {
+    if (!Array.isArray(value.overflow) || value.overflow.length > DAILY_QUEST_IDS.length * (CHARACTER_BACKUP_LIMIT + DAILY_JOB_NAMES.length)) fail();
+    board.overflow = Array.from(value.overflow, slot => {
+      if (!isPlainObject(slot) || !DAILY_QUEST_IDS.includes(slot.regionId)) fail();
+      return { regionId: slot.regionId, ...validateSlot(slot, slot.regionId) };
+    });
+  }
+  return board;
+}
+
+function isValidDailyBoard(value, characters) {
+  try { validateDailyBoard(value, characters); return true; } catch { return false; }
+}
+
+function loadDailyBoard(characters) {
+  const saved = loadLS(LS_KEYS.DAILY_BOARD, null, value => isValidDailyBoard(value, characters));
+  const board = saved === null ? migrateDailyBoard(characters) : validateDailyBoard(saved, characters);
+  // 캐릭터 원문을 못 읽은 상태에서 빈 보드를 확정하면 다음 실행의 구버전 복구가 막힌다.
+  if (saved === null && protectedStorageKeys.has(LS_KEYS.CHARS) && !protectedStorageKeys.has(LS_KEYS.DAILY_BOARD)) {
+    protectedStorageKeys.set(LS_KEYS.DAILY_BOARD, { raw: null, reason: 'dependency' });
+    pendingStorageWrites.set(LS_KEYS.DAILY_BOARD, board);
+    reportStorageIssue(LS_KEYS.DAILY_BOARD, 'read', new Error('캐릭터 원문을 먼저 복구해야 구버전 일퀘 배치를 안전하게 이전할 수 있습니다.'));
+  }
+  return board;
+}
+
+function updateDailySlot(board, regionId, index, cardId) {
+  if (!DAILY_QUEST_IDS.includes(regionId) || (index !== 0 && index !== 1) ||
+    (cardId !== null && !isDailyCardId(cardId))) return board;
+  const slots = board[regionId] || [null, null];
+  if ((slots[index]?.cardId || null) === cardId || (cardId &&
+    (slots.some((slot, other) => other !== index && slot?.cardId === cardId) ||
+      board.overflow?.some(slot => slot.regionId === regionId && slot.cardId === cardId)))) return board;
+  return { ...board, [regionId]: slots.map((slot, other) => other === index ? (cardId ? { cardId, doneDay: '' } : null) : slot) };
+}
+
+function checkDailySlot(board, regionId, index, expectedCardId, checked, day = dailyQuestDate()) {
+  if (!DAILY_QUEST_IDS.includes(regionId) || (index !== 0 && index !== 1) || typeof checked !== 'boolean' || !isDailyDay(day)) return board;
+  const slot = board[regionId]?.[index];
+  if (!slot || slot.cardId !== expectedCardId) return board;
+  const doneDay = checked ? day : '';
+  if (slot.doneDay === doneDay) return board;
+  return { ...board, [regionId]: board[regionId].map((item, other) => other === index ? { ...slot, doneDay } : item) };
+}
+
+// 대기 카드를 이미 사용 중인 칸에 놓으면 그 카드도 대기로 보내 손실 없이 서로 교환한다.
+function placeDailyOverflow(board, regionId, cardId, index) {
+  if (!DAILY_QUEST_IDS.includes(regionId) || (index !== 0 && index !== 1)) return board;
+  const pendingIndex = board.overflow?.findIndex(slot => slot.regionId === regionId && slot.cardId === cardId) ?? -1;
+  if (pendingIndex < 0) return board;
+  const slots = board[regionId] || [null, null];
+  if (slots.some(slot => slot?.cardId === cardId)) return board;
+  const pending = board.overflow[pendingIndex];
+  const overflow = board.overflow.filter((_, other) => other !== pendingIndex);
+  if (slots[index]) overflow.push({ regionId, ...slots[index] });
+  return { ...board, overflow, [regionId]: slots.map((slot, other) => other === index ? { cardId, doneDay: pending.doneDay } : slot) };
+}
+
+function removeDailyOverflow(board, regionId, cardId) {
+  const overflow = (board.overflow || []).filter(slot => slot.regionId !== regionId || slot.cardId !== cardId);
+  return overflow.length === (board.overflow || []).length ? board : { ...board, overflow };
+}
+
+function removeDailyCharacter(board, characterId) {
+  const cardId = `char:${characterId}`;
+  let next = board;
+  for (const regionId of DAILY_QUEST_IDS) {
+    if (board[regionId]?.some(slot => slot?.cardId === cardId)) {
+      next = { ...next, [regionId]: board[regionId].map(slot => slot?.cardId === cardId ? null : slot) };
+    }
+  }
+  const overflow = board.overflow?.filter(slot => slot.cardId !== cardId);
+  return overflow && overflow.length !== board.overflow.length ? { ...next, overflow } : next;
 }
 
 /* =========================================================
@@ -1897,7 +2055,9 @@ const validateBackupData = (value) => {
       dailyQuests,
     });
   });
-  return { characters: nextCharacters, bossData: nextBossData, mileage: normalizeMileageState(value.mileage) };
+  const dailyBoard = Object.prototype.hasOwnProperty.call(value, 'dailyBoard')
+    ? validateDailyBoard(value.dailyBoard, nextCharacters) : migrateDailyBoard(nextCharacters);
+  return { characters: nextCharacters, bossData: nextBossData, mileage: normalizeMileageState(value.mileage), dailyBoard };
 };
 
 /* =========================================================
@@ -2091,6 +2251,7 @@ function App() {
   const [bossData, setBossData]     = useState(() => reconcileBossData(loadLS(LS_KEYS.BOSS_DATA, null)));
   const [selected, setSelected] = useState(() => resolveAppView(loadLS(LS_KEYS.SELECTED, null), characters));
   const [mileage, setMileage] = useState(() => normalizeMileageState(loadLS(LS_KEYS.MILEAGE, null)));
+  const [dailyBoard, setDailyBoard] = useState(() => loadDailyBoard(characters));
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [excludedRevenueIds, setExcludedRevenueIds] = useState([]);
   const [durationTarget, setDurationTarget] = useState(null);
@@ -2110,6 +2271,7 @@ function App() {
   useEffect(() => { saveLS(LS_KEYS.BOSS_DATA, bossData); }, [bossData]);
   useEffect(() => { saveLS(LS_KEYS.SELECTED, selected); }, [selected]);
   useEffect(() => { saveLS(LS_KEYS.MILEAGE, mileage); }, [mileage]);
+  useEffect(() => { saveLS(LS_KEYS.DAILY_BOARD, dailyBoard); }, [dailyBoard]);
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
   }, [selected]);
@@ -2183,14 +2345,10 @@ function App() {
     setSidebarOpen(false);
   }, [characters]);
 
-  const addDailyQuestCharacters = (names) => {
-    const newCharacters = names.map(createCharacter);
-    setCharacters(prev => [...prev, ...newCharacters]);
-  };
-
   const removeCharacter = useCallback((id) => {
     if (!confirm('이 캐릭터를 삭제할까요? 되돌릴 수 없습니다.')) return;
     setCharacters(prev => prev.filter(c => c.id !== id));
+    setDailyBoard(prev => removeDailyCharacter(prev, id));
     setSelected(resolveAppView(null, characters.filter(c => c.id !== id)));
   }, [characters]);
 
@@ -2231,9 +2389,9 @@ function App() {
 
   // 데이터 백업: JSON 파일 내보내기 / 가져오기
   const exportData = useCallback(() => {
-    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData, mileage };
+    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData, mileage, dailyBoard };
     downloadJsonFile(data, `maple-check-backup-${todayStr()}.json`);
-  }, [characters, bossData, mileage]);
+  }, [characters, bossData, mileage, dailyBoard]);
 
   const exportStorageRecovery = () => downloadJsonFile(storageRecoverySnapshot(), `maple-check-recovery-${todayStr()}.json`);
   const retryStorage = (preserveOriginal = false) => {
@@ -2261,11 +2419,13 @@ function App() {
           saveLS(LS_KEYS.CHARS, next.characters, { preserveOriginal: true }),
           saveLS(LS_KEYS.BOSS_DATA, next.bossData, { preserveOriginal: true }),
           saveLS(LS_KEYS.MILEAGE, next.mileage, { preserveOriginal: true }),
+          saveLS(LS_KEYS.DAILY_BOARD, next.dailyBoard, { preserveOriginal: true }),
           saveLS(LS_KEYS.SELECTED, nextSelected, { preserveOriginal: true }),
         ];
         setCharacters(next.characters);
         setBossData(next.bossData);
         setMileage(next.mileage);
+        setDailyBoard(next.dailyBoard);
         setSelected(nextSelected);
         alert(results.every(Boolean) ? '백업을 불러와 이 브라우저에 저장했습니다.'
           : '백업을 화면에 불러왔지만 일부 항목을 이 브라우저에 저장하지 못했습니다.\n탭을 닫기 전에 현재 데이터를 내보내고 저장 오류 안내에서 다시 시도해 주세요.');
@@ -2359,7 +2519,7 @@ function App() {
             <MileageView characters={characters} value={mileage} onChange={setMileage} />
           )}
           {selected === 'daily_quests' && (
-            <DailyQuestView characters={characters} onAddCharacters={addDailyQuestCharacters} onUpdate={updateCharacter} />
+          <DailyQuestView characters={characters} board={dailyBoard} onBoardChange={setDailyBoard} />
           )}
           {selected === 'sunday_maple' && (
             <SundayMapleView />
@@ -2665,143 +2825,191 @@ function useDailyQuestDate() {
   return [date, setDate];
 }
 
-function DailyQuestCheck({ character, region, byRegion, done, onCheck }) {
-  return <label className={`ui-inset flex min-h-11 cursor-pointer items-center gap-2 px-3 py-2 text-sm ${done ? 'border-emerald-400/40 text-emerald-200' : 'text-slate-200'}`}>
-    <input type="checkbox" className="h-4 w-4 shrink-0" checked={done}
-      aria-label={`${character.name} ${region.name} 완료`} onChange={event => onCheck(character.id, region.id, event.target.checked)} />
-    <span className="min-w-0 break-words">{byRegion ? character.name : region.name}</span>
-  </label>;
+function QuestPortrait({ card }) {
+  if (!card.portrait) return <span aria-hidden="true" className="quest-face quest-initial">{card.name.slice(0, 1)}</span>;
+  const index = card.portrait - 1;
+  const position = (index % 7 * 100 / 6) + '% ' + (Math.floor(index / 7) * 100 / 6) + '%';
+  return <span aria-hidden="true" className="quest-face" style={{ backgroundPosition: position }} />;
 }
 
-function DailyQuestView({ characters, onAddCharacters, onUpdate }) {
-  const [date, setDate] = useDailyQuestDate();
-  const [view, setView] = useState('character');
+function QuestLibrary({ cards, onChoose, blocked = [], draggable = false }) {
   const [query, setQuery] = useState('');
-  const [pendingOnly, setPendingOnly] = useState(false);
-  const [newNames, setNewNames] = useState('');
-  const [addMessage, setAddMessage] = useState('');
+  const [group, setGroup] = useState('');
+  const term = value => value.replace(/[\s(),]/g, '');
+  const filtered = cards.filter(card => (!group || card.group === group ||
+    (card.name === '제논' && ['도적', '해적'].includes(group))) && term(card.name).includes(term(query)));
+  return <div className="space-y-3">
+    <div className="flex gap-2">
+      <input type="search" data-ui-field className="min-w-0 flex-1" aria-label="카드 검색" placeholder="카드 검색"
+        value={query} onChange={event => setQuery(event.target.value)} />
+      <select data-ui-field aria-label="직업군" value={group} onChange={event => setGroup(event.target.value)}>
+        <option value="">전체 직업군</option>
+        {[...new Set(cards.map(card => card.group))].map(name => <option key={name}>{name}</option>)}
+      </select>
+    </div>
+    <div className="quest-deck">
+      {filtered.map(card => <button key={card.id} type="button" className="quest-card ui-inset"
+        aria-label={card.name + ' 카드' + (card.group === '내 캐릭터' ? ' (내 캐릭터)' : '')} disabled={blocked.includes(card.id)}
+        draggable={draggable} onDragStart={event => {
+          event.dataTransfer.effectAllowed = 'copy';
+          event.dataTransfer.setData('application/x-maple-quest-card', card.id);
+        }} onClick={() => onChoose(card)}>
+        <QuestPortrait card={card} /><span>{card.name}</span>
+      </button>)}
+    </div>
+    {!filtered.length && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
+  </div>;
+}
 
-  const rows = characters.map(character => {
-    const { assigned } = character.dailyQuests;
-    const done = dailyQuestDone(character.dailyQuests, date).filter(id => assigned.includes(id));
-    return { character, assigned, done };
-  });
-  const total = rows.reduce((sum, row) => sum + row.assigned.length, 0);
-  const completed = rows.reduce((sum, row) => sum + row.done.length, 0);
-  const filtered = rows.filter(row => row.character.name.toLowerCase().includes(query.trim().toLowerCase()) &&
-    (!pendingOnly || row.done.length < row.assigned.length));
-  const showTask = (row, id) => row.assigned.includes(id) && (!pendingOnly || !row.done.includes(id));
-  const changeQuest = (charId, regionId, field, checked, day) => onUpdate(charId, character => ({
-    ...character,
-    dailyQuests: updateDailyQuest(character.dailyQuests, regionId, field, checked, day),
-  }));
-  const onCheck = (charId, regionId, checked) => {
+function QuestDialog({ title, onClose, children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    const trigger = document.activeElement;
+    dialog.showModal();
+    return () => {
+      if (dialog.open) dialog.close();
+      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    };
+  }, []);
+  return <dialog ref={ref} className="quest-dialog" aria-labelledby="quest-dialog-title"
+    onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === ref.current) onClose(); }}>
+    <div>
+      <header className="quest-dialog-head"><h3 id="quest-dialog-title" className="font-semibold">{title}</h3>
+        <button type="button" className="ui-action px-3 text-slate-300" onClick={onClose}>닫기</button>
+      </header>
+      <div className="p-4">{children}</div>
+    </div>
+  </dialog>;
+}
+
+function DailyQuestView({ characters, board, onBoardChange }) {
+  const [date, setDate] = useDailyQuestDate();
+  const [picker, setPicker] = useState(null);
+  const [over, setOver] = useState('');
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(''), 2600);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  const cards = useMemo(() => [...DAILY_JOB_CARDS, ...characters.map(character => ({
+    id: 'char:' + character.id, name: character.name, group: '내 캐릭터',
+  }))], [characters]);
+  const byId = useMemo(() => new Map(cards.map(card => [card.id, card])), [cards]);
+  const regions = DAILY_QUEST_GROUPS.flatMap(group => group.regions);
+  const slots = regions.flatMap(region => board[region.id] || []).filter(Boolean);
+  const completed = slots.filter(slot => slot.doneDay === date).length;
+  const waiting = board.overflow || [];
+  const pickedRegion = regions.find(region => region.id === picker?.regionId);
+  const pickedCard = byId.get(picker?.cardId);
+  const blockedFor = (regionId, index) => [
+    board[regionId]?.[1 - index]?.cardId,
+    ...waiting.filter(entry => entry.regionId === regionId).map(entry => entry.cardId),
+  ];
+  const assign = (region, index, card) => {
+    if (!card) return;
+    if (blockedFor(region.id, index).includes(card.id)) {
+      setNotice(region.name + '에 이미 배정한 카드입니다.');
+      return;
+    }
+    onBoardChange(previous => updateDailySlot(previous, region.id, index, card.id));
+    setNotice(region.name + ' ' + (index + 1) + '회차에 ' + card.name + ' 배정');
+    setPicker(null);
+  };
+  const setDone = (regionId, index, cardId, checked) => {
     const today = dailyQuestDate();
     setDate(today);
-    changeQuest(charId, regionId, 'done', checked, today);
+    onBoardChange(previous => checkDailySlot(previous, regionId, index, cardId, checked, today));
   };
-  const submitNames = event => {
-    event.preventDefault();
-    const known = new Set(characters.map(character => character.name.trim()));
-    const names = [...new Set(newNames.split(/\r?\n/).map(name => name.trim()).filter(Boolean))];
-    const additions = names.filter(name => !known.has(name));
-    if (!additions.length) return setAddMessage(names.length ? '이미 등록된 이름입니다.' : '캐릭터 이름을 입력해 주세요.');
-    if (additions.some(name => name.length > 100)) return setAddMessage('이름은 100자 이내로 입력해 주세요.');
-    if (characters.length + additions.length > CHARACTER_BACKUP_LIMIT) return setAddMessage(`최대 ${CHARACTER_BACKUP_LIMIT}명까지 등록할 수 있습니다.`);
-    onAddCharacters(additions);
-    setAddMessage(`${additions.length}명 추가${additions.length < names.length ? ` · 등록된 이름 ${names.length - additions.length}개 제외` : ''}`);
-    setNewNames('');
-    setQuery('');
-    setPendingOnly(false);
-    setView('character');
-  };
-
-  const renderCheck = (row, region, byRegion = false) => <DailyQuestCheck
-    key={byRegion ? row.character.id : region.id} character={row.character} region={region}
-    byRegion={byRegion} done={row.done.includes(region.id)} onCheck={onCheck} />;
-
-  return <div className="ui-page space-y-5">
-    <header className="flex flex-wrap items-end justify-between gap-2">
-      <h2>✅ 일퀘 배분</h2>
-      <span className="text-xs text-slate-400"><time dateTime={date}>{date}</time> · 한국시간 자정 초기화</span>
-    </header>
-    <div className="ui-summary ui-highlight space-y-3 p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm" aria-live="polite">
-        <span className="font-semibold text-maple-accent">오늘 완료 {completed} / {total}</span>
-        <span className="text-slate-300">남은 일퀘 {total - completed}개</span>
-      </div>
-      <ProgressBar value={total ? completed / total * 100 : 0} label="오늘 일퀘 진행률" />
-    </div>
-
-    <details className="ui-card p-4">
-      <summary className="cursor-pointer text-sm font-semibold text-maple-accent">캐릭터 추가</summary>
-      <form onSubmit={submitNames} className="mt-3 space-y-2">
-        <label className="block text-sm" htmlFor="daily-quest-names">이름 (한 줄에 하나)</label>
-        <textarea id="daily-quest-names" data-ui-field className="block w-full resize-y" rows={3} value={newNames}
-          onChange={event => { setNewNames(event.target.value); setAddMessage(''); }} />
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" className="ui-action bg-maple-accent px-4 text-slate-900 hover:bg-amber-300">목록에 추가</button>
-          <span role="status" className="text-sm text-slate-300">{addMessage}</span>
-        </div>
-      </form>
-    </details>
-
-    {characters.length > 0 && <div className="flex flex-wrap items-center gap-3">
-      <div className="ui-tabs" role="group" aria-label="일퀘 보기">
-        <button type="button" aria-pressed={view === 'character'} onClick={() => setView('character')}>캐릭터별</button>
-        <button type="button" aria-pressed={view === 'region'} onClick={() => setView('region')}>지역별</button>
-      </div>
-      <input data-ui-field type="search" aria-label="일퀘 캐릭터 검색" placeholder="캐릭터 검색"
-        value={query} onChange={event => setQuery(event.target.value)} className="w-full sm:w-48" />
-      <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-300">
-        <input type="checkbox" checked={pendingOnly} onChange={event => setPendingOnly(event.target.checked)} /> 미완료만
-      </label>
-    </div>}
-
-    {!characters.length ? <p className="ui-card p-4 text-slate-300">캐릭터를 추가해 주세요.</p> :
-      !filtered.length ? <p className="ui-card p-4 text-slate-300">{pendingOnly && !query.trim() ? '남은 일퀘가 없습니다.' : '표시할 캐릭터가 없습니다.'}</p> :
-      view === 'character' ? <div className="grid items-start gap-4 2xl:grid-cols-2">
-        {filtered.map(row => <section key={row.character.id} className="ui-card min-w-0 space-y-3 p-4 sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="min-w-0 break-words">{row.character.name}</h3>
-            <span className="text-xs text-slate-300">완료 {row.done.length} / {row.assigned.length}</span>
-          </div>
-          {DAILY_QUEST_GROUPS.map(group => {
-            const regions = group.regions.filter(region => showTask(row, region.id));
-            return regions.length > 0 && <div key={group.name}>
-              <h4 className="mb-2 text-slate-300">{group.name}</h4>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{regions.map(region => renderCheck(row, region))}</div>
-            </div>;
-          })}
-          <details className="border-t border-maple-border pt-3">
-            <summary className="cursor-pointer text-sm font-semibold text-maple-accent" aria-label={`${row.character.name} 지역 배정`}>지역 배정</summary>
-            <div className="mt-3 space-y-3">
-              {DAILY_QUEST_GROUPS.map(group => <fieldset key={group.name}>
-                <legend className="mb-2 text-sm text-slate-300">{group.name}</legend>
-                <div className="flex flex-wrap gap-2">
-                  {group.regions.map(region => <label key={region.id} className="ui-inset flex min-h-11 cursor-pointer items-center gap-2 px-3 py-2 text-sm">
-                    <input type="checkbox" className="h-4 w-4 shrink-0" checked={row.assigned.includes(region.id)}
-                      aria-label={`${row.character.name} ${region.name} 배정`}
-                      onChange={event => changeQuest(row.character.id, region.id, 'assigned', event.target.checked)} /> {region.name}
-                  </label>)}
-                </div>
-              </fieldset>)}
-            </div>
-          </details>
-        </section>)}
-      </div> : <div className="grid items-start gap-4 lg:grid-cols-3">
-        {DAILY_QUEST_GROUPS.map(group => <section key={group.name} className="ui-card space-y-3 p-4 sm:p-5">
-          <h3>{group.name}</h3>
-          {group.regions.every(region => !filtered.some(row => showTask(row, region.id))) && <p className="text-slate-400">{pendingOnly ? '남은 일퀘 없음' : '배정 없음'}</p>}
-          {group.regions.map(region => {
-            const assignees = filtered.filter(row => showTask(row, region.id));
-            return assignees.length > 0 && <div key={region.id}>
-              <h4 className="mb-2 text-slate-300">{region.name}</h4>
-              <div className="grid gap-2">{assignees.map(row => renderCheck(row, region, true))}</div>
-            </div>;
-          })}
-        </section>)}
+  const dropType = 'application/x-maple-quest-card';
+  const renderSlot = (region, index) => {
+    const slot = board[region.id]?.[index];
+    const card = byId.get(slot?.cardId);
+    const label = region.name + ' ' + (index + 1) + '회차';
+    return <div key={index} className="quest-slot" data-empty={!card} data-done={!!card && slot.doneDay === date} data-over={over === label}
+      onDragOver={event => {
+        if (!event.dataTransfer.types.includes(dropType)) return;
+        event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setOver(label);
+      }} onDragLeave={() => setOver('')} onDrop={event => {
+        event.preventDefault(); setOver('');
+        assign(region, index, byId.get(event.dataTransfer.getData(dropType)));
+      }}>
+      <button type="button" className="quest-pick" aria-label={label + (card ? ' ' + card.name + ' 교체' : ' 카드 넣기')}
+        onClick={() => setPicker({ regionId: region.id, index })}>
+        {card ? <QuestPortrait card={card} /> : <span aria-hidden="true" className="text-lg text-slate-400">＋</span>}
+        <span className="min-w-0">
+          <span className="block text-xs text-slate-400">{index + 1}회차</span>
+          <span className="block break-words text-xs font-semibold">{card?.name || '카드 넣기'}</span>
+        </span>
+      </button>
+      {card && <div className="quest-slot-tools">
+        <label><input type="checkbox" checked={slot.doneDay === date} aria-label={label + ' ' + card.name + ' 완료'}
+          onChange={event => setDone(region.id, index, card.id, event.target.checked)} /> 완료</label>
+        <button type="button" className="px-2" aria-label={label + ' ' + card.name + ' 해제'} onClick={() => {
+          onBoardChange(previous => updateDailySlot(previous, region.id, index, null));
+          setNotice(label + ' 배정 해제');
+        }}>해제</button>
       </div>}
+    </div>;
+  };
+
+  return <div className="ui-page space-y-4">
+    <header className="flex flex-wrap items-end justify-between gap-2">
+      <h2>✅ 일퀘 배분</h2><time className="text-xs text-slate-400" dateTime={date}>{date} · 한국시간</time>
+    </header>
+    <div className="ui-summary ui-highlight space-y-2 p-3 sm:px-4">
+      <div className="flex flex-wrap justify-between gap-2 text-sm"><strong className="text-maple-accent">오늘 완료 {completed} / {slots.length}</strong>
+        <span className="text-slate-300">배정 {slots.length} / {regions.length * 2}</span></div>
+      <ProgressBar value={slots.length ? completed / slots.length * 100 : 0} label="오늘 일퀘 진행률" />
+    </div>
+    <div className="quest-layout">
+      <section className="quest-library ui-card space-y-3" aria-label="캐릭터 카드">
+        <h3>캐릭터 카드 <span className="ml-1 text-xs font-normal text-slate-400">전 직업 {DAILY_JOB_CARDS.length}종</span></h3>
+        <QuestLibrary cards={cards} draggable onChoose={card => setPicker({ cardId: card.id })} />
+      </section>
+      <div className="quest-regions">
+        {DAILY_QUEST_GROUPS.map(group => <section key={group.name} aria-label={group.name + ' 배분'} className="ui-card p-3 sm:p-4">
+          <h3 className="text-maple-accent">{group.name}</h3>
+          {group.regions.map(region => <div className="quest-row" key={region.id}>
+            <h4>{region.name}</h4>{[0, 1].map(index => renderSlot(region, index))}
+          </div>)}
+        </section>)}
+        {waiting.length > 0 && <section className="ui-card space-y-2 p-4">
+          <h3>이전 배정 대기 <span className="text-sm text-slate-400">{waiting.length}개</span></h3>
+          {waiting.map(entry => {
+            const region = regions.find(item => item.id === entry.regionId);
+            const card = byId.get(entry.cardId);
+            return <div key={entry.regionId + '/' + entry.cardId} className="ui-inset flex flex-wrap items-center gap-2 p-2 text-sm">
+              <span className="mr-auto">{region.name} · {card.name}{entry.doneDay === date ? ' · 완료' : ''}</span>
+              {[0, 1].map(index => <button key={index} type="button" className="ui-action px-2" onClick={() =>
+                onBoardChange(previous => placeDailyOverflow(previous, region.id, card.id, index))}>{index + 1}회차로</button>)}
+              <button type="button" className="ui-action px-2 text-slate-400" onClick={() =>
+                onBoardChange(previous => removeDailyOverflow(previous, region.id, card.id))}>해제</button>
+            </div>;
+          })}
+        </section>}
+      </div>
+    </div>
+    <div className="pointer-events-none fixed inset-x-3 bottom-4 z-40 flex justify-center" role="status">
+      {notice && <span className="ui-inset px-4 py-2 text-sm shadow-lg">{notice}</span>}
+    </div>
+    {pickedRegion && <QuestDialog title={pickedRegion.name + ' · ' + (picker.index + 1) + '회차 카드 선택'} onClose={() => setPicker(null)}>
+      <QuestLibrary cards={cards} blocked={blockedFor(pickedRegion.id, picker.index)} onChoose={card => assign(pickedRegion, picker.index, card)} />
+    </QuestDialog>}
+    {pickedCard && <QuestDialog title={pickedCard.name + ' · 배정할 지역'} onClose={() => setPicker(null)}>
+      <div className="space-y-4">{DAILY_QUEST_GROUPS.map(group => <fieldset key={group.name}>
+        <legend className="mb-2 text-sm font-semibold text-maple-accent">{group.name}</legend>
+        {group.regions.map(region => <div className="quest-row" key={region.id}>
+          <h4>{region.name}</h4>{[0, 1].map(index => {
+            const current = byId.get(board[region.id]?.[index]?.cardId);
+            return <button key={index} type="button" className="quest-target ui-inset" aria-label={region.name + ' ' + (index + 1) + '회차에 배정'}
+              disabled={blockedFor(region.id, index).includes(pickedCard.id)} onClick={() => assign(region, index, pickedCard)}>
+              {index + 1}회차 · {current ? current.name + (current.id === pickedCard.id ? ' 배정됨' : ' 교체') : '카드 넣기'}
+            </button>;
+          })}</div>)}
+      </fieldset>)}</div>
+    </QuestDialog>}
   </div>;
 }
 
