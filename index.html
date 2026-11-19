@@ -2308,6 +2308,11 @@ function isValidEventPlan(raw) {
     Object.hasOwn(canonical.quantities, id) && canonical.quantities[id] === count);
 }
 
+function setEventShopSelection(plan, selectAll) {
+  const quantities = selectAll ? Object.fromEntries(BLUE_ARCHIVE_SHOP.items.map(item => [item.id, 1])) : {};
+  return { ...plan, quantities };
+}
+
 function eventCreditTotals(plan) {
   const rewards = BlueArchiveRewards.calculate(plan.rewards);
   const cost = BLUE_ARCHIVE_SHOP.items.reduce((sum, item) =>
@@ -2972,6 +2977,8 @@ function BlueArchiveEventView({ plan, onChange }) {
   const [selectedOnly, setSelectedOnly] = useState(false);
   const { rewards, cost, available, balance } = eventCreditTotals(plan);
   const { items } = BLUE_ARCHIVE_SHOP;
+  const selectedCount = Object.keys(plan.quantities).length;
+  const hasOneOfEach = items.every(item => plan.quantities[item.id] === 1);
   const groups = [...new Set(items.map(item => item.group))];
   const search = value => value.toLowerCase().replace(/\s+/g, '');
   const visible = items.filter(item => (!group || item.group === group) &&
@@ -3011,10 +3018,16 @@ function BlueArchiveEventView({ plan, onChange }) {
               <option value="">전체 분류</option>{groups.map(name => <option key={name}>{name}</option>)}
             </select>
           </div>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="전체 상품 선택">
+            <button type="button" className="ui-action bg-maple-accent px-3 text-slate-900 hover:bg-amber-300"
+              disabled={hasOneOfEach} onClick={() => onChange(prev => setEventShopSelection(prev, true))}>전체 상품 1개씩 담기</button>
+            <button type="button" className="ui-action border border-maple-border px-3 text-slate-200 hover:bg-maple-bg"
+              disabled={!selectedCount} onClick={() => onChange(prev => setEventShopSelection(prev, false))}>선택 초기화</button>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
             <span>{visible.length}종 · 단위 크레딧</span>
             <label className="flex cursor-pointer items-center gap-2 py-1"><input type="checkbox" checked={selectedOnly}
-              onChange={event => setSelectedOnly(event.target.checked)} /> 선택한 상품만 ({Object.keys(plan.quantities).length})</label>
+              onChange={event => setSelectedOnly(event.target.checked)} /> 선택한 상품만 ({selectedCount})</label>
           </div>
           {group && BLUE_ARCHIVE_SHOP.groupNotes?.[group] && <details><summary className="cursor-pointer text-xs text-maple-accent">이용 조건</summary>
             <p className="mt-1 text-slate-300">{BLUE_ARCHIVE_SHOP.groupNotes[group]}</p></details>}
@@ -3038,7 +3051,7 @@ function BlueArchiveEventView({ plan, onChange }) {
             </div>
           </div>;
         })}
-        {!visible.length && <p className="border-t border-maple-border p-4 text-slate-300">{selectedOnly && !Object.keys(plan.quantities).length ? '선택한 상품이 없습니다.' : '조건에 맞는 상품이 없습니다.'}</p>}
+        {!visible.length && <p className="border-t border-maple-border p-4 text-slate-300">{selectedOnly && !selectedCount ? '선택한 상품이 없습니다.' : '조건에 맞는 상품이 없습니다.'}</p>}
       </section>
     </div>
   </div>;
