@@ -1,5 +1,6 @@
 const fs = require('fs');
 const vm = require('vm');
+require('./test_event_rewards.js');
 
 const html = fs.readFileSync('index.html', 'utf8');
 const cubeData = JSON.parse(fs.readFileSync('cube-options-v2.json', 'utf8'));
@@ -255,10 +256,12 @@ const duplicateIed = cubeData.dists[epicWeaponContext[1]].filter(entry => cubeDa
 assert(duplicateIed.length === 2 && duplicateIed[0][2] === 0 && duplicateIed[1][2] === 1,
   'same-text lower and prime options must preserve separate grade provenance');
 
-const backupContext = {};
-vm.runInNewContext(
+const eventScriptFiles = ['event-blue-archive-shop.js', 'event-blue-archive-rewards.js'];
+const backupContext = vm.createContext({});
+for (const file of eventScriptFiles) vm.runInContext(fs.readFileSync(file, 'utf8'), backupContext);
+vm.runInContext(
   sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
-    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys, dailyQuestDate, DAILY_JOB_NAMES, DAILY_QUEST_IDS, migrateDailyBoard, validateDailyBoard, updateDailySlot, checkDailySlot, placeDailyOverflow, removeDailyOverflow, removeDailyCharacter };',
+    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys, dailyQuestDate, DAILY_JOB_NAMES, DAILY_QUEST_IDS, migrateDailyBoard, validateDailyBoard, updateDailySlot, checkDailySlot, placeDailyOverflow, removeDailyOverflow, removeDailyCharacter, normalizeEventPlan, isValidEventPlan, eventDataReady, BLUE_ARCHIVE_SHOP };',
   backupContext,
 );
 const backupApi = backupContext.testApi;
@@ -331,6 +334,39 @@ const validBackup = {
   bossData: backupApi.cloneJson(backupApi.DEFAULT_BOSSES),
 };
 const normalizedBackup = backupApi.validateBackupData(validBackup);
+{
+  const assert = require('node:assert/strict');
+  const plain = value => JSON.parse(JSON.stringify(value));
+  const defaults = plain(backupApi.normalizeEventPlan());
+  assert.deepStrictEqual(plain(normalizedBackup.eventPlan), defaults,
+    'legacy backups without an event plan must restore canonical defaults');
+  const item = backupApi.BLUE_ARCHIVE_SHOP.items[0];
+  const eventPlan = { ...defaults, quantities: { [item.id]: 1 }, extraCredits: 123 };
+  const original = JSON.stringify(eventPlan);
+  const restored = backupApi.validateBackupData({ ...validBackup, eventPlan });
+  assert.deepStrictEqual(plain(restored.eventPlan), eventPlan,
+    'event purchases, reward selections, and extra credits must survive backup validation');
+  assert.equal(JSON.stringify(eventPlan), original, 'backup validation must not mutate the imported event plan');
+  assert.notStrictEqual(restored.eventPlan, eventPlan);
+  for (const badPlan of [null, [], {}, { ...eventPlan, quantities: [] },
+    { ...eventPlan, quantities: { unknown: 1 } }, { ...eventPlan, quantities: { [item.id]: -1 } },
+    { ...eventPlan, quantities: { [item.id]: 0 } }, { ...eventPlan, extraCredits: -1 },
+    { ...eventPlan, extraCredits: 0.5 }, { ...eventPlan, extraCredits: Number.MAX_SAFE_INTEGER + 1 },
+    { ...eventPlan, rewards: null }]) {
+    assert.throws(() => backupApi.validateBackupData({ ...validBackup, eventPlan: badPlan }), /이벤트 계획 데이터/);
+  }
+  for (const missing of eventScriptFiles) {
+    const unavailable = vm.createContext({});
+    for (const file of eventScriptFiles.filter(file => file !== missing)) {
+      vm.runInContext(fs.readFileSync(file, 'utf8'), unavailable);
+    }
+    vm.runInContext(sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
+      '\nglobalThis.testApi = { validateBackupData, eventDataReady };', unavailable);
+    assert.equal(unavailable.testApi.eventDataReady(), false);
+    assert.throws(() => unavailable.testApi.validateBackupData({ ...validBackup, eventPlan }), /이벤트 자료를 불러오지 못해/,
+      'a missing event dependency must stop backup import before any data can be replaced');
+  }
+}
 {
   const assert = require('node:assert/strict');
   const { dailyQuestDate, validateBackupData } = backupApi;

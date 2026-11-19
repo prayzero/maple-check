@@ -2,7 +2,7 @@
  * 단순 캐시 전략: 첫 로드 시 핵심 파일 캐시 → 이후 네트워크 우선, 실패 시 캐시 폴백
  */
 const CACHE_PREFIX = 'maple-check-v';
-const CACHE_VERSION = 25;
+const CACHE_VERSION = 26;
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const APP_ROOT = new URL('./', self.location.href);
 const INDEX_URL = new URL('index.html', APP_ROOT).href;
@@ -13,6 +13,8 @@ const isAppURL = (value) => {
 const CORE_ASSETS = [
   './',
   './index.html',
+  './event-blue-archive-shop.js',
+  './event-blue-archive-rewards.js',
   './manifest.json',
   './icon.png',
   './icons/daily-jobs.webp',

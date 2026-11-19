@@ -191,12 +191,39 @@
     .quest-library .quest-deck { max-height: clamp(270px, 62vh, 660px); }
     .quest-regions { grid-column: 1; grid-row: 1; }
   }
+  .event-totals { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
+  .event-totals > div { min-width: 0; padding: 11px clamp(8px,1.6vw,22px); }
+  .event-totals > div + div { border-left: 1px solid var(--ui-border); }
+  .event-totals dt { font-size: 12px; color: #cbd5e1; }
+  .event-totals dd { margin-top: 2px; font-variant-numeric: tabular-nums; font-size: clamp(18px,2vw,26px); font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+  .event-layout { display: grid; gap: 14px; align-items: start; }
+  .event-income, .event-shop-head { padding: 15px; }
+  .event-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; min-height: 40px; }
+  .event-line strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .event-reward-control { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+  .event-reward-control select, .event-reward-control input { width: 110px; }
+  .event-shop-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 9px 15px; border-top: 1px solid var(--ui-border); }
+  .event-shop-row[data-selected=true] { background: #fbbf2409; box-shadow: inset 3px 0 var(--ui-accent); }
+  .event-stepper { display: flex; align-items: stretch; overflow: hidden; }
+  .event-stepper button, .event-stepper input { width: 34px; min-height: 38px; text-align: center; background: transparent; font-variant-numeric: tabular-nums; }
+  .event-stepper input { width: 46px; min-width: 0; border-inline: 1px solid var(--ui-border); font-size: 14px; }
+  .event-stepper button:not(:disabled):hover { background: #ffffff10; }
+  .event-stepper button:disabled { opacity: .35; }
+  .event-stepper :focus-visible { outline-offset: -3px !important; }
+  @media (pointer: coarse) { .event-stepper button, .event-stepper input { min-height: 44px; } }
+  @media (min-width: 1060px) {
+    .event-layout { grid-template-columns: minmax(0,1fr) minmax(270px,.48fr); }
+    .event-shop { grid-column: 1; grid-row: 1; }
+    .event-income { grid-column: 2; grid-row: 1; position: sticky; top: 80px; }
+  }
 </style>
 </head>
 <body>
 
 <div id="root"></div>
 
+<script src="./event-blue-archive-shop.js"></script>
+<script src="./event-blue-archive-rewards.js"></script>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
@@ -542,6 +569,7 @@ const LS_KEYS = {
   NOTIF_SHOWN: 'maple_check_notif_shown_v2',
   MILEAGE: 'maple_check_mileage_v1',
   DAILY_BOARD: 'maple_check_daily_board_v1',
+  EVENT_PLAN: 'maple_check_event_plan_v1',
 };
 
 // 읽지 못한 키는 명시적으로 복구하기 전까지 자동 저장하지 않는다.
@@ -555,7 +583,8 @@ let storageRecoverySequence = 0;
 const STORAGE_LABELS = {
   [LS_KEYS.CHARS]: '캐릭터', [LS_KEYS.BOSS_DATA]: '결정석 가격',
   [LS_KEYS.SELECTED]: '마지막 화면', [LS_KEYS.NOTIF_SHOWN]: '알림 기록',
-  [LS_KEYS.MILEAGE]: '마일리지', [LS_KEYS.DAILY_BOARD]: '일퀘 배치', maple_budget_clip: '복사한 예산',
+  [LS_KEYS.MILEAGE]: '마일리지', [LS_KEYS.DAILY_BOARD]: '일퀘 배치',
+  [LS_KEYS.EVENT_PLAN]: '이벤트 계획', maple_budget_clip: '복사한 예산',
 };
 const getStorageIssues = () => [...storageIssues.values()];
 const notifyStorageListeners = () => storageListeners.forEach(listener => listener());
@@ -579,6 +608,8 @@ const validStoredShape = (key, value) => {
   if (key === LS_KEYS.NOTIF_SHOWN) return Array.isArray(value) || (object(value) && Array.isArray(value.keys));
   if (key === LS_KEYS.MILEAGE || key === 'maple_budget_clip') return value === null || object(value);
   if (key === LS_KEYS.DAILY_BOARD) return isValidDailyBoard(value);
+  // 이벤트 자료를 못 읽은 경우 원래 JSON을 보존하고 정규화·자동저장은 생략한다.
+  if (key === LS_KEYS.EVENT_PLAN) return !eventDataReady() || isValidEventPlan(value);
   return true;
 };
 const loadLS = (key, fallback, validateValue) => {
@@ -1909,6 +1940,7 @@ const normalizeChar = (c) => ({
 
 const validateBackupData = (value) => {
   const fail = (message) => { throw new Error(message); };
+  if (!eventDataReady()) fail('이벤트 자료를 불러오지 못해 백업을 검증할 수 없습니다. 새로고침 후 다시 가져와 주세요.');
   if (!isPlainObject(value) || value.app !== 'maple-check' || value.version !== 1) {
     fail('메이플체크에서 내보낸 백업 파일이 아닙니다.');
   }
@@ -2057,7 +2089,11 @@ const validateBackupData = (value) => {
   });
   const dailyBoard = Object.prototype.hasOwnProperty.call(value, 'dailyBoard')
     ? validateDailyBoard(value.dailyBoard, nextCharacters) : migrateDailyBoard(nextCharacters);
-  return { characters: nextCharacters, bossData: nextBossData, mileage: normalizeMileageState(value.mileage), dailyBoard };
+  if (Object.prototype.hasOwnProperty.call(value, 'eventPlan') && !isValidEventPlan(value.eventPlan)) {
+    fail('이벤트 계획 데이터가 올바르지 않습니다.');
+  }
+  const eventPlan = normalizeEventPlan(value.eventPlan);
+  return { characters: nextCharacters, bossData: nextBossData, mileage: normalizeMileageState(value.mileage), dailyBoard, eventPlan };
 };
 
 /* =========================================================
@@ -2094,7 +2130,7 @@ const collectExpiryItems = (characters, withinDays = 30) => {
 };
 const resolveAppView = (saved, characters) => {
   const pages = ['notifications', 'budget_summary', 'boss_data', 'boss_history', 'symbol_price',
-    'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests'];
+    'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests', 'events'];
   return pages.includes(saved) || characters.some(character => character.id === saved)
     ? saved : characters[0]?.id || 'budget_summary';
 };
@@ -2243,6 +2279,44 @@ function createCharacter(name) {
   } });
 }
 
+// 블루 아카이브 구매 계획
+function eventDataReady() {
+  return typeof BLUE_ARCHIVE_SHOP !== 'undefined' && typeof BlueArchiveRewards !== 'undefined';
+}
+
+function eventCount(value, limit = Number.MAX_SAFE_INTEGER) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(limit, Math.max(0, Math.trunc(number))) : 0;
+}
+
+function normalizeEventPlan(raw) {
+  const quantities = {};
+  for (const item of BLUE_ARCHIVE_SHOP.items) {
+    const count = eventCount(raw?.quantities?.[item.id], item.limit ?? Number.MAX_SAFE_INTEGER);
+    if (count > 0) quantities[item.id] = count;
+  }
+  return { quantities, rewards: BlueArchiveRewards.normalizeState(raw?.rewards), extraCredits: eventCount(raw?.extraCredits) };
+}
+
+function isValidEventPlan(raw) {
+  if (!isPlainObject(raw) || !isPlainObject(raw.quantities) || !isPlainObject(raw.rewards) ||
+    !Number.isSafeInteger(raw.extraCredits) || raw.extraCredits < 0 || !eventDataReady()) return false;
+  const canonical = normalizeEventPlan(raw);
+  const rewards = Object.entries(canonical.rewards);
+  if (Object.keys(raw.rewards).length !== rewards.length || !rewards.every(([key, value]) => raw.rewards[key] === value)) return false;
+  return Object.entries(raw.quantities).every(([id, count]) =>
+    Object.hasOwn(canonical.quantities, id) && canonical.quantities[id] === count);
+}
+
+function eventCreditTotals(plan) {
+  const rewards = BlueArchiveRewards.calculate(plan.rewards);
+  const cost = BLUE_ARCHIVE_SHOP.items.reduce((sum, item) =>
+    sum + BigInt(plan.quantities[item.id] || 0) * BigInt(item.price), 0n);
+  const available = BigInt(rewards.totalCredits) + BigInt(plan.extraCredits);
+  return { rewards, cost, available, balance: available - cost };
+}
+// 블루 아카이브 구매 계획 끝
+
 function App() {
   const [characters, setCharacters] = useState(() => {
     const saved = loadLS(LS_KEYS.CHARS, []);
@@ -2252,6 +2326,10 @@ function App() {
   const [selected, setSelected] = useState(() => resolveAppView(loadLS(LS_KEYS.SELECTED, null), characters));
   const [mileage, setMileage] = useState(() => normalizeMileageState(loadLS(LS_KEYS.MILEAGE, null)));
   const [dailyBoard, setDailyBoard] = useState(() => loadDailyBoard(characters));
+  const [eventPlan, setEventPlan] = useState(() => {
+    const saved = loadLS(LS_KEYS.EVENT_PLAN, undefined);
+    return eventDataReady() ? normalizeEventPlan(saved) : saved;
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [excludedRevenueIds, setExcludedRevenueIds] = useState([]);
   const [durationTarget, setDurationTarget] = useState(null);
@@ -2272,6 +2350,7 @@ function App() {
   useEffect(() => { saveLS(LS_KEYS.SELECTED, selected); }, [selected]);
   useEffect(() => { saveLS(LS_KEYS.MILEAGE, mileage); }, [mileage]);
   useEffect(() => { saveLS(LS_KEYS.DAILY_BOARD, dailyBoard); }, [dailyBoard]);
+  useEffect(() => { if (eventDataReady()) saveLS(LS_KEYS.EVENT_PLAN, eventPlan); }, [eventPlan]);
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
   }, [selected]);
@@ -2389,9 +2468,9 @@ function App() {
 
   // 데이터 백업: JSON 파일 내보내기 / 가져오기
   const exportData = useCallback(() => {
-    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData, mileage, dailyBoard };
+    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData, mileage, dailyBoard, eventPlan };
     downloadJsonFile(data, `maple-check-backup-${todayStr()}.json`);
-  }, [characters, bossData, mileage, dailyBoard]);
+  }, [characters, bossData, mileage, dailyBoard, eventPlan]);
 
   const exportStorageRecovery = () => downloadJsonFile(storageRecoverySnapshot(), `maple-check-recovery-${todayStr()}.json`);
   const retryStorage = (preserveOriginal = false) => {
@@ -2420,12 +2499,14 @@ function App() {
           saveLS(LS_KEYS.BOSS_DATA, next.bossData, { preserveOriginal: true }),
           saveLS(LS_KEYS.MILEAGE, next.mileage, { preserveOriginal: true }),
           saveLS(LS_KEYS.DAILY_BOARD, next.dailyBoard, { preserveOriginal: true }),
+          saveLS(LS_KEYS.EVENT_PLAN, next.eventPlan, { preserveOriginal: true }),
           saveLS(LS_KEYS.SELECTED, nextSelected, { preserveOriginal: true }),
         ];
         setCharacters(next.characters);
         setBossData(next.bossData);
         setMileage(next.mileage);
         setDailyBoard(next.dailyBoard);
+        setEventPlan(next.eventPlan);
         setSelected(nextSelected);
         alert(results.every(Boolean) ? '백업을 불러와 이 브라우저에 저장했습니다.'
           : '백업을 화면에 불러왔지만 일부 항목을 이 브라우저에 저장하지 못했습니다.\n탭을 닫기 전에 현재 데이터를 내보내고 저장 오류 안내에서 다시 시도해 주세요.');
@@ -2521,6 +2602,9 @@ function App() {
           {selected === 'daily_quests' && (
           <DailyQuestView characters={characters} board={dailyBoard} onBoardChange={setDailyBoard} />
           )}
+          {selected === 'events' && (eventDataReady()
+            ? <BlueArchiveEventView plan={eventPlan} onChange={setEventPlan} />
+            : <section className="ui-card p-4" role="alert">이벤트 자료를 불러오지 못했습니다. <button className="ui-action px-2 text-maple-accent" onClick={() => window.location.reload()}>다시 불러오기</button></section>)}
           {selected === 'sunday_maple' && (
             <SundayMapleView />
           )}
@@ -2671,6 +2755,7 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           onClick={() => onSelect('daily_quests')}
           label="✅ 일퀘 배분"
         />
+        <NavItem active={selected === 'events'} onClick={() => onSelect('events')} label="🎟️ 이벤트" />
 
         <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-400">
           캐릭터 ({characters.length})
@@ -2823,6 +2908,140 @@ function useDailyQuestDate() {
     };
   }, []);
   return [date, setDate];
+}
+
+const eventNumber = value => value.toLocaleString('ko-KR');
+
+function EventStageSelect({ label, value, options, onChange }) {
+  return <label className="event-reward-control"><span>{label}</span>
+    <select data-ui-field value={value} onChange={event => onChange(Number(event.target.value))}>
+      {options.map((text, i) => <option key={i} value={i}>{text}</option>)}
+    </select>
+  </label>;
+}
+
+function EventIncome({ plan, rewards, onChange }) {
+  const data = BlueArchiveRewards.DATA;
+  const settings = plan.rewards;
+  const setReward = (key, value) => onChange(prev => ({
+    ...prev, rewards: BlueArchiveRewards.normalizeState({ ...prev.rewards, [key]: value }),
+  }));
+  return <section className="ui-card event-income" aria-label="크레딧 획득 계획">
+    <div className="mb-2 flex items-center justify-between gap-2"><h3>크레딧 획득 계획</h3>
+      <a className="text-xs" href={data.eventUrl} target="_blank" rel="noreferrer">보상표 ↗</a></div>
+    <div className="event-line"><span>주간 미션</span><strong>{eventNumber(rewards.weeklyCredits)}</strong></div>
+    <div className="event-line"><span>시즌 미션</span><strong>{eventNumber(rewards.seasonCredits)}</strong></div>
+    <details className="mb-2">
+      <summary className="cursor-pointer py-2 text-sm text-maple-accent">미션 목표 조정{rewards.missionCredits === BlueArchiveRewards.calculate().missionCredits ? ' · 최대 크레딧' : ''}</summary>
+      <div className="ui-inset space-y-2 p-2">
+        <label className="event-reward-control">주간 미션 횟수
+          <input data-ui-field type="number" inputMode="numeric" min="0" max={data.weeklyMissionLimit}
+            value={settings.weeklyMissions || ''} placeholder="0" onChange={event => setReward('weeklyMissions', eventCount(event.target.value, data.weeklyMissionLimit))} />
+        </label>
+        <div className="text-right text-xs text-slate-400">주 {data.weeklyMissions.length}회 × {data.weekStarts.length}주</div>
+        <EventStageSelect label="시즌 드론 처치" value={settings.droneStage} onChange={value => setReward('droneStage',value)}
+          options={['0마리', ...data.droneStages.map(stage => eventNumber(stage.target) + '마리')]} />
+        <EventStageSelect label="학생 레벨 합계" value={settings.studentStage} onChange={value => setReward('studentStage',value)}
+          options={['미달성', ...data.studentStages.map(stage => eventNumber(stage.target))]} />
+        <EventStageSelect label="총력전 최고 난이도" value={settings.raidStage} onChange={value => setReward('raidStage',value)}
+          options={['미클리어', ...data.raidStages.map(stage => stage.label)]} />
+      </div>
+    </details>
+    <div className="border-t border-maple-border pt-1">
+      <div className="event-line"><label className="flex min-h-11 cursor-pointer items-center gap-2">
+        <input type="checkbox" checked={settings.passEnabled} onChange={event => setReward('passEnabled', event.target.checked)} />
+        특별 보급 패스 <span className="text-xs text-slate-400">유료</span></label><strong>{eventNumber(rewards.passCredits)}
+          <span className="text-xs font-normal text-slate-400"> / {eventNumber(data.passCreditDays.length * data.passCreditPerDay)}</span></strong></div>
+      {settings.passEnabled && <label className="event-reward-control pb-2">패스 출석 횟수
+        <input data-ui-field type="number" inputMode="numeric" min="0" max={data.passAttendanceLimit} value={settings.attendanceDays || ''} placeholder="0"
+          onChange={event => setReward('attendanceDays',eventCount(event.target.value,data.passAttendanceLimit))} /></label>}
+    </div>
+    <details className="border-t border-maple-border">
+      <summary className="cursor-pointer py-3 text-sm text-slate-300">기타 획득{plan.extraCredits > 0 ? ' · ' + eventNumber(plan.extraCredits) : ''}</summary>
+      <label className="event-reward-control">사냥·모집 크레딧
+        <input data-ui-field type="number" inputMode="numeric" min="0" placeholder="0" value={plan.extraCredits || ''}
+          onChange={event => { const extraCredits = eventCount(event.target.value); onChange(prev => ({ ...prev, extraCredits })); }} />
+      </label>
+    </details>
+  </section>;
+}
+
+function BlueArchiveEventView({ plan, onChange }) {
+  const [group, setGroup] = useState('');
+  const [query, setQuery] = useState('');
+  const [selectedOnly, setSelectedOnly] = useState(false);
+  const { rewards, cost, available, balance } = eventCreditTotals(plan);
+  const { items } = BLUE_ARCHIVE_SHOP;
+  const groups = [...new Set(items.map(item => item.group))];
+  const search = value => value.toLowerCase().replace(/\s+/g, '');
+  const visible = items.filter(item => (!group || item.group === group) &&
+    (!selectedOnly || plan.quantities[item.id]) && search(item.name).includes(search(query)));
+  const setQuantity = (item, change) => onChange(previous => {
+    const current = previous.quantities[item.id] || 0;
+    const next = eventCount(typeof change === 'function' ? change(current) : change, item.limit ?? Number.MAX_SAFE_INTEGER);
+    if (current === next) return previous;
+    const quantities = { ...previous.quantities };
+    if (next) quantities[item.id] = next;
+    else delete quantities[item.id];
+    return { ...previous, quantities };
+  });
+
+  return <div className="ui-page space-y-4">
+    <header className="flex flex-wrap items-end justify-between gap-1">
+      <h2>블루 아카이브</h2><span className="text-xs text-slate-400">
+        <time dateTime={BLUE_ARCHIVE_SHOP.startsOn}>{BLUE_ARCHIVE_SHOP.startsOn.replaceAll('-', '.')}</time> – <time dateTime={BLUE_ARCHIVE_SHOP.endsOn}>{BLUE_ARCHIVE_SHOP.endsOn.slice(5).replace('-', '.')}</time>
+      </span>
+    </header>
+    <dl className="event-totals" aria-label="구매 계획 합계 · 크레딧" aria-live="polite" aria-atomic="true">
+      <div><dt>구매 비용</dt><dd>{eventNumber(cost)}</dd></div>
+      <div><dt>예상 획득</dt><dd>{eventNumber(available)}</dd></div>
+      <div className={balance < 0n ? 'text-rose-300' : 'text-maple-accent'}><dt>{balance < 0n ? '부족 크레딧' : '구매 후 잔여'}</dt>
+        <dd>{eventNumber(balance < 0n ? -balance : balance)}</dd></div>
+    </dl>
+    <div className="event-layout">
+      <EventIncome plan={plan} rewards={rewards} onChange={onChange} />
+      <section className="event-shop ui-card" aria-label="소라의 24시간 편의점">
+        <div className="event-shop-head space-y-3">
+          <div className="flex items-center justify-between gap-2"><h3>소라의 24시간 편의점</h3>
+            <a className="text-xs" href={BLUE_ARCHIVE_SHOP.source} target="_blank" rel="noreferrer">상점 공지 ↗</a></div>
+          <div className="flex flex-wrap gap-2">
+            <input data-ui-field type="search" className="min-w-0 flex-1" aria-label="상품 검색" placeholder="상품 검색"
+              value={query} onChange={event => setQuery(event.target.value)} />
+            <select data-ui-field aria-label="상품 분류" value={group} onChange={event => setGroup(event.target.value)}>
+              <option value="">전체 분류</option>{groups.map(name => <option key={name}>{name}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+            <span>{visible.length}종 · 단위 크레딧</span>
+            <label className="flex cursor-pointer items-center gap-2 py-1"><input type="checkbox" checked={selectedOnly}
+              onChange={event => setSelectedOnly(event.target.checked)} /> 선택한 상품만 ({Object.keys(plan.quantities).length})</label>
+          </div>
+          {group && BLUE_ARCHIVE_SHOP.groupNotes?.[group] && <details><summary className="cursor-pointer text-xs text-maple-accent">이용 조건</summary>
+            <p className="mt-1 text-slate-300">{BLUE_ARCHIVE_SHOP.groupNotes[group]}</p></details>}
+        </div>
+        {visible.map(item => {
+          const quantity = plan.quantities[item.id] || 0;
+          return <div className="event-shop-row" key={item.id} data-selected={quantity > 0}>
+            <div className="min-w-0">
+              <div className="break-words text-sm font-semibold">{item.name}</div>
+              <div className="mt-1 text-xs text-slate-400">
+                {eventNumber(item.price)} 크레딧{item.limit != null ? ' · ID당 ' + item.limit + '개' : ''}
+                {quantity > 1 && <strong className="ml-2 text-maple-accent">소계 {eventNumber(BigInt(quantity) * BigInt(item.price))}</strong>}
+              </div>
+            </div>
+            <div className="event-stepper ui-inset">
+              <button type="button" aria-label={item.name + ' 수량 줄이기'} disabled={!quantity} onClick={() => setQuantity(item, n => n - 1)}>−</button>
+              <input type="number" inputMode="numeric" step="1" min="0" max={item.limit ?? undefined} aria-label={item.name + ' 수량'}
+                value={quantity || ''} placeholder="0" onChange={event => setQuantity(item,event.target.value)} />
+              <button type="button" aria-label={item.name + ' 수량 늘리기'} disabled={quantity >= (item.limit ?? Number.MAX_SAFE_INTEGER)}
+                onClick={() => setQuantity(item, n => n + 1)}>+</button>
+            </div>
+          </div>;
+        })}
+        {!visible.length && <p className="border-t border-maple-border p-4 text-slate-300">{selectedOnly && !Object.keys(plan.quantities).length ? '선택한 상품이 없습니다.' : '조건에 맞는 상품이 없습니다.'}</p>}
+      </section>
+    </div>
+  </div>;
 }
 
 function QuestPortrait({ card }) {
