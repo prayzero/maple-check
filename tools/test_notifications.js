@@ -60,7 +60,7 @@ assert.deepEqual(plain(collectExpiryItems(characters, 0)).map(item => item.days)
 
 const supportedViews = [
   'notifications', 'budget_summary', 'boss_data', 'boss_history', 'symbol_price',
-  'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests',
+  'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests', 'events',
 ];
 for (const view of supportedViews) {
   assert.equal(resolveAppView(view, characters), view, `saved ${view} navigation must be preserved`);
@@ -110,6 +110,9 @@ if (dependencyDir) {
   renderContext.self = renderContext;
   vm.runInContext(fs.readFileSync(path.join(dependencyDir, 'react.min.js'), 'utf8'), renderContext);
   vm.runInContext(fs.readFileSync(path.join(dependencyDir, 'react-dom-server.min.js'), 'utf8'), renderContext);
+  for (const file of ['event-blue-archive-shop.js', 'event-blue-archive-rewards.js']) {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), renderContext);
+  }
   vm.runInContext(compiled, renderContext);
   const api = renderContext.renderApi;
   const render = (component, props = {}) => renderContext.ReactDOMServer.renderToStaticMarkup(
@@ -126,6 +129,12 @@ if (dependencyDir) {
   assert.match(firstUse, /캐릭터를 먼저 추가해 주세요/, 'the empty landing page must explain how to begin');
   assert.match(firstUse, /aria-label="알림 센터 · 만료 알림 0건"/, 'the sidebar must expose an accessible bell button');
   noTopNotifications(firstUse, 'new-user landing');
+  saved.set(api.LS_KEYS.SELECTED, JSON.stringify('events'));
+  const eventPage = render(api.App);
+  assert.equal((eventPage.match(/class="event-shop-row"/g) || []).length, 71);
+  for (const text of ['소라의 24시간 편의점', '주간 미션', '시즌 미션', '특별 보급 패스', '34,000', '30,000']) {
+    assert.ok(eventPage.includes(text), 'event page should include ' + text);
+  }
   saved.set(api.LS_KEYS.SELECTED, JSON.stringify('daily_quests'));
   const firstBoard = render(api.App);
   assert.equal((firstBoard.match(/class="quest-card ui-inset"/g) || []).length, 48, 'show every job card before character registration');

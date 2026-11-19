@@ -10,8 +10,11 @@ function between(start, end) {
   assert(a >= 0 && b > a, `Missing source markers: ${start} / ${end}`);
   return html.slice(a, b);
 }
-const context = {};
-vm.runInNewContext(
+const context = vm.createContext({});
+for (const file of ['event-blue-archive-shop.js', 'event-blue-archive-rewards.js']) {
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
+}
+vm.runInContext(
   between('const DEFAULT_BOSSES =', 'function App()') +
   between('function equipmentExpectedCost(', 'function SlotAutoCost(') +
   between('// 예산 라인 아이템 집계', 'function BudgetPlanner(') +
