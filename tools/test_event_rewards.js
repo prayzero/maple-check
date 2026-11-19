@@ -140,18 +140,29 @@ test('credit shop quantities, purchase caps, and the mission and pass budget', (
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
   }
   vm.runInContext(helpers.split('// 블루 아카이브 구매 계획 끝')[0] +
-    '\nglobalThis.shopTools = { shop: BLUE_ARCHIVE_SHOP, normalizeEventPlan, eventCreditTotals };', context);
-  const { shop, normalizeEventPlan, eventCreditTotals } = context.shopTools;
+    '\nglobalThis.shopTools = { shop: BLUE_ARCHIVE_SHOP, normalizeEventPlan, eventCreditTotals, setEventShopSelection };', context);
+  const { shop, normalizeEventPlan, eventCreditTotals, setEventShopSelection } = context.shopTools;
   assert.equal(shop.items.length, 71);
   assert.equal(new Set(shop.items.map(item => item.id)).size, 71);
   assert.ok(shop.items.every(item => item.currency === 'credit' && Number.isInteger(item.price) && item.price > 0));
   assert.equal(shop.items.filter(item => item.limit === 1).length, 24);
   assert.equal(shop.items.filter(item => item.limit === null).length, 47);
   const singles = Object.fromEntries(shop.items.map(item => [item.id, 1]));
-  const all = normalizeEventPlan({ quantities: singles });
+  const partial = normalizeEventPlan({ quantities: { 'seren-uniform': 3, 'emoticon-a': 1 } });
+  const all = setEventShopSelection(partial, true);
+  assert.deepEqual({ ...all.quantities }, singles);
+  assert.deepEqual(setEventShopSelection(all, true), all);
+  assert.equal(partial.quantities['seren-uniform'], 3);
   assert.equal(eventCreditTotals(all).cost, 69000n);
   assert.equal(eventCreditTotals(all).balance, -35000n);
   assert.equal(eventCreditTotals({ ...all, rewards: { ...all.rewards, passEnabled: true } }).balance, -5000n);
+  const paid = normalizeEventPlan({ ...all, rewards: { ...all.rewards, passEnabled: true, attendanceDays: 2 }, extraCredits: 450 });
+  const cleared = setEventShopSelection(paid, false);
+  assert.deepEqual({ ...cleared.quantities }, {});
+  assert.deepEqual(cleared.rewards, paid.rewards);
+  assert.equal(cleared.extraCredits, 450);
+  assert.equal(eventCreditTotals(cleared).cost, 0n);
+  assert.equal(eventCreditTotals(cleared).available, eventCreditTotals(paid).available);
   const selected = normalizeEventPlan({ quantities: { 'seren-uniform': 3, 'emoticon-a': 99, bogus: 500 }, extraCredits: 123 });
   assert.deepEqual({ ...selected.quantities }, { 'seren-uniform': 3, 'emoticon-a': 1 });
   assert.equal(eventCreditTotals(selected).cost, 5500n);
