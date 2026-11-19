@@ -11,6 +11,7 @@ function between(start, end) {
   return html.slice(from, to);
 }
 const storageSource = between('const LS_KEYS =', 'const fmtMeso =');
+const dailySource = between('const ARCANE_REGIONS =', 'const ARCANE_COST_BEFORE_REWORK =');
 const importSource = between('  const importDataFile =', '  return (\n    <div className="app-shell');
 const exportSource = between('  const exportData =', '  const exportStorageRecovery =');
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -35,12 +36,14 @@ function fixture(initial = {}) {
     alert: message => state.alerts.push(message),
     validateBackupData: value => {
       if (value.app !== 'maple-check') throw new Error('Invalid backup');
-      return value;
+      return { ...value, dailyBoard: context.daily.validateDailyBoard(value.dailyBoard, value.characters) };
     },
+    isPlainObject: value => !!value && typeof value === 'object' && !Array.isArray(value),
     resolveAppView: (_, characters) => characters[0]?.id || 'budget_summary',
     setCharacters: value => { state.updates.characters = value; },
     setBossData: value => { state.updates.bossData = value; },
     setMileage: value => { state.updates.mileage = value; },
+    setDailyBoard: value => { state.updates.dailyBoard = value; },
     setSelected: value => { state.updates.selected = value; },
     FileReader: class {
       readAsText(file) { this.result = file.text; this.onload(); }
@@ -61,8 +64,9 @@ function fixture(initial = {}) {
     setTimeout: callback => { callback(); },
   });
   vm.runInContext(storageSource + '\nglobalThis.storage = { LS_KEYS, loadLS, saveLS, getStorageIssues, retryStorageWrites, storageRecoverySnapshot, storageListeners, downloadJsonFile };', context);
+  vm.runInContext(dailySource + '\nglobalThis.daily = { loadDailyBoard, validateDailyBoard, updateDailySlot, checkDailySlot, DAILY_JOB_NAMES };', context);
   vm.runInContext(importSource + '\nglobalThis.importBackup = importDataFile;', context);
-  return { data, state, context, ...context.storage, importBackup: context.importBackup };
+  return { data, state, context, ...context.storage, ...context.daily, importBackup: context.importBackup };
 }
 
 let passed = 0;
@@ -74,7 +78,9 @@ function test(name, body) {
 const charsKey = 'maple_check_characters_v2';
 const bossKey = 'maple_check_boss_data_v5';
 const mileageKey = 'maple_check_mileage_v1';
-const backup = { app: 'maple-check', version: 1, characters: [{ id: 'c_import', name: '복원' }], bossData: [], mileage: { coins: { balance: 42 } } };
+const dailyKey = 'maple_check_daily_board_v1';
+const backup = { app: 'maple-check', version: 1, characters: [{ id: 'c_import', name: '복원' }], bossData: [], mileage: { coins: { balance: 42 } },
+  dailyBoard: { yeoro: [{ cardId: 'char:c_import', doneDay: '2026-11-19' }, null] } };
 const file = value => ({ size: 100, text: JSON.stringify(value) });
 
 test('normal data and existing storage keys remain compatible', () => {
@@ -208,6 +214,8 @@ test('successful backup import preserves a damaged old value and persists all ma
   assert.equal(JSON.parse(f.state.writes[0][1]).raw, 'old damaged value');
   assert.deepEqual(JSON.parse(f.data.get(charsKey)), backup.characters);
   assert.deepEqual(JSON.parse(f.data.get(mileageKey)), backup.mileage);
+  assert.deepEqual(JSON.parse(f.data.get(dailyKey)), backup.dailyBoard);
+  assert.deepEqual(plain(f.state.updates.dailyBoard), backup.dailyBoard);
   assert.equal(f.state.updates.selected, 'c_import');
   assert.match(f.state.alerts.at(-1), /브라우저에 저장했습니다/);
 });
@@ -229,13 +237,14 @@ test('backup export uses current state even if browser writes failed', () => {
   const f = fixture();
   f.state.writeError = () => true;
   f.saveLS(charsKey, backup.characters);
-  Object.assign(f.context, { characters: backup.characters, bossData: backup.bossData, mileage: backup.mileage, todayStr: () => '2026-10-23' });
+  Object.assign(f.context, { characters: backup.characters, bossData: backup.bossData, mileage: backup.mileage, dailyBoard: backup.dailyBoard, todayStr: () => '2026-10-23' });
   vm.runInContext(exportSource + '\nexportData();', f.context);
   const exported = JSON.parse(f.state.downloads[0].blob.parts[0]);
   assert.equal(exported.app, 'maple-check');
   assert.equal(exported.version, 1);
   assert.deepEqual(exported.characters, backup.characters);
   assert.deepEqual(exported.mileage, backup.mileage);
+  assert.deepEqual(exported.dailyBoard, backup.dailyBoard);
   assert.equal(f.state.downloads[0].filename, 'maple-check-backup-2026-10-23.json');
 });
 
@@ -246,6 +255,81 @@ test('recovery export retains broken raw text without trying to parse it', () =>
   const exported = JSON.parse(f.state.downloads[0].blob.parts[0]);
   assert.equal(exported.originals[0].raw, 'raw\n\u0000broken JSON');
   assert.equal(exported.originals[0].readable, true);
+});
+
+test('legacy daily assignments migrate once and an explicitly empty stored board stays empty', () => {
+  const characters = ['first', 'second', 'third'].map(id => ({ id, dailyQuests: { assigned: ['yeoro'], day: '2026-11-19', done: ['yeoro'] } }));
+  const f = fixture();
+  const board = f.loadDailyBoard(characters);
+  assert.equal(board.yeoro[1].cardId, 'char:second');
+  assert.deepEqual(plain(board.overflow), [{ regionId: 'yeoro', cardId: 'char:third', doneDay: '2026-11-19' }]);
+  assert.equal(f.saveLS(dailyKey, board), true);
+  assert.deepEqual(plain(f.loadDailyBoard(characters)), plain(board));
+  assert.equal(f.saveLS(dailyKey, {}), true);
+  assert.deepEqual(plain(f.loadDailyBoard(characters)), {});
+});
+
+test('malformed daily boards stay protected until their exact originals are archived', () => {
+  for (const raw of ['{broken', 'null', '[]', '{"yeoro":[]}', '{"yeoro":[{"cardId":"job:unknown","doneDay":""},null]}']) {
+    const f = fixture({ [dailyKey]: raw });
+    assert.deepEqual(plain(f.loadDailyBoard([])), {});
+    const board = f.updateDailySlot({}, 'yeoro', 0, `job:${f.DAILY_JOB_NAMES[0]}`);
+    assert.equal(f.saveLS(dailyKey, board), false);
+    assert.equal(f.retryStorageWrites(), false);
+    assert.equal(f.data.get(dailyKey), raw);
+    assert.equal(f.getStorageIssues()[0].label, '일퀘 배치');
+    assert.deepEqual(plain(f.storageRecoverySnapshot().pending[dailyKey]), plain(board));
+    assert.equal(f.retryStorageWrites({ preserveOriginal: true }), true);
+    assert.equal(JSON.parse(f.state.writes[0][1]).raw, raw);
+    assert.deepEqual(JSON.parse(f.data.get(dailyKey)), plain(board));
+  }
+});
+
+test('an orphaned character reference is protected instead of silently discarded', () => {
+  const raw = JSON.stringify(backup.dailyBoard);
+  const f = fixture({ [dailyKey]: raw });
+  assert.deepEqual(plain(f.loadDailyBoard([])), {});
+  assert.equal(f.saveLS(dailyKey, {}), false);
+  assert.equal(f.data.get(dailyKey), raw);
+  assert.equal(f.storageRecoverySnapshot().originals[0].raw, raw);
+});
+
+test('failed character reads must not finalize an empty board and prevent later migration', () => {
+  const f = fixture({ [charsKey]: 'damaged legacy characters' });
+  f.loadLS(charsKey, []);
+  const board = f.loadDailyBoard([]);
+  assert.equal(f.saveLS(dailyKey, board), false);
+  assert.equal(f.retryStorageWrites(), false);
+  assert.equal(f.data.has(dailyKey), false);
+  assert.ok(f.getStorageIssues().some(issue => issue.key === dailyKey && issue.protected));
+});
+
+test('daily board write failures retain the latest slots for retry and backup export', () => {
+  const f = fixture();
+  f.state.writeError = key => key === dailyKey;
+  const assigned = f.updateDailySlot({}, 'yeoro', 0, `job:${f.DAILY_JOB_NAMES[0]}`);
+  const checked = f.checkDailySlot(assigned, 'yeoro', 0, assigned.yeoro[0].cardId, true, '2026-11-19');
+  assert.equal(f.saveLS(dailyKey, assigned), false);
+  assert.equal(f.saveLS(dailyKey, checked), false);
+  assert.deepEqual(plain(f.storageRecoverySnapshot().pending[dailyKey]), plain(checked));
+  Object.assign(f.context, { ...backup, dailyBoard: checked, todayStr: () => '2026-11-19' });
+  vm.runInContext(exportSource + '\nexportData();', f.context);
+  assert.deepEqual(JSON.parse(f.state.downloads[0].blob.parts[0]).dailyBoard, plain(checked));
+  f.state.writeError = null;
+  assert.equal(f.retryStorageWrites(), true);
+  assert.deepEqual(JSON.parse(f.data.get(dailyKey)), plain(checked));
+});
+
+test('a failed daily board backup write is reported and its imported state remains recoverable', () => {
+  const f = fixture();
+  f.state.writeError = key => key === dailyKey;
+  f.importBackup(file(backup));
+  assert.deepEqual(plain(f.state.updates.dailyBoard), backup.dailyBoard);
+  assert.deepEqual(plain(f.storageRecoverySnapshot().pending[dailyKey]), backup.dailyBoard);
+  assert.match(f.state.alerts.at(-1), /일부 항목을.*저장하지 못했습니다/);
+  f.state.writeError = null;
+  assert.equal(f.retryStorageWrites(), true);
+  assert.deepEqual(JSON.parse(f.data.get(dailyKey)), backup.dailyBoard);
 });
 
 console.log(`Storage regression tests passed: ${passed}`);
