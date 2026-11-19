@@ -258,7 +258,7 @@ assert(duplicateIed.length === 2 && duplicateIed[0][2] === 0 && duplicateIed[1][
 const backupContext = {};
 vm.runInNewContext(
   sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
-    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys };',
+    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys, dailyQuestDate, dailyQuestDone, updateDailyQuest };',
   backupContext,
 );
 const backupApi = backupContext.testApi;
@@ -331,6 +331,31 @@ const validBackup = {
   bossData: backupApi.cloneJson(backupApi.DEFAULT_BOSSES),
 };
 const normalizedBackup = backupApi.validateBackupData(validBackup);
+{
+  const assert = require('node:assert/strict');
+  const { dailyQuestDate, dailyQuestDone, updateDailyQuest, validateBackupData } = backupApi;
+  const plain = value => JSON.parse(JSON.stringify(value));
+  const empty = normalizedBackup.characters[0].dailyQuests;
+  assert.deepStrictEqual(plain(empty), { assigned: [], day: '', done: [] });
+  assert.strictEqual(dailyQuestDate(Date.UTC(2026, 11, 31, 14, 59, 59, 999)), '2026-12-31');
+  assert.strictEqual(dailyQuestDate(Date.UTC(2026, 11, 31, 15)), '2027-01-01');
+  const assigned = updateDailyQuest(updateDailyQuest(empty, 'yeoro', 'assigned', true), 'geardrak', 'assigned', true);
+  const yesterday = updateDailyQuest(assigned, 'yeoro', 'done', true, '2026-12-31');
+  assert.deepStrictEqual(plain(dailyQuestDone(yesterday, '2026-12-31')), ['yeoro']);
+  assert.deepStrictEqual(plain(dailyQuestDone(yesterday, '2027-01-01')), []);
+  assert.strictEqual(updateDailyQuest(yesterday, 'limen', 'done', true, '2027-01-01'), yesterday);
+  const today = updateDailyQuest(yesterday, 'geardrak', 'done', true, '2027-01-01');
+  assert.deepStrictEqual(plain(today), { assigned: ['yeoro', 'geardrak'], day: '2027-01-01', done: ['geardrak'] });
+  const restored = validateBackupData({ ...validBackup, characters: [
+    { ...validBackup.characters[0], dailyQuests: plain(today) },
+    { id: 'c_alt', name: '부캐', bosses: [], dailyQuests: { assigned: ['yeoro'], day: '', done: [] } },
+  ] }).characters;
+  assert.deepStrictEqual(plain(restored[0].dailyQuests), plain(today));
+  assert.deepStrictEqual(plain(restored[1].dailyQuests), { assigned: ['yeoro'], day: '', done: [] });
+  for (const badDailyQuests of [{ ...today, assigned: ['unknown'] }, { ...today, day: '2026-02-30' }, { ...today, done: ['geardrak', 'geardrak'] }]) {
+    assert.throws(() => validateBackupData({ ...validBackup, characters: [{ ...validBackup.characters[0], dailyQuests: badDailyQuests }] }), /일퀘 데이터/);
+  }
+}
 assert(normalizedBackup.characters[0].bosses[0].partyMembers === 3,
   'backup import must clamp actual party size to the boss maximum');
 assert(normalizedBackup.characters[0].budget.total === 0 &&

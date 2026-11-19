@@ -60,7 +60,7 @@ assert.deepEqual(plain(collectExpiryItems(characters, 0)).map(item => item.days)
 
 const supportedViews = [
   'notifications', 'budget_summary', 'boss_data', 'boss_history', 'symbol_price',
-  'enhance_calc', 'mileage_calc', 'sunday_maple',
+  'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests',
 ];
 for (const view of supportedViews) {
   assert.equal(resolveAppView(view, characters), view, `saved ${view} navigation must be preserved`);
@@ -126,6 +126,8 @@ if (dependencyDir) {
   assert.match(firstUse, /캐릭터를 먼저 추가해 주세요/, 'the empty landing page must explain how to begin');
   assert.match(firstUse, /aria-label="알림 센터 · 만료 알림 0건"/, 'the sidebar must expose an accessible bell button');
   noTopNotifications(firstUse, 'new-user landing');
+  saved.set(api.LS_KEYS.SELECTED, JSON.stringify('daily_quests'));
+  assert.match(render(api.App), /캐릭터를 추가해 주세요/, 'the checklist must support an empty roster');
   saved.set(api.LS_KEYS.SELECTED, JSON.stringify('dashboard'));
   assert.match(render(api.App), /캐릭터를 먼저 추가해 주세요/,
     'a legacy dashboard destination without characters must safely use the empty budget summary');
@@ -152,6 +154,10 @@ if (dependencyDir) {
     saved.set(api.LS_KEYS.SELECTED, JSON.stringify(ordinaryView));
     noTopNotifications(render(api.App), ordinaryView);
   }
+  saved.set(api.LS_KEYS.SELECTED, JSON.stringify('daily_quests'));
+  const questPage = render(api.App);
+  assert.match(questPage, /aria-label="알림 테스트 본캐 소멸의 여로 배정"/);
+  assert.match(questPage, /aria-label="알림 테스트 부캐 기어드락 배정"/);
   saved.set(api.LS_KEYS.SELECTED, JSON.stringify('notifications'));
   const notificationPage = render(api.App);
   assert.match(notificationPage, /🔔 알림 센터/, 'the saved bell destination must render the notification center');
