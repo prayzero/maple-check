@@ -17,6 +17,7 @@ const fixture = {
   mileage: { mode: 'credit', credit: { balance: 321 }, coins: { balance: 654 } },
   dailyBoard: { limen: [null, { cardId: 'job:레테', doneDay: '2026-11-19' }] },
   eventPlan,
+  jobTiers: { S: ['레테', '히어로'], A: [], B: [], C: [], D: [], E: [], F: ['팔라딘'] },
 };
 const storage = new Map([
   ['maple_check_characters_v2', JSON.stringify(fixture.characters)],
@@ -24,6 +25,7 @@ const storage = new Map([
   ['maple_check_mileage_v1', JSON.stringify(fixture.mileage)],
   ['maple_check_daily_board_v1', JSON.stringify(fixture.dailyBoard)],
   ['maple_check_event_plan_v1', JSON.stringify(fixture.eventPlan)],
+  ['maple_check_job_tiers_v1', JSON.stringify(fixture.jobTiers)],
 ]);
 let copied;
 const context = { localStorage: { getItem: key => storage.get(key) ?? null }, copy: value => { copied = value; } };
@@ -32,7 +34,7 @@ const backup = JSON.parse(copied);
 assert.equal(backup.app, 'maple-check');
 assert.equal(backup.version, 1);
 assert.match(backup.exportedAt, /^\d{4}-\d{2}-\d{2}$/);
-for (const key of ['characters', 'bossData', 'mileage', 'dailyBoard', 'eventPlan']) {
+for (const key of ['characters', 'bossData', 'mileage', 'dailyBoard', 'eventPlan', 'jobTiers']) {
   assert.deepEqual(backup[key], fixture[key], `console backup must preserve ${key}`);
 }
 storage.clear();
@@ -43,7 +45,8 @@ assert.deepEqual(empty.bossData, []);
 assert.equal(empty.mileage, null);
 assert.ok(!Object.hasOwn(empty, 'dailyBoard'), 'missing board must allow legacy assignment migration');
 assert.ok(!Object.hasOwn(empty, 'eventPlan'), 'missing event plans must allow legacy default restoration');
-for (const key of ['maple_check_mileage_v1', 'maple_check_event_plan_v1']) {
+assert.ok(!Object.hasOwn(empty, 'jobTiers'), 'missing job tiers must allow legacy empty-tier restoration');
+for (const key of ['maple_check_mileage_v1', 'maple_check_event_plan_v1', 'maple_check_job_tiers_v1']) {
   for (const invalid of ['{broken', '']) {
     storage.clear();
     storage.set(key, invalid);
@@ -52,4 +55,4 @@ for (const key of ['maple_check_mileage_v1', 'maple_check_event_plan_v1']) {
     assert.equal(copied, undefined, 'invalid stored JSON must not silently create an incomplete backup');
   }
 }
-console.log('README backup: character/equipment/budget, boss prices, mileage, daily board, event plan, missing values, and invalid JSON checks passed');
+console.log('README backup: character/equipment/budget, boss prices, mileage, daily board, event plan, job tiers, missing values, and invalid JSON checks passed');

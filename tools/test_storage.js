@@ -18,6 +18,9 @@ const eventScripts = ['event-blue-archive-shop.js', 'event-blue-archive-rewards.
 const eventLoadSource = between('  const [eventPlan, setEventPlan]', '  const [sidebarOpen, setSidebarOpen]');
 const eventSaveSource = html.split('\n').find(line => line.includes('useEffect') && line.includes('saveLS(LS_KEYS.EVENT_PLAN'));
 assert.ok(eventSaveSource, 'event autosave effect must exist');
+const tierLoadSource = between('  const [jobTiers, setJobTiers]', '  const [eventPlan, setEventPlan]');
+const tierSaveSource = html.split('\n').find(line => line.includes('useEffect') && line.includes('saveLS(LS_KEYS.JOB_TIERS'));
+assert.ok(tierSaveSource, 'job tier autosave effect must exist');
 const importSource = between('  const importDataFile =', '  return (\n    <div className="app-shell');
 const exportSource = between('  const exportData =', '  const exportStorageRecovery =');
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -44,8 +47,9 @@ function fixture(initial = {}, options = {}) {
       if (!context.event.eventDataReady()) throw new Error('이벤트 자료를 불러오지 못해 백업을 검증할 수 없습니다.');
       if (value.app !== 'maple-check') throw new Error('Invalid backup');
       if (Object.hasOwn(value, 'eventPlan') && !context.event.isValidEventPlan(value.eventPlan)) throw new Error('Invalid event plan');
+      if (Object.hasOwn(value, 'jobTiers') && !context.daily.isValidJobTiers(value.jobTiers)) throw new Error('Invalid job tiers');
       return { ...value, dailyBoard: context.daily.validateDailyBoard(value.dailyBoard, value.characters),
-        eventPlan: context.event.normalizeEventPlan(value.eventPlan) };
+        eventPlan: context.event.normalizeEventPlan(value.eventPlan), jobTiers: context.daily.normalizeJobTiers(value.jobTiers) };
     },
     isPlainObject: value => !!value && typeof value === 'object' && !Array.isArray(value),
     resolveAppView: (_, characters) => characters[0]?.id || 'budget_summary',
@@ -54,6 +58,7 @@ function fixture(initial = {}, options = {}) {
     setMileage: value => { state.updates.mileage = value; },
     setDailyBoard: value => { state.updates.dailyBoard = value; },
     setEventPlan: value => { state.updates.eventPlan = value; },
+    setJobTiers: value => { state.updates.jobTiers = value; },
     setSelected: value => { state.updates.selected = value; },
     FileReader: class {
       readAsText(file) { this.result = file.text; this.onload(); }
@@ -75,7 +80,7 @@ function fixture(initial = {}, options = {}) {
   });
   for (const { file, source } of eventScripts) if (file !== options.skipEventScript) vm.runInContext(source, context);
   vm.runInContext(storageSource + '\nglobalThis.storage = { LS_KEYS, loadLS, saveLS, getStorageIssues, retryStorageWrites, storageRecoverySnapshot, storageListeners, downloadJsonFile };', context);
-  vm.runInContext(dailySource + '\nglobalThis.daily = { loadDailyBoard, validateDailyBoard, updateDailySlot, checkDailySlot, DAILY_JOB_NAMES };', context);
+  vm.runInContext(dailySource + '\nglobalThis.daily = { loadDailyBoard, validateDailyBoard, updateDailySlot, checkDailySlot, DAILY_JOB_NAMES, JOB_TIERS, normalizeJobTiers, isValidJobTiers, moveTierJob };', context);
   vm.runInContext(eventSource + '\nglobalThis.event = { normalizeEventPlan, isValidEventPlan, eventDataReady, shop: typeof BLUE_ARCHIVE_SHOP === "undefined" ? null : BLUE_ARCHIVE_SHOP };', context);
   vm.runInContext(importSource + '\nglobalThis.importBackup = importDataFile;', context);
   return { data, state, context, ...context.storage, ...context.daily, ...context.event, importBackup: context.importBackup };
@@ -92,10 +97,12 @@ const bossKey = 'maple_check_boss_data_v5';
 const mileageKey = 'maple_check_mileage_v1';
 const dailyKey = 'maple_check_daily_board_v1';
 const eventKey = 'maple_check_event_plan_v1';
+const tiersKey = 'maple_check_job_tiers_v1';
 const eventModel = fixture();
 const eventPlan = { ...plain(eventModel.normalizeEventPlan()), quantities: { [eventModel.shop.items[0].id]: 1 }, extraCredits: 100 };
+const jobTiers = { ...plain(eventModel.normalizeJobTiers()), S: [eventModel.DAILY_JOB_NAMES[2], eventModel.DAILY_JOB_NAMES[0]], F: [eventModel.DAILY_JOB_NAMES[1]] };
 const backup = { app: 'maple-check', version: 1, characters: [{ id: 'c_import', name: '복원' }], bossData: [], mileage: { coins: { balance: 42 } },
-  dailyBoard: { yeoro: [{ cardId: 'char:c_import', doneDay: '2026-11-19' }, null] }, eventPlan };
+  dailyBoard: { yeoro: [{ cardId: 'char:c_import', doneDay: '2026-11-19' }, null] }, eventPlan, jobTiers };
 const file = value => ({ size: 100, text: JSON.stringify(value) });
 
 test('normal data and existing storage keys remain compatible', () => {
@@ -233,6 +240,8 @@ test('successful backup import preserves a damaged old value and persists all ma
   assert.deepEqual(plain(f.state.updates.dailyBoard), backup.dailyBoard);
   assert.deepEqual(JSON.parse(f.data.get(eventKey)), eventPlan);
   assert.deepEqual(plain(f.state.updates.eventPlan), eventPlan);
+  assert.deepEqual(JSON.parse(f.data.get(tiersKey)), jobTiers);
+  assert.deepEqual(plain(f.state.updates.jobTiers), jobTiers);
   assert.equal(f.state.updates.selected, 'c_import');
   assert.match(f.state.alerts.at(-1), /브라우저에 저장했습니다/);
 });
@@ -263,6 +272,7 @@ test('backup export uses current state even if browser writes failed', () => {
   assert.deepEqual(exported.mileage, backup.mileage);
   assert.deepEqual(exported.dailyBoard, backup.dailyBoard);
   assert.deepEqual(exported.eventPlan, eventPlan);
+  assert.deepEqual(exported.jobTiers, jobTiers);
   assert.equal(f.state.downloads[0].filename, 'maple-check-backup-2026-10-23.json');
 });
 
@@ -458,6 +468,91 @@ test('missing event scripts preserve saved plans for export and block autosave a
     assert.equal(f.saveLS(mileageKey, { coins: { balance: 73 } }), true,
       'an event dependency failure must not prevent unrelated storage writes');
   }
+});
+
+test('App job tier state initializes, persists order and safely restores legacy defaults', () => {
+  for (const initial of [{}, { [tiersKey]: JSON.stringify(jobTiers) }]) {
+    const f = fixture(initial);
+    Object.assign(f.context, { useState: init => [init(), () => {}], useEffect: effect => effect() });
+    vm.runInContext(tierLoadSource + tierSaveSource + '\nglobalThis.loadedTiers = jobTiers;', f.context);
+    const expected = Object.hasOwn(initial, tiersKey) ? jobTiers : plain(f.normalizeJobTiers());
+    assert.deepEqual(plain(f.context.loadedTiers), expected);
+    assert.deepEqual(JSON.parse(f.data.get(tiersKey)), expected);
+  }
+  const f = fixture({ [tiersKey]: JSON.stringify(jobTiers) });
+  const legacy = { ...backup };
+  delete legacy.jobTiers;
+  f.importBackup(file(legacy));
+  assert.deepEqual(plain(f.state.updates.jobTiers), plain(f.normalizeJobTiers()));
+  assert.deepEqual(JSON.parse(f.data.get(tiersKey)), plain(f.normalizeJobTiers()));
+});
+
+test('malformed tier storage preserves exact originals through autosave until explicit recovery', () => {
+  const duplicated = { ...jobTiers, A: [jobTiers.S[0]] };
+  for (const raw of ['{broken', 'null', '[]', '{}', JSON.stringify(duplicated), JSON.stringify({ ...jobTiers, S: ['unknown'] })]) {
+    const f = fixture({ [tiersKey]: raw });
+    Object.assign(f.context, { useState: init => [init(), () => {}], useEffect: effect => effect() });
+    vm.runInContext(tierLoadSource + tierSaveSource, f.context);
+    assert.equal(f.data.get(tiersKey), raw);
+    assert.equal(f.state.writes.length, 0);
+    assert.equal(f.getStorageIssues()[0].label, '직업 티어표');
+    assert.equal(f.getStorageIssues()[0].protected, true);
+    assert.equal(f.retryStorageWrites(), false);
+    assert.equal(f.storageRecoverySnapshot().originals[0].raw, raw);
+    assert.equal(f.retryStorageWrites({ preserveOriginal: true }), true);
+    assert.equal(JSON.parse(f.state.writes[0][1]).raw, raw);
+    assert.deepEqual(JSON.parse(f.data.get(tiersKey)), plain(f.normalizeJobTiers()));
+  }
+});
+
+test('tier read denial keeps the old data and queues recoverable defaults', () => {
+  const raw = JSON.stringify(jobTiers);
+  const f = fixture({ [tiersKey]: raw });
+  f.state.readErrors.add(tiersKey);
+  Object.assign(f.context, { useState: init => [init(), () => {}], useEffect: effect => effect() });
+  vm.runInContext(tierLoadSource + tierSaveSource, f.context);
+  assert.equal(f.data.get(tiersKey), raw);
+  assert.equal(f.state.writes.length, 0);
+  assert.equal(f.getStorageIssues()[0].kind, 'read');
+  assert.equal(f.retryStorageWrites({ preserveOriginal: true }), false);
+  assert.equal(f.data.get(tiersKey), raw);
+  assert.equal(f.getStorageIssues()[0].protected, true);
+});
+
+test('failed tier saves export and retry the latest reorder or unassignment', () => {
+  const f = fixture();
+  f.state.writeError = key => key === tiersKey;
+  const moved = f.moveTierJob(jobTiers, jobTiers.S[1], 'S', jobTiers.S[0]);
+  const latest = f.moveTierJob(moved, jobTiers.F[0], null);
+  assert.equal(f.saveLS(tiersKey, moved), false);
+  assert.equal(f.saveLS(tiersKey, latest), false);
+  assert.deepEqual(plain(f.storageRecoverySnapshot().pending[tiersKey]), plain(latest));
+  Object.assign(f.context, { ...backup, jobTiers: latest, todayStr: () => '2026-11-23' });
+  vm.runInContext(exportSource + '\nexportData();', f.context);
+  assert.deepEqual(JSON.parse(f.state.downloads[0].blob.parts[0]).jobTiers, plain(latest));
+  f.state.writeError = null;
+  assert.equal(f.retryStorageWrites(), true);
+  assert.deepEqual(JSON.parse(f.data.get(tiersKey)), plain(latest));
+});
+
+test('invalid tier backups are rejected before any state or storage changes', () => {
+  const f = fixture();
+  f.importBackup(file({ ...backup, jobTiers: { ...jobTiers, A: [jobTiers.S[0]] } }));
+  assert.match(f.state.alerts.at(-1), /불러올 수 없습니다/);
+  assert.deepEqual(f.state.updates, {});
+  assert.equal(f.state.writes.length, 0);
+});
+
+test('failed tier import writes report failure and retain imported data for retry', () => {
+  const f = fixture();
+  f.state.writeError = key => key === tiersKey;
+  f.importBackup(file(backup));
+  assert.deepEqual(plain(f.state.updates.jobTiers), jobTiers);
+  assert.deepEqual(plain(f.storageRecoverySnapshot().pending[tiersKey]), jobTiers);
+  assert.match(f.state.alerts.at(-1), /일부 항목을.*저장하지 못했습니다/);
+  f.state.writeError = null;
+  assert.equal(f.retryStorageWrites(), true);
+  assert.deepEqual(JSON.parse(f.data.get(tiersKey)), jobTiers);
 });
 
 console.log(`Storage regression tests passed: ${passed}`);

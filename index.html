@@ -216,6 +216,37 @@
     .event-shop { grid-column: 1; grid-row: 1; }
     .event-income { grid-column: 2; grid-row: 1; position: sticky; top: 80px; }
   }
+  .tier-layout { display: grid; gap: 14px; align-items: start; }
+  .tier-board { overflow: hidden; }
+  .tier-row { display: grid; grid-template-columns: 54px minmax(0,1fr); min-height: 70px; }
+  .tier-row + .tier-row { border-top: 1px solid var(--ui-border); }
+  .tier-rank, .tier-choice { display: grid; place-items: center; background: var(--rank-color); color: #17212d; font-weight: 800; }
+  .tier-rank { font-size: 25px; }
+  [data-rank=S] { --rank-color: #f09b99; }
+  [data-rank=A] { --rank-color: #f0b582; }
+  [data-rank=B] { --rank-color: #eace80; }
+  [data-rank=C] { --rank-color: #a7d4a4; }
+  [data-rank=D] { --rank-color: #87c8cd; }
+  [data-rank=E] { --rank-color: #9bb9e2; }
+  [data-rank=F] { --rank-color: #c1a9dd; }
+  .tier-cards { display: flex; align-items: start; align-content: center; flex-wrap: wrap; gap: 5px; min-width: 0; padding: 6px; }
+  .tier-job { display: grid; align-content: start; justify-items: center; gap: 3px; width: 71px; min-height: 58px; padding: 3px 2px; border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-bg); color: var(--ui-text); font-size: 11px; line-height: 1.18; overflow-wrap: anywhere; user-select: none; -webkit-touch-callout: none; cursor: grab; }
+  .tier-job:hover { border-color: #94a3b8; }
+  .tier-job .quest-face { width: 37px; height: 37px; border-radius: 5px; touch-action: none; }
+  .tier-job[data-dragged=true] { opacity: .4; }
+  .tier-job[data-insert=true] { box-shadow: -3px 0 var(--ui-accent); }
+  .tier-row[data-hover=true] .tier-cards, .tier-pool[data-hover=true] { background: #273446; box-shadow: inset 0 0 0 2px var(--ui-accent); }
+  .tier-pool-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(70px,1fr)); gap: 5px; padding: 3px; max-height: 180px; overflow-y: auto; }
+  .tier-pool-grid .tier-job { width: 100%; }
+  .tier-ghost { position: fixed; z-index: 80; transform: translate(-50%,-70%); pointer-events: none; border-color: var(--ui-accent); box-shadow: 0 5px 18px #0009; }
+  .tier-choice { min-height: 44px; border-radius: var(--ui-control-radius); font-size: 17px; }
+  .tier-choice:disabled { opacity: .48; }
+  @media (min-width: 1040px) {
+    .tier-layout { grid-template-columns: minmax(0,1fr) minmax(265px,.56fr); }
+    .tier-board { grid-column: 1; grid-row: 1; }
+    .tier-pool { grid-column: 2; grid-row: 1; position: sticky; top: 12px; }
+    .tier-pool-grid { max-height: clamp(220px,63vh,710px); }
+  }
 </style>
 </head>
 <body>
@@ -570,6 +601,7 @@ const LS_KEYS = {
   MILEAGE: 'maple_check_mileage_v1',
   DAILY_BOARD: 'maple_check_daily_board_v1',
   EVENT_PLAN: 'maple_check_event_plan_v1',
+  JOB_TIERS: 'maple_check_job_tiers_v1',
 };
 
 // 읽지 못한 키는 명시적으로 복구하기 전까지 자동 저장하지 않는다.
@@ -584,7 +616,7 @@ const STORAGE_LABELS = {
   [LS_KEYS.CHARS]: '캐릭터', [LS_KEYS.BOSS_DATA]: '결정석 가격',
   [LS_KEYS.SELECTED]: '마지막 화면', [LS_KEYS.NOTIF_SHOWN]: '알림 기록',
   [LS_KEYS.MILEAGE]: '마일리지', [LS_KEYS.DAILY_BOARD]: '일퀘 배치',
-  [LS_KEYS.EVENT_PLAN]: '이벤트 계획', maple_budget_clip: '복사한 예산',
+  [LS_KEYS.EVENT_PLAN]: '이벤트 계획', [LS_KEYS.JOB_TIERS]: '직업 티어표', maple_budget_clip: '복사한 예산',
 };
 const getStorageIssues = () => [...storageIssues.values()];
 const notifyStorageListeners = () => storageListeners.forEach(listener => listener());
@@ -610,6 +642,7 @@ const validStoredShape = (key, value) => {
   if (key === LS_KEYS.DAILY_BOARD) return isValidDailyBoard(value);
   // 이벤트 자료를 못 읽은 경우 원래 JSON을 보존하고 정규화·자동저장은 생략한다.
   if (key === LS_KEYS.EVENT_PLAN) return !eventDataReady() || isValidEventPlan(value);
+  if (key === LS_KEYS.JOB_TIERS) return isValidJobTiers(value);
   return true;
 };
 const loadLS = (key, fallback, validateValue) => {
@@ -956,6 +989,52 @@ const DAILY_JOB_GROUPS = [
 const DAILY_JOB_CARDS = DAILY_JOB_GROUPS.flatMap(([group, jobs]) =>
   jobs.map(([portrait, name]) => ({ id: 'job:' + name, name, group, portrait })));
 const DAILY_JOB_NAMES = DAILY_JOB_CARDS.map(card => card.name);
+
+// 직업 티어표: 미배정 직업은 저장하지 않고 전체 직업에서 배정된 이름을 제외해 구한다.
+const JOB_TIERS = ['S', 'A', 'B', 'C', 'D', 'E', 'F'];
+function normalizeJobTiers(raw) {
+  const seen = new Set();
+  return Object.fromEntries(JOB_TIERS.map(tier => {
+    const names = isPlainObject(raw) && Array.isArray(raw[tier]) ? raw[tier] : [];
+    return [tier, names.filter(name => {
+      if (!DAILY_JOB_NAMES.includes(name) || seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    })];
+  }));
+}
+
+function isValidJobTiers(raw) {
+  if (!isPlainObject(raw) || Object.keys(raw).length !== JOB_TIERS.length ||
+    !JOB_TIERS.every(tier => Object.hasOwn(raw, tier) && Array.isArray(raw[tier]))) return false;
+  const seen = new Set();
+  for (const tier of JOB_TIERS) {
+    for (const name of raw[tier]) {
+      if (!DAILY_JOB_NAMES.includes(name) || seen.has(name)) return false;
+      seen.add(name);
+    }
+  }
+  return true;
+}
+
+function moveTierJob(list, name, tier, beforeName = null) {
+  if (!isValidJobTiers(list) || !DAILY_JOB_NAMES.includes(name) ||
+    (tier !== null && !JOB_TIERS.includes(tier)) || beforeName === name) return list;
+  if (tier !== null && beforeName !== null && !list[tier].includes(beforeName)) return list;
+  const from = JOB_TIERS.find(key => list[key].includes(name));
+  if (tier === null && !from) return list;
+  const next = { ...list };
+  if (from) next[from] = list[from].filter(job => job !== name);
+  if (tier !== null) {
+    const row = from === tier ? next[tier] : [...list[tier]];
+    row.splice(beforeName === null ? row.length : row.indexOf(beforeName), 0, name);
+    next[tier] = row;
+    if (from === tier && row.every((job, index) => job === list[tier][index])) return list;
+  }
+  return next;
+}
+// 직업 티어표 데이터 끝
+
 const CHARACTER_BACKUP_LIMIT = 200;
 const DAILY_QUEST_DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_QUEST_KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -2093,7 +2172,11 @@ const validateBackupData = (value) => {
     fail('이벤트 계획 데이터가 올바르지 않습니다.');
   }
   const eventPlan = normalizeEventPlan(value.eventPlan);
-  return { characters: nextCharacters, bossData: nextBossData, mileage: normalizeMileageState(value.mileage), dailyBoard, eventPlan };
+  if (Object.prototype.hasOwnProperty.call(value, 'jobTiers') && !isValidJobTiers(value.jobTiers)) {
+    fail('직업 티어표 데이터가 올바르지 않습니다.');
+  }
+  const jobTiers = normalizeJobTiers(value.jobTiers);
+  return { characters: nextCharacters, bossData: nextBossData, mileage: normalizeMileageState(value.mileage), dailyBoard, eventPlan, jobTiers };
 };
 
 /* =========================================================
@@ -2130,7 +2213,7 @@ const collectExpiryItems = (characters, withinDays = 30) => {
 };
 const resolveAppView = (saved, characters) => {
   const pages = ['notifications', 'budget_summary', 'boss_data', 'boss_history', 'symbol_price',
-    'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests', 'events'];
+    'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests', 'job_tiers', 'events'];
   return pages.includes(saved) || characters.some(character => character.id === saved)
     ? saved : characters[0]?.id || 'budget_summary';
 };
@@ -2331,6 +2414,7 @@ function App() {
   const [selected, setSelected] = useState(() => resolveAppView(loadLS(LS_KEYS.SELECTED, null), characters));
   const [mileage, setMileage] = useState(() => normalizeMileageState(loadLS(LS_KEYS.MILEAGE, null)));
   const [dailyBoard, setDailyBoard] = useState(() => loadDailyBoard(characters));
+  const [jobTiers, setJobTiers] = useState(() => normalizeJobTiers(loadLS(LS_KEYS.JOB_TIERS, null)));
   const [eventPlan, setEventPlan] = useState(() => {
     const saved = loadLS(LS_KEYS.EVENT_PLAN, undefined);
     return eventDataReady() ? normalizeEventPlan(saved) : saved;
@@ -2355,6 +2439,7 @@ function App() {
   useEffect(() => { saveLS(LS_KEYS.SELECTED, selected); }, [selected]);
   useEffect(() => { saveLS(LS_KEYS.MILEAGE, mileage); }, [mileage]);
   useEffect(() => { saveLS(LS_KEYS.DAILY_BOARD, dailyBoard); }, [dailyBoard]);
+  useEffect(() => { saveLS(LS_KEYS.JOB_TIERS, jobTiers); }, [jobTiers]);
   useEffect(() => { if (eventDataReady()) saveLS(LS_KEYS.EVENT_PLAN, eventPlan); }, [eventPlan]);
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
@@ -2473,9 +2558,9 @@ function App() {
 
   // 데이터 백업: JSON 파일 내보내기 / 가져오기
   const exportData = useCallback(() => {
-    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData, mileage, dailyBoard, eventPlan };
+    const data = { app: 'maple-check', version: 1, exportedAt: todayStr(), characters, bossData, mileage, dailyBoard, eventPlan, jobTiers };
     downloadJsonFile(data, `maple-check-backup-${todayStr()}.json`);
-  }, [characters, bossData, mileage, dailyBoard, eventPlan]);
+  }, [characters, bossData, mileage, dailyBoard, eventPlan, jobTiers]);
 
   const exportStorageRecovery = () => downloadJsonFile(storageRecoverySnapshot(), `maple-check-recovery-${todayStr()}.json`);
   const retryStorage = (preserveOriginal = false) => {
@@ -2505,6 +2590,7 @@ function App() {
           saveLS(LS_KEYS.MILEAGE, next.mileage, { preserveOriginal: true }),
           saveLS(LS_KEYS.DAILY_BOARD, next.dailyBoard, { preserveOriginal: true }),
           saveLS(LS_KEYS.EVENT_PLAN, next.eventPlan, { preserveOriginal: true }),
+          saveLS(LS_KEYS.JOB_TIERS, next.jobTiers, { preserveOriginal: true }),
           saveLS(LS_KEYS.SELECTED, nextSelected, { preserveOriginal: true }),
         ];
         setCharacters(next.characters);
@@ -2512,6 +2598,7 @@ function App() {
         setMileage(next.mileage);
         setDailyBoard(next.dailyBoard);
         setEventPlan(next.eventPlan);
+        setJobTiers(next.jobTiers);
         setSelected(nextSelected);
         alert(results.every(Boolean) ? '백업을 불러와 이 브라우저에 저장했습니다.'
           : '백업을 화면에 불러왔지만 일부 항목을 이 브라우저에 저장하지 못했습니다.\n탭을 닫기 전에 현재 데이터를 내보내고 저장 오류 안내에서 다시 시도해 주세요.');
@@ -2607,6 +2694,7 @@ function App() {
           {selected === 'daily_quests' && (
           <DailyQuestView characters={characters} board={dailyBoard} onBoardChange={setDailyBoard} />
           )}
+          {selected === 'job_tiers' && <JobTierView list={jobTiers} onChange={setJobTiers} />}
           {selected === 'events' && (eventDataReady()
             ? <BlueArchiveEventView plan={eventPlan} onChange={setEventPlan} />
             : <section className="ui-card p-4" role="alert">이벤트 자료를 불러오지 못했습니다. <button className="ui-action px-2 text-maple-accent" onClick={() => window.location.reload()}>다시 불러오기</button></section>)}
@@ -2760,6 +2848,7 @@ function Sidebar({ characters, charTotals, selected, onSelect, onAdd, onRemove, 
           onClick={() => onSelect('daily_quests')}
           label="✅ 일퀘 배분"
         />
+        <NavItem active={selected === 'job_tiers'} onClick={() => onSelect('job_tiers')} label="🏆 직업 티어표" />
         <NavItem active={selected === 'events'} onClick={() => onSelect('events')} label="🎟️ 이벤트" />
 
         <div className="pt-4 pb-1 px-2 text-xs uppercase tracking-wider text-slate-400">
@@ -3113,6 +3202,173 @@ function QuestDialog({ title, onClose, children }) {
       <div className="p-4">{children}</div>
     </div>
   </dialog>;
+}
+
+const tierCardsByName = new Map(DAILY_JOB_CARDS.map(card => [card.name, card]));
+
+function tierDropTarget(page, x, y) {
+  const hit = document.elementFromPoint(x, y);
+  const zone = hit?.closest('[data-tier-zone]');
+  if (!zone || !page?.contains(zone)) return null;
+  const tier = zone.dataset.tierZone;
+  const card = hit.closest('[data-tier-job]');
+  if (tier === 'pool' || !card) return { tier, before: null };
+  const bounds = card.getBoundingClientRect();
+  const before = x < bounds.left + bounds.width / 2 ? card : card.nextElementSibling;
+  return { tier, before: before?.dataset.tierJob ?? null };
+}
+
+function JobTierView({ list, onChange }) {
+  const page = useRef(null);
+  const pointer = useRef(null);
+  const skipClick = useRef(false);
+  const focusAfterMove = useRef(null);
+  const [drag, setDrag] = useState(null);
+  const [picked, setPicked] = useState(null);
+  const [query, setQuery] = useState('');
+  const [notice, setNotice] = useState('');
+  const assigned = new Set(JOB_TIERS.flatMap(tier => list[tier]));
+  const unassigned = DAILY_JOB_CARDS.filter(card => !assigned.has(card.name));
+  const searchTerm = text => text.replace(/[\s(),]/g, '');
+  const shown = unassigned.filter(card => searchTerm(card.name).includes(searchTerm(query)));
+  const currentTier = JOB_TIERS.find(tier => list[tier].includes(picked));
+  const siblings = currentTier ? list[currentTier] : [];
+  const index = siblings.indexOf(picked);
+  const dragging = drag !== null;
+
+  const stopDrag = () => {
+    const session = pointer.current;
+    pointer.current = null;
+    if (session?.button.hasPointerCapture(session.id)) session.button.releasePointerCapture(session.id);
+    setDrag(null);
+  };
+  const updatePreview = session => setDrag({
+    name: session.name, x: session.x, y: session.y, target: tierDropTarget(page.current, session.x, session.y),
+  });
+  useEffect(() => {
+    if (!dragging) return;
+    const scroller = page.current.closest('main');
+    let frame;
+    const scroll = () => {
+      const session = pointer.current;
+      if (!session) return;
+      const rect = scroller.getBoundingClientRect();
+      if (session.x >= rect.left && session.x < rect.right && session.y >= rect.top && session.y < rect.bottom) {
+        const upper = Math.max(0, 48 - (session.y - rect.top));
+        const lower = Math.max(0, 48 - (rect.bottom - session.y));
+        const top = scroller.scrollTop;
+        if (upper || lower) scroller.scrollTop += (lower - upper) / 3;
+        if (scroller.scrollTop !== top) updatePreview(session);
+      }
+      frame = requestAnimationFrame(scroll);
+    };
+    const onKey = event => { if (event.key === 'Escape') stopDrag(); };
+    frame = requestAnimationFrame(scroll);
+    window.addEventListener('blur', stopDrag);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('blur', stopDrag);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [dragging]);
+
+  useEffect(() => {
+    if (picked || !focusAfterMove.current) return;
+    const button = [...page.current.querySelectorAll('[data-tier-job]')].find(el => el.dataset.tierJob === focusAfterMove.current);
+    (button || page.current.querySelector('input'))?.focus({ preventScroll: true });
+    focusAfterMove.current = null;
+  }, [picked]);
+
+  const move = (name, tier, before = null) => {
+    onChange(previous => moveTierJob(previous, name, tier, before));
+    setNotice(name + ' · ' + (tier ? tier + ' 티어' : '미배정'));
+  };
+  const pickTier = (tier, before = null) => {
+    focusAfterMove.current = picked;
+    move(picked, tier, before);
+    setPicked(null);
+  };
+  const startPointer = (event, name) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    skipClick.current = false;
+    if (event.pointerType === 'touch' && !event.target.closest('.quest-face')) return;
+    const button = event.currentTarget;
+    pointer.current = { name, id: event.pointerId, button, startX: event.clientX, startY: event.clientY,
+      x: event.clientX, y: event.clientY, moved: false };
+    button.setPointerCapture(event.pointerId);
+  };
+  const movePointer = event => {
+    const session = pointer.current;
+    if (!session || event.pointerId !== session.id) return;
+    session.x = event.clientX;
+    session.y = event.clientY;
+    if (!session.moved && Math.hypot(session.x - session.startX, session.y - session.startY) < 6) return;
+    session.moved = true;
+    skipClick.current = true;
+    updatePreview(session);
+  };
+  const endPointer = event => {
+    const session = pointer.current;
+    if (!session || session.id !== event.pointerId) return;
+    if (session.moved) {
+      const target = tierDropTarget(page.current, event.clientX, event.clientY);
+      if (target) move(session.name, target.tier === 'pool' ? null : target.tier, target.before);
+    }
+    stopDrag();
+  };
+  const cancelPointer = event => {
+    if (pointer.current?.id === event.pointerId) stopDrag();
+  };
+  const renderJob = (card, tier) => <button type="button" key={card.name} className="tier-job" data-tier-job={card.name}
+    data-dragged={drag?.name === card.name} data-insert={drag?.target?.before === card.name && drag.name !== card.name}
+    aria-label={card.name + ' · ' + (tier ? tier + ' 티어' : '미배정')}
+    onPointerDown={event => startPointer(event, card.name)} onPointerMove={movePointer} onPointerUp={endPointer}
+    onPointerCancel={cancelPointer} onLostPointerCapture={cancelPointer}
+    onContextMenu={event => { if (pointer.current?.moved) event.preventDefault(); }}
+    onClick={event => { if (!event.detail || !skipClick.current) setPicked(card.name); }}>
+    <QuestPortrait card={card} /><span>{card.name}</span>
+  </button>;
+
+  return <div ref={page} className="ui-page space-y-4">
+    <header className="flex flex-wrap items-end justify-between gap-2">
+      <div><h2>직업 티어표</h2><p className="mt-1 text-slate-400">카드를 끌거나 눌러 등급을 정하세요.</p></div>
+      <span className="text-sm text-slate-300">배치 {assigned.size} / {DAILY_JOB_CARDS.length}</span>
+    </header>
+    <div className="tier-layout">
+      <section className="tier-pool ui-card space-y-3 p-3 sm:p-4" data-tier-zone="pool" data-hover={drag?.target?.tier === 'pool'} aria-label="미배정">
+        <div className="flex items-center justify-between gap-2"><h3>미배정</h3><span className="text-xs text-slate-400">{unassigned.length}개 직업</span></div>
+        <input type="search" data-ui-field className="w-full" aria-label="미배정 직업 검색" placeholder="직업 검색"
+          value={query} onChange={event => setQuery(event.target.value)} />
+        <div className="tier-pool-grid">{shown.map(card => renderJob(card, null))}</div>
+        {!shown.length && <p className="text-slate-400">{unassigned.length ? '검색 결과가 없습니다.' : '모든 직업을 배치했습니다.'}</p>}
+      </section>
+      <div className="tier-board ui-card" role="group" aria-label="등급별 직업">
+        {JOB_TIERS.map(tier => <section className="tier-row" key={tier} data-rank={tier} data-tier-zone={tier}
+          data-hover={drag?.target?.tier === tier} aria-label={tier + ' 티어'}>
+          <h3 className="tier-rank"><span className="text-2xl">{tier}</span></h3>
+          <div className="tier-cards">{list[tier].map(name => renderJob(tierCardsByName.get(name), tier))}</div>
+        </section>)}
+      </div>
+    </div>
+    {drag && <div className="tier-job tier-ghost" aria-hidden="true" style={{ left: drag.x, top: drag.y }}>
+      <QuestPortrait card={tierCardsByName.get(drag.name)} /><span>{drag.name}</span></div>}
+    <div className="sr-only" role="status">{notice}</div>
+    {picked && <QuestDialog title={picked + ' · 등급 선택'} onClose={() => setPicked(null)}>
+      <div className="grid grid-cols-4 gap-2">
+        {JOB_TIERS.map(tier => <button key={tier} type="button" className="tier-choice" data-rank={tier}
+          aria-label={tier + ' 티어'} disabled={currentTier === tier} onClick={() => pickTier(tier)}>{tier}</button>)}
+        <button type="button" className="ui-action ui-inset" disabled={!currentTier} onClick={() => pickTier(null)}>미배정</button>
+      </div>
+      {siblings.length > 1 && <div className="mt-3 flex items-center gap-2 border-t border-maple-border pt-3">
+        <span className="mr-auto text-xs text-slate-400">{currentTier} 티어 · {index + 1} / {siblings.length}</span>
+        <button type="button" className="ui-action ui-inset px-3" disabled={index <= 0}
+          onClick={() => pickTier(currentTier, siblings[index - 1])}>앞으로</button>
+        <button type="button" className="ui-action ui-inset px-3" disabled={index === siblings.length - 1}
+          onClick={() => pickTier(currentTier, siblings[index + 2] ?? null)}>뒤로</button>
+      </div>}
+    </QuestDialog>}
+  </div>;
 }
 
 function DailyQuestView({ characters, board, onBoardChange }) {
