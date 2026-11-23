@@ -3327,6 +3327,7 @@ function JobTierView({ list, onChange }) {
     aria-label={card.name + ' · ' + (tier ? tier + ' 티어' : '미배정')}
     onPointerDown={event => startPointer(event, card.name)} onPointerMove={movePointer} onPointerUp={endPointer}
     onPointerCancel={cancelPointer} onLostPointerCapture={cancelPointer}
+    onTouchEnd={event => { if (event.cancelable && event.target.closest('.quest-face')) event.preventDefault(); }}
     onContextMenu={event => { if (pointer.current?.moved) event.preventDefault(); }}
     onClick={event => { if (!event.detail || !skipClick.current) setPicked(card.name); }}>
     <QuestPortrait card={card} /><span>{card.name}</span>
