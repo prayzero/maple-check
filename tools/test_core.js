@@ -261,7 +261,7 @@ const backupContext = vm.createContext({});
 for (const file of eventScriptFiles) vm.runInContext(fs.readFileSync(file, 'utf8'), backupContext);
 vm.runInContext(
   sourceBetween('const DEFAULT_BOSSES =', 'function App()') +
-    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys, dailyQuestDate, DAILY_JOB_NAMES, DAILY_QUEST_IDS, migrateDailyBoard, validateDailyBoard, updateDailySlot, checkDailySlot, placeDailyOverflow, removeDailyOverflow, removeDailyCharacter, normalizeEventPlan, isValidEventPlan, eventDataReady, BLUE_ARCHIVE_SHOP };',
+    '\nglobalThis.testApi = { validateBackupData, reconcileBossData, normalizeBudget, cloneJson, DEFAULT_BOSSES, PRICE_HISTORY, getBossRevenue, priceHistoryBossAvailable, priceChangePercent, activeExpiryNotificationKeys, dailyQuestDate, DAILY_JOB_NAMES, DAILY_QUEST_IDS, migrateDailyBoard, validateDailyBoard, updateDailySlot, checkDailySlot, placeDailyOverflow, removeDailyOverflow, removeDailyCharacter, normalizeEventPlan, isValidEventPlan, eventDataReady, BLUE_ARCHIVE_SHOP, JOB_TIERS, normalizeJobTiers, isValidJobTiers, moveTierJob };',
   backupContext,
 );
 const backupApi = backupContext.testApi;
@@ -334,6 +334,59 @@ const validBackup = {
   bossData: backupApi.cloneJson(backupApi.DEFAULT_BOSSES),
 };
 const normalizedBackup = backupApi.validateBackupData(validBackup);
+{
+  const assert = require('node:assert/strict');
+  const plain = value => JSON.parse(JSON.stringify(value));
+  const { JOB_TIERS, DAILY_JOB_NAMES, normalizeJobTiers, isValidJobTiers, moveTierJob } = backupApi;
+  assert.deepStrictEqual(plain(JOB_TIERS), ['S', 'A', 'B', 'C', 'D', 'E', 'F']);
+  const empty = plain(normalizeJobTiers());
+  assert.deepStrictEqual(empty, { S: [], A: [], B: [], C: [], D: [], E: [], F: [] });
+  assert.deepStrictEqual(plain(normalizedBackup.jobTiers), empty, 'legacy backups must restore empty tiers');
+  const [first, second, third, fourth] = DAILY_JOB_NAMES;
+  const untrusted = { S: [second, first, second, 'unknown'], A: [first, third], B: 'wrong', G: [fourth] };
+  const original = JSON.stringify(untrusted);
+  assert.deepStrictEqual(plain(normalizeJobTiers(untrusted)), { ...empty, S: [second, first], A: [third] });
+  assert.equal(JSON.stringify(untrusted), original, 'normalization must not mutate the source');
+  for (const raw of [null, undefined, [], 1, 'broken']) assert.deepStrictEqual(plain(normalizeJobTiers(raw)), empty);
+
+  let list = normalizeJobTiers();
+  list = moveTierJob(list, first, 'S');
+  list = moveTierJob(list, second, 'S');
+  list = moveTierJob(list, third, 'S', second);
+  assert.deepStrictEqual(plain(list.S), [first, third, second], 'a target card must insert immediately before it');
+  const previous = list;
+  const beforeMove = JSON.stringify(previous);
+  list = moveTierJob(list, second, 'S', first);
+  assert.deepStrictEqual(plain(list.S), [second, first, third], 'same-tier movement must preserve other cards order');
+  assert.equal(JSON.stringify(previous), beforeMove, 'moves must not mutate previous state');
+  list = moveTierJob(list, second, 'S');
+  assert.deepStrictEqual(plain(list.S), [first, third, second], 'null position must append to the end');
+  list = moveTierJob(list, fourth, 'A');
+  list = moveTierJob(list, third, 'A', fourth);
+  assert.deepStrictEqual(plain(list.S), [first, second]);
+  assert.deepStrictEqual(plain(list.A), [third, fourth]);
+  list = moveTierJob(list, third, null);
+  assert.deepStrictEqual(plain(list.A), [fourth], 'unassignment must remove the job from all saved tiers');
+  assert.ok(!Object.values(list).flat().includes(third));
+  for (const args of [[first, 'S', first], [first, 'S', second], [second, 'S'], [third, null],
+    ['unknown', 'S'], [first, 'G'], [first, undefined], [first, 'A', second], [first, 'A', 'unknown']]) {
+    assert.strictEqual(moveTierJob(list, ...args), list, 'same or invalid targets must preserve object identity');
+  }
+  assert.equal(isValidJobTiers(list), true);
+  const full = { ...empty, F: plain(DAILY_JOB_NAMES) };
+  assert.equal(isValidJobTiers(full), true, 'all jobs can share one tier without losing order');
+  const restored = backupApi.validateBackupData({ ...validBackup, jobTiers: full });
+  assert.deepStrictEqual(plain(restored.jobTiers), full, 'backup round trip must preserve all 48 jobs in order');
+  assert.notStrictEqual(restored.jobTiers.F, full.F);
+  for (const bad of [null, [], {}, { ...empty, G: [] }, { ...empty, S: null },
+    { ...empty, S: [first, first] }, { ...empty, S: [first], F: [first] },
+    { ...empty, S: ['unknown'] }, { ...empty, S: [null] }, { ...empty, S: new Array(1) }]) {
+    assert.equal(isValidJobTiers(bad), false);
+    assert.throws(() => backupApi.validateBackupData({ ...validBackup, jobTiers: bad }), /직업 티어표 데이터/);
+    assert.strictEqual(moveTierJob(bad, first, 'S'), bad, 'moves must not silently rewrite malformed states');
+  }
+  console.log('Job tiers: normalization, ordering, move/unassign/no-op, strict validation and backup round trip passed');
+}
 {
   const assert = require('node:assert/strict');
   const plain = value => JSON.parse(JSON.stringify(value));

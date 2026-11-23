@@ -60,7 +60,7 @@ assert.deepEqual(plain(collectExpiryItems(characters, 0)).map(item => item.days)
 
 const supportedViews = [
   'notifications', 'budget_summary', 'boss_data', 'boss_history', 'symbol_price',
-  'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests', 'events',
+  'enhance_calc', 'mileage_calc', 'sunday_maple', 'daily_quests', 'job_tiers', 'events',
 ];
 for (const view of supportedViews) {
   assert.equal(resolveAppView(view, characters), view, `saved ${view} navigation must be preserved`);
@@ -129,6 +129,13 @@ if (dependencyDir) {
   assert.match(firstUse, /캐릭터를 먼저 추가해 주세요/, 'the empty landing page must explain how to begin');
   assert.match(firstUse, /aria-label="알림 센터 · 만료 알림 0건"/, 'the sidebar must expose an accessible bell button');
   noTopNotifications(firstUse, 'new-user landing');
+  saved.set(api.LS_KEYS.SELECTED, JSON.stringify('job_tiers'));
+  const firstTierList = render(api.App);
+  assert.equal((firstTierList.match(/data-tier-job=/g) || []).length, 48);
+  for (const tier of ['S', 'A', 'B', 'C', 'D', 'E', 'F', 'pool']) {
+    assert.ok(firstTierList.includes('data-tier-zone="' + tier + '"'));
+  }
+  assert.ok(firstTierList.includes('히어로 · 미배정'));
   saved.set(api.LS_KEYS.SELECTED, JSON.stringify('events'));
   const eventPage = render(api.App);
   assert.equal((eventPage.match(/class="event-shop-row"/g) || []).length, 71);
