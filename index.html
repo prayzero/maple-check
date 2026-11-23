@@ -3314,6 +3314,8 @@ function JobTierView({ list, onChange }) {
     if (session.moved) {
       const target = tierDropTarget(page.current, event.clientX, event.clientY);
       if (target) move(session.name, target.tier === 'pool' ? null : target.tier, target.before);
+    } else if (event.pointerType === 'touch') {
+      setPicked(session.name);
     }
     stopDrag();
   };
